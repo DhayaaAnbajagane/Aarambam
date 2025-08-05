@@ -1,0 +1,7 @@
+lib/*
+build/*
+*.so
+*.egg-info*
+.DS_Store*
+data/*
+dist/*
