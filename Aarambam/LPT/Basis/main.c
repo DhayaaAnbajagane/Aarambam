@@ -91,7 +91,7 @@ int main(int argc, char **argv) {
 
   if (ThisTask == 0) {printf("Writing initial conditions snapshot..."); fflush(stdout);};
   write_particle_data();
-  if (ThisTask == 0 ) print_timed_done(10);
+  if (ThisTask == 0 ) print_timed_done(16);
   if(NumPart)
     free(P);
   free_ffts();
@@ -108,7 +108,7 @@ void print_setup(void) {
     pstr[i] = '*';
   printf("%s\n", pstr);
 
-  char exec[] = "2LPTNGBasis";
+  char exec[] = "2LPTAarambam";
 
 
   pstr[0] = '*';
@@ -129,7 +129,7 @@ void print_setup(void) {
   printf("                       Nglass = %d    GlassTileFac = %d\n\n", Nglass, GlassTileFac);
   printf("        Omega = %.4f         OmegaLambda = %.4f    OmegaBaryon = %.2e\n", Omega,  OmegaLambda, OmegaBaryon);
   printf("       sigma8 = %.4f     PrimoridalIndex = %.4f       Redshift = %.2e\n", Sigma8, PrimordialIndex, Redshift);
-  printf("  HubbleParam = %.4f  OmegaDM_2ndSpecies = %.2e          fNL = %+.2e\n\n", HubbleParam, OmegaDM_2ndSpecies, Fnl); 
+  printf("   HubbleParam = %.4f  OmegaDM_2ndSpecies = %.2e          fNL = %+.2e\n\n", HubbleParam, OmegaDM_2ndSpecies, Fnl); 
   printf("   FixedAmplitude = %d    PhaseFlip = % d   SphereMode = %d    Seed = %d\n", FixedAmplitude, PhaseFlip, SphereMode, Seed);   
 
   for (int i = 0; i < 79; i++)
@@ -207,6 +207,8 @@ void displacement_fields(void) {
     
   double Pl; //for storing legendre coeffs
   
+  MPI_Bcast(&SavePotentialField, 1, MPI_INT, 0, MPI_COMM_WORLD);
+
   //DHAYAA: Now need to read out the coefficients from a file
   //Load the Alpha Table
   double (*AlphaTable)[N_modes][N_modes] = malloc(sizeof(double) * N_modes * N_modes * N_modes);
@@ -285,71 +287,15 @@ void displacement_fields(void) {
   // Broadcast the full X0Table to all tasks
   MPI_Bcast(&(X0Table[0][0]), N_modes * 2, MPI_DOUBLE, 0, MPI_COMM_WORLD);
     
-    
-  // if (ThisTask == 0){
-  // for(N_i = 0; N_i < N_modes; N_i++)
-  //     for(N_j = N_i; N_j < N_modes; N_j++)
-  //         for(N_k = N_j; N_k < N_modes; N_k++)
-  //             printf("%d %d %d %0.16lf \n", N_i, N_j, N_k, AlphaTable[N_i][N_j][N_k]);
-  // }
-    
-  
-  
-  // //Coeff needed for removing 1/k^6 and 1/k^5 divergences
-  // double s_012 = 1 + AlphaTable[1][1][1]/AlphaTable[0][1][2];
-  // double u_022 = 1;
-
-  // //Coeff needed for removing 1/k^4 and 1/k^3 divergence
-  // double t_012 = -AlphaTable[1][1][1]/AlphaTable[0][1][2];
-  // double t_013 = -AlphaTable[1][1][2]/AlphaTable[0][1][3];
-
-  // //Coeff needed for removing 1/k^2 and 1/k divergence
-  // double u_003 = -(AlphaTable[0][1][2] + AlphaTable[1][1][1])/AlphaTable[0][0][3];
-  // double s_013 = -AlphaTable[0][2][2] / AlphaTable[0][1][3];
-  // double t_023 = -AlphaTable[1][2][2] / AlphaTable[0][2][3];
-  // double t_123 = -AlphaTable[2][2][2] / AlphaTable[1][2][3];
-
-  // //Check that no coeff is infinite
-  // if (AlphaTable[0][1][2] == 0) s_012 = 0;
-  // if (AlphaTable[0][1][2] == 0) t_012 = 0;
-  // if (AlphaTable[0][1][3] == 0) t_013 = 0;
-  // if (AlphaTable[0][0][3] == 0) u_003 = 0;
-  // if (AlphaTable[0][1][3] == 0) s_013 = 0;
-  // if (AlphaTable[0][2][3] == 0) t_023 = 0;
-  // if (AlphaTable[1][2][3] == 0) t_123 = 0;
-
-  // if(ThisTask == 0) {
-  //     printf("SET COEFF s_012 = %lg \n", s_012);
-  //     printf("SET COEFF t_012 = %lg \n", t_012);
-  //     printf("SET COEFF t_013 = %lg \n", t_013);
-  //     printf("SET COEFF u_003 = %lg \n", u_003);
-  //     printf("SET COEFF s_013 = %lg \n", s_013);
-  //     printf("SET COEFF t_023 = %lg \n", t_023);
-  //     printf("SET COEFF t_123 = %lg \n", t_123);
-  // }
 
   double t_012 = -AlphaTable[1][1][1]/AlphaTable[0][1][2];
   double u_002 = -AlphaTable[0][1][1]/AlphaTable[0][0][2];
   if (AlphaTable[0][1][2] == 0) t_012 = 0;
   if (AlphaTable[0][0][2] == 0) u_002 = 0;
   if(ThisTask == 0) {
-      printf("SET COEFF t_012 = %lg \n", t_012);
-      printf("SET COEFF u_002 = %lg \n", u_002);
+      printf("Set coeff t_012 = %lg \n", t_012);
   }
 
-  // if(ThisTask == 0){
-  //   printf("sizeof(float) = %zu bytes (%zu bits)\n", sizeof(float), sizeof(float) * 8);
-  //   printf("sizeof(double) = %zu bytes (%zu bits)\n", sizeof(double), sizeof(double) * 8);
-  //   printf("sizeof(long double) = %zu bytes (%zu bits)\n", sizeof(long double), sizeof(long double) * 8);
-
-  //   // If you're using FFTW2:
-  //   fftw_real test_val;
-  //   printf("sizeof(fftw_real) = %zu bytes (%zu bits)\n", sizeof(test_val), sizeof(test_val) * 8);
-  //   fftw_complex test_val2;
-  //   printf("sizeof(fftw_complex) = %zu bytes (%zu bits)\n", sizeof(test_val2), sizeof(test_val2) * 8);
-  // }
-
-  
   
 #ifdef CORRECT_CIC
   double fx, fy, fz, ff, smth;
@@ -418,30 +364,18 @@ void displacement_fields(void) {
   memset(cpot_NG_re, 0, sizeof(long double) * TotalSizePlusAdditional);
   memset(cpot_NG_im, 0, sizeof(long double) * TotalSizePlusAdditional);
 
-
-  /* first, clean the cpot array */
-  // for(i = 0; i < Local_nx; i++)
-  //   for(j = 0; j < Nmesh; j++)
-  //     for(k = 0; k <= Nmesh / 2; k++)
-  //         {
-  //           cpot[(i * Nmesh + j) * (Nmesh / 2 + 1) + k].re = 0;
-  //           cpot[(i * Nmesh + j) * (Nmesh / 2 + 1) + k].im = 0;
-
-
-  //         }
-
   memset(cpot, 0, sizeof(fftw_real) * TotalSizePlusAdditional);
 
   /* Ho in units of UnitLength_in_cm and c=1, i.e., internal units so far  */
   /* Beta = 3/2 H(z)^2 a^3 Om(a) / D0 = 3/2 Ho^2 Om0 / D0 at redshift z = 0.0 */ 
   Beta = 1.5 * Omega / (2998. * 2998. / UnitLength_in_cm / UnitLength_in_cm * 3.085678e24 * 3.085678e24 ) / D0 ;     
 
-  if(ThisTask == 0){
-      printf("BETA: %e \n", Beta);
-      printf("UnitLength_in_cm: %e \n", UnitLength_in_cm);   
-      printf("D0: %e \n", D0);
-      printf("Anorm: %e \n", Anorm);   
-  }
+  // if(ThisTask == 0){
+  //     printf("\n BETA: %e \n", Beta);
+  //     printf("UnitLength_in_cm: %e \n", UnitLength_in_cm);   
+  //     printf("D0: %e \n", D0);
+  //     printf("Anorm: %e \n", Anorm);   
+  // }
   
   
   for(i = 0; i < Nmesh; i++)
@@ -588,7 +522,7 @@ void displacement_fields(void) {
         }
     }
 
- if (ThisTask == 0 ) print_timed_done(19);
+ if (ThisTask == 0 ) print_timed_done(25);
  /*** For non-local models it is important to keep all factors of SQRT(-1) as done below ***/
  /*** Notice also that there is a minus to convert from Bardeen to gravitational potential ***/
 
@@ -917,7 +851,12 @@ void displacement_fields(void) {
 
                   }
 
-          if (ThisTask == 0 ) print_timed_done(20);
+          if (ThisTask == 0 ) {
+            int print_size = 0;
+            if (N_i >= 10) print_size += 1;
+            if (N_j >= 10) print_size += 1;
+            print_timed_done(23 - print_size);
+          }
           MPI_Barrier(MPI_COMM_WORLD);
           }
       } //Close the Ni,Nj,Nk loop
@@ -1082,80 +1021,7 @@ void displacement_fields(void) {
 
                       fnl_fac = 0;
                       
-                      //Add the g3(k) kernel. This can be summed linearly for fixed gi and gj.
-                      //Bunch of boolean conditions below to handle the specific divergences
-                      //that are a problem to us.
                       
-                      
-                      // //First handle the s_012 and t_012 piece. 
-                      // {
-                      // if ( (N_i == 0) && (N_j == 1) ) { //Subtract from the original kernel
-                      //     fnl_fac += -AlphaTable[0][1][2] * s_012 * pow(kmag1, (4 - PrimordialIndex)/3 * (2 - 3.0));
-                      //     fnl_fac += -AlphaTable[0][1][2] * t_012 * pow(kmag1, (4 - PrimordialIndex)/3 * (2 - 3.0));
-                      //     }
-                          
-                      // if ( (N_i == 1) && (N_j == 2) ) //Now add the s_012 piece
-                      //     fnl_fac +=  AlphaTable[0][1][2] * s_012 * pow(kmag1, (4 - PrimordialIndex)/3 * (0 - 3.0));
-
-                      // if ( (N_i == 0) && (N_j == 2) ) //Now add the t_012 piece
-                      //     fnl_fac +=  AlphaTable[0][1][2] * t_012 * pow(kmag1, (4 - PrimordialIndex)/3 * (1 - 3.0));
-
-                      // }
-
-
-                      // //Next handle the s_013 and t_013 pieces. 
-                      // {
-                      // if ( (N_i == 0) && (N_j == 1) ) {
-                      //     fnl_fac += -AlphaTable[0][1][3] * s_013 * pow(kmag1, (4 - PrimordialIndex)/3 * (3 - 3.0));
-                      //     fnl_fac += -AlphaTable[0][1][3] * t_013 * pow(kmag1, (4 - PrimordialIndex)/3 * (3 - 3.0));
-                      //       }
-                          
-                      // if ( (N_i == 1) && (N_j == 3) ) //Now add the s_012 piece
-                      //     fnl_fac +=  AlphaTable[0][1][3] * s_013 * pow(kmag1, (4 - PrimordialIndex)/3 * (0 - 3.0));
-                          
-                      // if ( (N_i == 0) && (N_j == 3) ) //Now add the t_012 piece
-                      //     fnl_fac +=  AlphaTable[0][1][3] * t_013 * pow(kmag1, (4 - PrimordialIndex)/3 * (1 - 3.0));
-
-                      // }
-
-
-                      // //Next handle the t_023 piece. 
-                      // {
-                      // if ( (N_i == 0) && (N_j == 2) )
-                      //     fnl_fac += -AlphaTable[0][2][3] * t_023 * pow(kmag1, (4 - PrimordialIndex)/3 * (3 - 3.0));
-                          
-                      // if ( (N_i == 0) && (N_j == 3) )
-                      //     fnl_fac +=  AlphaTable[0][2][3] * t_023 * pow(kmag1, (4 - PrimordialIndex)/3 * (2 - 3.0));
-                      // }
-
-
-                      // //Now the t_123 piece. 
-                      // {
-                      // if ( (N_i == 1) && (N_j == 2) )
-                      //     fnl_fac += -AlphaTable[1][2][3] * t_123 * pow(kmag1, (4 - PrimordialIndex)/3 * (3 - 3.0));
-                          
-                      // if ( (N_i == 1) && (N_j == 3) ) //Now add the t_012 piece
-                      //     fnl_fac +=  AlphaTable[1][2][3] * t_123 * pow(kmag1, (4 - PrimordialIndex)/3 * (2 - 3.0));
-                      // }
-
-                      // //Now the u_022 piece. 
-                      // {
-                      // if ( (N_i == 0) && (N_j == 2) ) //Subtract the original kernel
-                      //     fnl_fac += -AlphaTable[0][2][2] * u_022 * pow(kmag1, (4 - PrimordialIndex)/3 * (2 - 3.0));
-                      
-                      // if ( (N_i == 2) && (N_j == 2) ) //Add the specific version we want
-                      //     fnl_fac +=  AlphaTable[0][2][2] * u_022 * pow(kmag1, (4 - PrimordialIndex)/3 * (0 - 3.0));
-                      // }
-
-                      // //Now the u_003 piece. 
-                      // {
-                      // if ( (N_i == 0) && (N_j == 0) ) //Subtract the original kernel
-                      //     fnl_fac += -AlphaTable[0][0][3] * u_003 * pow(kmag1, (4 - PrimordialIndex)/3 * (3 - 3.0));
-                      
-                      // if ( (N_i == 0) && (N_j == 3) ) //Add the specific version we want
-                      //     fnl_fac +=  AlphaTable[0][0][3] * u_003 * pow(kmag1, (4 - PrimordialIndex)/3 * (0 - 3.0));
-                      // }
-
                       //First handle the s_012 and t_012 piece. 
                       {
                       if ( (N_i == 0) && (N_j == 1) ) { //Subtract from the original kernel
@@ -1167,39 +1033,13 @@ void displacement_fields(void) {
 
                       }
 
-                      // //First handle the u_011 piece. 
-                      // {
-                      // if ( (N_i == 0) && (N_j == 1) ) //Subtract the original kernel
-                      //     fnl_fac += -AlphaTable[0][1][1] * pow(kmag1, (4 - PrimordialIndex)/3 * (1 - 3.0));
-                      
-                      // if ( (N_i == 1) && (N_j == 1) ) //Add the specific version we want
-                      //     fnl_fac +=  AlphaTable[0][1][1] * pow(kmag1, (4 - PrimordialIndex)/3 * (0 - 3.0));
-                      // }
-                      
-                      
-                      // WE CAN IGNORE THIS. Because we null out the 002 and 110 terms in the basis set.
-                      // So the terms that cause the divergence are never used/present anywhere.
-
-                      // // Now handle the u_002 piece. 
-                      // {
-                      // if ( (N_i == 0) && (N_j == 0) ) 
-                      //     fnl_fac += -AlphaTable[0][0][2] * u_002 * pow(kmag1, (4 - PrimordialIndex)/3 * (2 - 3.0));
-                          
-                      // if ( (N_i == 0) && (N_j == 2) )
-                      //     fnl_fac +=  AlphaTable[0][0][2] * u_002 * pow(kmag1, (4 - PrimordialIndex)/3 * (0 - 3.0));
-                          
-                      // }
-                      
-                      // cpot_NG[coord].re += fnl_fac * c_tmp[coord].re;
-                      // cpot_NG[coord].im += fnl_fac * c_tmp[coord].im; 
-
                       cpot_NG_re[coord] += (long double) (fnl_fac * c_tmp[coord].re);
                       cpot_NG_im[coord] += (long double) (fnl_fac * c_tmp[coord].im);  
                                           
                       
                   }
 
-          if (ThisTask == 0 ) print_timed_done(15);
+          if (ThisTask == 0 ) print_timed_done(18);
           MPI_Barrier(MPI_COMM_WORLD);
           }
       } //Close the Ni,Nj,Nk loop
@@ -1235,7 +1075,7 @@ void displacement_fields(void) {
 
   //Trasnform to real space so we can write out the potential
   rfftwnd_mpi(Inverse_plan, 1, pot, Workspace, FFTW_NORMAL_ORDER);
-  write_phi(pot, 0);
+  if(SavePotentialField==1) write_phi(pot, 0);
   // if(ThisTask == 0) printf("\n coord = 10 \n pot = %lg\n\n", pot[10]);
   MPI_Barrier(MPI_COMM_WORLD);   
   rfftwnd_mpi(Forward_plan, 1, pot, Workspace, FFTW_NORMAL_ORDER);
@@ -1254,8 +1094,8 @@ void displacement_fields(void) {
           cpot[coord].im /= (double) nmesh3; 
           
           //One factor due to converting c_tmp from real space to fourier space
-          cpot[coord].re += cpot_NG[coord].re / (double) nmesh3; 
-          cpot[coord].im += cpot_NG[coord].im / (double) nmesh3;
+          cpot[coord].re += Fnl * cpot_NG[coord].re / (double) nmesh3; 
+          cpot[coord].im += Fnl * cpot_NG[coord].im / (double) nmesh3;
           
           
       }
@@ -1274,7 +1114,7 @@ MPI_Barrier(MPI_COMM_WORLD);
     
 if (ThisTask == 0) {printf("Writing potential to disc..."); fflush(stdout);};
 rfftwnd_mpi(Inverse_plan, 1, pot, Workspace, FFTW_NORMAL_ORDER);
-write_phi(pot, 1);
+if(SavePotentialField==1) write_phi(pot, 1);
 MPI_Barrier(MPI_COMM_WORLD);   
 rfftwnd_mpi(Forward_plan, 1, pot, Workspace, FFTW_NORMAL_ORDER);
     
@@ -1290,7 +1130,7 @@ for(ii = 0; ii < Local_nx; ii++){
       }
     }
   }
-if (ThisTask == 0 ) print_timed_done(20);
+if (ThisTask == 0 ) print_timed_done(26);
 
 MPI_Barrier(MPI_COMM_WORLD);
 if (ThisTask == 0) {printf("Computing gradient of non-Gaussian potential..."); fflush(stdout);};
@@ -1361,7 +1201,7 @@ ASSERT_ALLOC(cdisp[0] && cdisp[1] && cdisp[2]);
 
   free(cpot);
 
-  if (ThisTask == 0 ) print_timed_done(1);
+  if (ThisTask == 0 ) print_timed_done(7);
 
 
        MPI_Barrier(MPI_COMM_WORLD);
@@ -1572,7 +1412,7 @@ ASSERT_ALLOC(cdisp[0] && cdisp[1] && cdisp[2]);
 	    }
 	}
 
-      if (ThisTask == 0 ) print_timed_done(21);
+      if (ThisTask == 0 ) print_timed_done(27);
       if (ThisTask == 0) {printf("Computing displacements and velocitites..."); fflush(stdout);};
 
       /* read-out displacements */
@@ -1657,7 +1497,7 @@ ASSERT_ALLOC(cdisp[0] && cdisp[1] && cdisp[2]);
 	}
     }
  
-      if (ThisTask == 0 ) print_timed_done(6);
+      if (ThisTask == 0 ) print_timed_done(12);
 
   for(axes = 0; axes < 3; axes++) free(cdisp[axes]);
   for(axes = 0; axes < 3; axes++) free(cdisp2[axes]);

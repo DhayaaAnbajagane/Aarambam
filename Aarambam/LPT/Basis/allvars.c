@@ -7,6 +7,7 @@ struct io_header_1 header1, header;
 
 int WhichSpectrum;
 int WhichTransfer;  
+int SavePotentialField;
 
 int SphereMode;
 int *Local_nx_table;

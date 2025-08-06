@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(2LPTIC C)
+project(Aarambam C)
 
 # --- Compiler: use mpicc like the Makefile ---
 # You can also pass -DCMAKE_C_COMPILER=... on the cmake command line.
@@ -14,8 +14,8 @@ set(CMAKE_C_EXTENSIONS ON)           # => gnu99, like GCC default used by the Ma
 add_compile_options(-O3 -Wall -g)
 
 # --- Sources (OBJS without .o) ---
-set(SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR}/Aarambam/2LPT/)
-add_executable(2LPTIC
+set(SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR}/Aarambam/LPT/Basis/)
+add_executable(2LPTBasis
   ${SRC_DIR}/main.c
   ${SRC_DIR}/power.c
   ${SRC_DIR}/checkchoose.c
@@ -31,24 +31,24 @@ add_executable(2LPTIC
 
 # --- Include paths (CFLAGS part) ---
 # GSL
-target_include_directories(2LPTIC PRIVATE
+target_include_directories(2LPTBasis PRIVATE
   /software/gsl-2.7-el8-x86_64/include
 )
 # FFTW2 (use THEPATH env var exactly like your Makefile)
 if(DEFINED ENV{THEPATH})
-  target_include_directories(2LPTIC PRIVATE
+  target_include_directories(2LPTBasis PRIVATE
     $ENV{THEPATH}/FFTW/fftw-2.1.5/build/include
   )
 endif()
 # Local headers
-target_include_directories(2LPTIC PRIVATE
+target_include_directories(2LPTBasis PRIVATE
   ${SRC_DIR}
   ${SRC_DIR}/nrsrc
 )
 
 # --- Preprocessor options (OPT / OPTIONS in the Makefile) ---
 # Default Makefile switches:
-target_compile_definitions(2LPTIC PRIVATE
+target_compile_definitions(2LPTBasis PRIVATE
   NO64BITID=1
   CORRECT_CIC=1
   # PRODUCEGAS=1   # uncomment if you want this default ON
@@ -57,16 +57,16 @@ target_compile_definitions(2LPTIC PRIVATE
 # Optional “MODE” passthrough (you can pass -DMODE="-DSOMETHING" to cmake)  
 if(DEFINED MODE AND NOT MODE STREQUAL "")
   # MODE is expected to be something like "-DSOMEFLAG"
-  target_compile_options(2LPTIC PRIVATE ${MODE})
+  target_compile_options(2LPTBasis PRIVATE ${MODE})
 endif()
 
 # --- Link directories (LIBS part: -L...) ---
-target_link_directories(2LPTIC PRIVATE
+target_link_directories(2LPTBasis PRIVATE
   /software/openmpi-4.1.0-el8-x86_64/lib
   /software/gsl-2.7-el8-x86_64/lib
 )
 if(DEFINED ENV{THEPATH})
-  target_link_directories(2LPTIC PRIVATE
+  target_link_directories(2LPTBasis PRIVATE
     $ENV{THEPATH}/FFTW/fftw-2.1.5/build/lib
   )
 endif()
@@ -74,13 +74,13 @@ endif()
 # --- Link libraries (order matches your Makefile) ---
 #   LIBS = -lm  $(MPICHLIB)  $(FFTW_LIB)  $(GSL_LIBS)  -lgsl -lgslcblas
 #   $(FFTW_LIB) expands to: -L... -ldrfftw_mpi -ldfftw_mpi -ldrfftw -ldfftw
-target_link_libraries(2LPTIC PRIVATE
+target_link_libraries(2LPTBasis PRIVATE
   m
   mpi
   drfftw_mpi dfftw_mpi drfftw dfftw
   gsl gslcblas
 )
-install(TARGETS 2LPTIC RUNTIME DESTINATION Aarambam/bin)
+install(TARGETS 2LPTBasis RUNTIME DESTINATION Aarambam/bin)
 
 # You can `cmake --build . --target clean` for cleaning; no manual 'clean' needed.
 

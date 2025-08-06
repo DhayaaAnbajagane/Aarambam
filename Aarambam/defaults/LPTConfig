@@ -1,0 +1,50 @@
+
+Nmesh                               256
+Nsample                             256
+Nmax                                256
+Box                                 512.000000
+FileBase                            Aarambam_ics
+OutputDir                           /scratch/midway3/dhayaa/TMP/
+GlassFile                           /scratch/midway3/dhayaa/my_envs/Aarambam_TEST/lib/python3.13/site-packages/Aarambam/defaults/dummy_glass_dmonly_64.dat 
+GlassTileFac                        4
+
+Seed                                42
+
+
+Omega                               0.300000
+OmegaLambda                         0.700000
+OmegaBaryon                         0.00000 #Doesn't really matter since we use the transfer function from CAMB
+OmegaDM_2ndSpecies                  0.00
+HubbleParam                         0.700000
+Sigma8                              0.800000
+PrimordialIndex                     0.960000
+Redshift                            49.000000
+Fnl                                 100.000000
+N_modes                             15
+
+
+FixedAmplitude                      0
+PhaseFlip                           0
+SphereMode                          0
+SavePotentialField                  1
+
+WhichSpectrum                       0 #Fixed to 0 because we always want to use only the Transfer Function
+WhichTransfer                       2 #Fixed to 2 because we always want a tabulated Transfer function (from CAMB)
+
+FileWithInputSpectrum               ThisIsAFakeStringThatIsNeverUsed
+FileWithInputTransfer               /scratch/midway3/dhayaa/my_envs/Aarambam_TEST/lib/python3.13/site-packages/Aarambam/defaults/TransferFunctionConverted.dat
+FileWithAlphaCoeff                  /scratch/midway3/dhayaa/my_envs/Aarambam_TEST/lib/python3.13/site-packages/Aarambam/defaults/AlphaTable.dat
+FileWithX0Coeff                     /scratch/midway3/dhayaa/my_envs/Aarambam_TEST/lib/python3.13/site-packages/Aarambam/defaults/AiTable.dat
+
+NumFilesWrittenInParallel           40
+
+InputSpectrum_UnitLength_in_cm      3.085678e24 #One Mpc in cm. This is fixed
+UnitLength_in_cm                    3.085678e24 #One Mpc in cm, units of  Pkdgrav (gadget uses kpc)
+UnitMass_in_g                       1.989e43
+UnitVelocity_in_cm_per_s            1e5
+
+ShapeGamma                          0.0    #Dont use this but it complains if I dont include it.
+WDM_On                              0
+WDM_Vtherm_On                       0
+WDM_PartMass_in_kev                 10.0
+

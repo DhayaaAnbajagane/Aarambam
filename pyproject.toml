@@ -16,7 +16,7 @@ license = { text = "GPL-3.0-or-later" }
 authors = [{ name = "You" }]
 
 [project.scripts]
-2LPTAarambam = "Aarambam.cli:main"
+Aarambam-2LPT-Basis = "Aarambam.LPT.Basis.cli:main"
 
 [tool.scikit-build]
 # helpful verbosity and wheel tweaks

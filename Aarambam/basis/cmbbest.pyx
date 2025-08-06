@@ -80,11 +80,10 @@ class Basis:
         sym_factors[(p1 != p2) & (p2 == p3)] = 3
         sym_factors[(p1 == p2) & (p2 == p3)] = 1
         
-#         self.tetrapyd_grid_weights = self.tetrapyd_grid_weights / sym_factors
         self.tetrapyd_grid_weights = self.tetrapyd_grid_weights / np.sum(self.tetrapyd_grid_weights)
         
         print("Tetrapyd weights computed")
-        print(f"IT FINISHED IN {(dt.now() - start).total_seconds()}s\n")
+        print(f"(Finished in {(dt.now() - start).total_seconds()}s)\n")
         
         # Evaluate mode functions on 1D k grid
         self.mode_function_evaluations = self.mode_functions(self.k_grid)
@@ -99,7 +98,7 @@ class Basis:
         self.mode_bispectra_norms = np.sqrt(np.diag(self.mode_bispectra_covariance))
 
         print("Basis is now ready")
-        print(f"IT FINISHED IN {(dt.now() - start).total_seconds()}s\n")
+        print(f"(Finished {(dt.now() - start).total_seconds()}s)\n")
 
     def legendre_basis(self):
         # Legendre polynomials + one 1/k mode which is orthogonalised
@@ -123,50 +122,21 @@ class Basis:
             k_mid_b  = -1 + fact * ( np.power(k_mid, scale) -  np.power(k_min, scale) )
             mode_evals = np.zeros((p_max, len(k)))
 
-#             # Modes number 1 to p_max are Legendre polynomials
-#             for p in range(1, p_max):
-#                 mode_evals[p,:] = legendre(p-1)(k_bar)
-            
-#             # Mode number 0 is 1/k
-#             mode_evals[0,:] = k_min / np.power(k, 2 - n_s)
 
-
-            # print("======== MY COEFF : CMBBEST =============")
             # Modes number 0-3 are monomials, and 3 to p_max are Legendre polynomials
             for p in range(0, p_max):
             
                 if p <= 3:
                     mode_evals[p,:]  = np.power(k, 2 + (4 - n_s)/3 * (p - 3))
-                    # mode_evals[p,:] /= np.power(k_mid, 2 + (4 - n_s)/3 * (p - 3))
+
                 else:
                     poly = legendre(p-1)
 
+                    #This is kbar with k = 0, so it's a "zeropoint" (zp) value
                     kbar_zp  = -1 - 2*np.power(k_min, scale)/(np.power(k_max, scale) -  np.power(k_min, scale))
                     coef     = eval_legendre(p-1, kbar_zp)                    
 
-                    # print(p - 1, coef)
-
                     mode_evals[p,:]  = poly(k_bar) - coef
-                    # mode_evals[p,:] /= poly(k_mid_b) - coef
-                    
-                    
-                    # from numpy.polynomial import Polynomial
-                    
-                    # kbar_p   = Polynomial(
-                    #                       [-1 - 2*np.power(k_min, scale)/(np.power(k_max, scale) -  np.power(k_min, scale)),
-                    #                        2/(np.power(k_max, scale) -  np.power(k_min, scale))]
-                    #                      ) 
-                    # Linear_p = Polynomial(poly.coefficients[::-1])(kbar_p)
-                    # coef     = Linear_p.coef
-
-                    # print(p - 1, coef[:2])
-
-                    # mode_evals[p,:] = poly(k_bar) - (coef[0] + 
-                    #                                  0*coef[1] * np.power(k, scale) +
-                    #                                  0*coef[2] * np.power(k, scale)**2
-                    #                                 )
-                    
-            # print("======== MY COEFF : CMBBEST =============")
                     
             return mode_evals
 
@@ -178,31 +148,18 @@ class Basis:
 
         if grid_type == "uniform":
             # Create a uniform one-dimensional k grid 
-            k_grid = np.linspace(self.mode_k_min, self.mode_k_max, self.k_grid_size)
+            k_grid    = np.linspace(self.mode_k_min, self.mode_k_max, self.k_grid_size)
             k_weights = np.ones_like(k_grid) * (self.mode_k_max - self.mode_k_min) / (self.k_grid_size - 1)
             
+            #Downweight larger k a bit to allow more minor errors to occur there
+            #in favor of smaller errors are larger scales. Similarly downweight 
+            #k < 2*k_F to allow for more error at largest scales if needed.
+            #In practice, neither of these really matter and we just keep
+            #the below for reproducability's sake.
             k_median  = np.sqrt(self.mode_k_min * self.mode_k_max)
             k_weights = np.where(k_grid > k_median * 2, 1/np.sqrt(k_grid), 1/k_grid)
             k_weights[k_grid < 2 * self.mode_k_min] = 1/np.sqrt(k_grid[k_grid < 2 * self.mode_k_min])
-            
-#             k_grid = np.geomspace(self.mode_k_min, self.mode_k_max, self.k_grid_size)
-#             k_weights = np.ones_like(k_grid)
-#             k_weights[1:] = np.diff(k_grid)
-#             k_weights[0]  = k_grid[0]
-            
-#             k_grid, k_weights = custom_geomspace(self.mode_k_min, self.mode_k_max, self.k_grid_size)            
-#             k_weights = np.ones_like(k_grid)
-#             k_weights[1:] = np.diff(k_grid)
-#             k_weights[0]  = k_grid[0]
-            
-#             k_weights[0] /= 2
-#             k_weights[-1] /= 2
-        
-        elif grid_type == "GL":
-            gl_nodes, gl_weights = np.polynomial.legendre.leggauss(self.k_grid_size)
-            k_grid = self.mode_k_min + ((self.mode_k_max - self.mode_k_min) / 2) * (gl_nodes + 1)
-            k_weights = ((self.mode_k_max - self.mode_k_min) / 2) * gl_weights
-        
+                    
         else:
             print("Grid type {} is currently unsupported".format(grid_type))
 
@@ -406,32 +363,17 @@ class Basis:
         #Third  is k1^-3 k2^-3 k3^-1
         #Fourth is k1^-3 k2^-2 k3^-3
 
-        # badmask = ( ((p1 <= 1) & (p2 == 0) & (p3 == 0)) 
-        #         )
-        
         badmask = ( ((p1 <= 2) & (p2 == 0) & (p3 == 0)) |
                     ((p1 == 1) & (p2 == 1) & (p3 == 0)) 
                 )
         
         
-        # badmask = ( ((p1 <= 3) & (p2 <= 3) & (p3 <= 3))
-        #            & np.invert(
-        #                 ((p1 == 3) & (p2 == 0) & (p3 == 0)) |
-        #                 ((p1 == 2) & (p2 == 1) & (p3 == 0)) |
-        #                 ((p1 == 1) & (p2 == 1) & (p3 == 1))
-        #             )
-        #         )
-        
-        # badmask |= (p1 > 3) & ((p2 <= 3) | (p3 <= 3))
-        
-        # badmask |= (p2 > 3) | (p3 > 3)
-
         badmask |= bad_modes        
         badinds = np.where(badmask)[0]
-        print("ZEROING OUT THE INDS", badinds)
+        print("Zeroing out mode inds", badinds)
 
-        import os
-        cpus_allocated = int(os.environ.get("SLURM_CPUS_ON_NODE", 1))
+        #Try to get a SLURM env variable, else default to os.cpu_count()
+        cpus_allocated = int(os.environ.get("SLURM_CPUS_ON_NODE", os.cpu_count()))
         os.environ["MKL_NUM_THREADS"] = str(cpus_allocated)
         os.environ["OMP_NUM_THREADS"] = str(cpus_allocated)
 
@@ -444,38 +386,26 @@ class Basis:
 
             Q_temp[bi] = 0 #Also do the same of the basis function array (not matrix) to be consistent
         
-        #DHAYAA: Finished my hack (I also replaced QQ, QS --> QQ_temp, QS_temp)
         ##########################################################################
-
-        # Use conjugate gradient algorithm to solve (alpha @ QQ = QS)
-        # 'alpha' is a matrix of size (N_models, N_modes)
-        # QQ_tilde = QQ_temp / norms[:,np.newaxis] / norms[np.newaxis,:]     # Normalise modes
-        # alpha = np.zeros((N_models, N_modes))
-        # for model_no in range(N_models):
-        #     QS_tilde = QS_temp[model_no,:] / norms   # Normalise mode
-        #     alpha_tilde, exit_code = conjugate_gradient(QQ_tilde + np.eye(len(QQ_tilde)) * regularization, 
-        #                                                 QS_tilde, rtol = rtol, atol=0, maxiter = max([10*N_modes, int(Niter)]))
-        #     print("Shape #{}/{} expanded using CG with exit code {}".format(model_no+1, N_models, exit_code))
-        #     alpha[model_no,:] = alpha_tilde / norms          # Reintroduce normalisation factor
 
         QQ_tilde = QQ_temp / norms[:,np.newaxis] / norms[np.newaxis,:]     # Normalise modes
         Q_tilde  = Q_temp / norms[:, np.newaxis]
-        alpha = np.zeros((N_models, N_modes))
+        alpha    = np.zeros((N_models, N_modes))
+
+        #Loop over models
         for model_no in range(N_models):
             QS_tilde = QS_temp[model_no,:] / norms   # Normalise mode
             
             OMP_msk = np.zeros_like(p1, dtype = bool)
             OMP_msk[(p1 <= 3) & (p2 <= 3) & (p3 <= 3)] = True
 
+            #If max_modes < 0 then we just use all modes
             if max_modes == -1:
                 OMP_msk = np.ones_like(OMP_msk, dtype = bool)
 
-            RR_old   = 1e-300
             delta_RR = np.inf
-
             iterator = 0
-
-            pbar = tqdm(desc = 'Building targeted Mode basis')
+            pbar     = tqdm(desc = 'Building targeted Mode basis')
 
             while True:
                 
@@ -491,8 +421,6 @@ class Basis:
                 RR = np.matmul(R * w[np.newaxis,:], R.T)[0, 0]
                 delta_RR = RR/shape_covariance
 
-                # R /= (S + 1e-3)
-
                 #An estimate of how correlated a given function is with all other functions in the basis set
                 #Don't have to account for off-diagonal because it is implicitly removed here.
                 #Divide by number of modes you compared again. So if this 1 it is exactly correlated, and if its
@@ -500,11 +428,11 @@ class Basis:
                 prho = np.sqrt(np.sum(QQ_tilde[:, OMP_msk]**2, axis = 1)[np.invert(OMP_msk)]) / np.sum(OMP_msk)
 
                 if np.abs(delta_RR[0, 0]) <= RR_tol: 
-                    print(f"HIT LIMIT OF VAR_RES/VAR_TOT = {RR_tol:0.4e}. ENDING SEARCH", flush = True)
+                    print(f"\n HIT LIMIT OF VAR_RES/VAR_TOT = {RR_tol:0.4e}. ENDING SEARCH", flush = True)
                     break
 
                 if np.sum(OMP_msk) == max_modes - 1: 
-                    print("USED ALL AVAILABLE MODES", flush = True)
+                    print("\n USED ALL AVAILABLE MODES", flush = True)
                     break
 
                 cond_here = get_cond(np.where(OMP_msk)[0][0], OMP_msk, QQ_tilde) #Use existing True ind just so we can get cond of full matrix
@@ -514,41 +442,20 @@ class Basis:
                 fcond     = cond/cond_here - 1
 
                 if cond_here > cond_tol: 
-                    print(f"HIT LIMIT OF COND NUM {cond_here:0.4e} > {cond_tol:0.4e}. ENDING SEARCH", flush = True)
+                    print(f"\n HIT LIMIT OF COND NUM {cond_here:0.4e} > {cond_tol:0.4e}. ENDING SEARCH", flush = True)
                     break
 
                 QR = self.compute_QS_C(R)[0] / norms / np.sqrt(RR) #Renormalize like QQ_temp
                 QR[badinds] = 0 #Null out inds we asked to remove
                 QR = QR[np.invert(OMP_msk)] #Keep only modes we haven't used yet
-
-                # print(QR)
-                # print(prho)
-                # print(fcond)
                 
-                W = QR / (1 + rho_reg  * prho)  #Penalize modes that are strongly correlated with existing modes in the basis
-                W = W  / (1 + cond_reg * fcond) #Penalize modes that greatly increase the condition number of the basis
-                
-                # m  = np.argsort(np.abs(W))[-1] #Grab the most important index
-                # m  = np.where(np.invert(OMP_msk))[0][m]
-
                 m  = np.argsort(np.abs(QR))[-10:] #Grab the ten most important indices
                 m  = m[np.argmin(fcond[m])] #Find the one wih the smallest condition num increase
                 m  = np.where(np.invert(OMP_msk))[0][m]
 
-                # W  = np.argsort(1/(1 + QR)) + rho_reg * np.argsort(prho) + cond_reg * np.argsort(fcond)
-                # m  = np.argsort(np.abs(W))[-1] #Grab the most important index
-                # m  = np.where(np.invert(OMP_msk))[0][m]
-
-                # print(f"SELECTED MODE p1 = {p1[m]}, p2 = {p2[m]}, p3 = {p3[m]}")
-
                 OMP_msk[m] = True #Add mode to the basis set
 
                 iterator += 1
-
-                RR_old = RR * 1
-
-                # print(RR, delta_RR)
-                # print(alpha_tmp)
 
                 pbar.update(1)
                 pbar.set_postfix({'loss' : f"{delta_RR[0, 0]:.5f}", 
@@ -577,7 +484,6 @@ class Basis:
 
         convergence_correlation = sum_SR / np.sqrt(sum_SS * sum_RR)
         convergence_correlation = 1.0 - np.abs(1 - convergence_correlation)     # For when corr > 1 due to numerical errors
-        # convergence_epsilon = np.sqrt(2 - 2 * convergence_correlation)
         convergence_MSE = np.abs(sum_SS + sum_RR - 2 * sum_SR) / sum_SS
 
         return expansion_coefficients, shape_covariance, convergence_correlation, convergence_MSE
@@ -586,8 +492,6 @@ class Basis:
     def compute_QS_C(self, S):
         # Evaluate the inner product('QS') between mode bispectra and shape functions
         # (QS)_{in} := <S_i, Q_n}
-
-        #print("QS Function start!", flush=True)
 
         i1, i2, i3 = self.tetrapyd_indices
         p1, p2, p3 = self.mode_indices
@@ -617,9 +521,6 @@ class Basis:
         cdef double [::1] QS_view = QS
         S = S.flatten()
 
-        #print("QS start!")
-        #print(n_modes, mode_p_max, k_npts, tetra_npts, n_shapes)
-
         # Call the wrapped C function
 
         compute_QS(&QS_view[0], &S_view[0], n_shapes,
@@ -628,7 +529,6 @@ class Basis:
                     &mode_evals[0,0], mode_p_max, k_npts)
 
         QS = QS.reshape((n_shapes, n_modes))
-        #print("done!")
 
         return QS
 

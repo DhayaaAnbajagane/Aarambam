@@ -57,6 +57,7 @@ extern int      Nglass;
 extern int      *Local_nx_table;
 extern int      WhichSpectrum;
 extern int      WhichTransfer;
+extern int      SavePotentialField;
 
 extern FILE     *FdTmp, *FdTmpInput;
 

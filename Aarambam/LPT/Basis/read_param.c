@@ -81,6 +81,10 @@ void read_parameterfile(char *fname)
   strcpy(tag[nt], "FileWithX0Coeff");
   addr[nt] = FileWithX0Coeff;
   id[nt++] = STRING;
+
+  strcpy(tag[nt], "SavePotentialField");
+  addr[nt] = &SavePotentialField;
+  id[nt++] = INT;
     
 // ********** DHAYAA *************
     
