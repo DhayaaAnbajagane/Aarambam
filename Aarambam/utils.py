@@ -1,5 +1,5 @@
 import numpy as np, os, sys, gc
-import textwrap, glob
+import textwrap, glob, tqdm
 
 DEFAULT_CONFIG = """
 Nmesh                               %(Nmesh)d
@@ -79,17 +79,19 @@ def camb2input(path):
     return np.loadtxt(path, usecols = [0, 6])
     
 
-def collate_potential(Nmesh, OutputDir):
+def collate_potential(OutputDir):
 
     #Now save the initial conditions that you have generated
     dtype = np.dtype([('ind', 'i4'), ('pot', 'f8')])
     out   = {}
     for t in ['Gauss_potential', 'Nongauss_potential']:
         
-        arr = np.zeros(Nmesh**3, dtype = np.float64)
-        i = 0
+        files = sorted(glob.glob(OutputDir + f'/{t}*'))
+        Nmesh = sum([int(f[-1]) for f in files])
+        arr   = np.zeros(Nmesh**3, dtype = np.float64)
+        i     = 0
         #Loop over files and concat
-        for filename in sorted(glob.glob(OutputDir + f'/{t}*')):
+        for filename in tqdm.tqdm(files, desc = f"Collating files for {t}"):
             
             #Don't concate an existing npy file
             if '.npy' in filename: 
