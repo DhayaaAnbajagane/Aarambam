@@ -153,6 +153,7 @@ void displacement_fields(void) {
   int i, j, k, ii, jj, kk, axes;
   int n;
   int sendTask, recvTask;
+  int ksum;
   double t_of_k, phig, Beta, twb;
   fftw_complex *(cpot);  /* For computing nongaussian fnl ic */
   fftw_real *(pot);
@@ -738,6 +739,24 @@ void displacement_fields(void) {
               memcpy(cfields[4], cfields[5], sizeof(fftw_real) * TotalSizePlusAdditional);
               memcpy(cfields[5], cfields[6], sizeof(fftw_real) * TotalSizePlusAdditional);
           }
+
+          if (ThisTask == 0) {printf("Computing combination %d, %d ....", N_i, N_j); fflush(stdout);};
+          
+          //Routine that determines if we can skip the FFTs assuming
+          //the coefficients are zero for all these objects.
+          ksum = 0;
+          for (N_k = N_j; N_k < N_modes; N_k++){
+            if (fabs(AlphaTable[N_i][N_j][N_k]) > 0) ksum = 1;
+          }
+          if (ksum == 0.0) {
+            if (ThisTask == 0 ) {
+              int print_size = 0;
+              if (N_i >= 10) print_size += 1;
+              if (N_j >= 10) print_size += 1;
+              print_timed_done(23 - print_size);
+            }
+            continue;
+          }
           
           rfftwnd_mpi(Inverse_plan, 1, fields[7], Workspace, FFTW_NORMAL_ORDER);
           MPI_Barrier(MPI_COMM_WORLD);
@@ -761,8 +780,7 @@ void displacement_fields(void) {
           rfftwnd_mpi(Forward_plan, 1, p_tmp, Workspace, FFTW_NORMAL_ORDER);
           MPI_Barrier(MPI_COMM_WORLD);
 
-          if (ThisTask == 0) {printf("Computing combination %d, %d ....", N_i, N_j); fflush(stdout);};
-
+          
           
           for(ii = 0; ii < Local_nx; ii++)
               for(j = 0; j < Nmesh; j++)
