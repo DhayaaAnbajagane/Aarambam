@@ -12,7 +12,9 @@
 
 ## Overview
 
-`Aarambam` (pronounced "Aah-rum-bum", named after the Tamil word for beginnings) is a pipeline for generating initial conditions (ICs) corresponding to arbitrary bispectrum templates. It is an end-to-end pipeline that can provide the final ICs given an analytic bispectrum template. This is a largely modified version of two packages --- [CMB-BEST](https://github.com/Wuhyun/CMB-BEST/tree/main) by Wuhyun Sohn, and [2LPTPNG](https://github.com/dsjamieson/2LPTPNG/tree/main) by Drew Jamieson (which itself derives from [2LPTIC](https://github.com/manodeep/2LPTic) and previous codebases) --- so please see those packages for the original implementations. This package now provides all routines fo the decomposition of arbitrary bispectra into separable functions, and the subsequent generation of initial conditions corresponding to these functions. 
+`Aarambam` (pronounced "Aah-rum-bum", named after the Tamil word for beginnings) is a codebase for generating initial conditions (ICs) corresponding to arbitrary bispectrum templates. 
+
+It provides an end-to-end pipeline for generating the ICs of a N-body simulation given some analytic bispectrum template. This is a largely modified version of two packages --- [CMB-BEST](https://github.com/Wuhyun/CMB-BEST/tree/main) by Wuhyun Sohn, and [2LPTPNG](https://github.com/dsjamieson/2LPTPNG/tree/main) by Drew Jamieson (which itself derives from [2LPTIC](https://github.com/manodeep/2LPTic) and previous codebases) --- so please see those packages for the original implementations. The modifications allow for the decomposition of arbitrary bispectra into separable functions, and the subsequent generation of initial conditions corresponding to these functions. 
 
 The method implemented in `Aarambam` was introduced in Anbajagane & Lee (2025a) and Anbajagane & Lee (2025b). Citations to the same are requested if you are using this code for a publication. Contact dhayaa at uchicago dot edu if you have any questions. Happy simulating!
 
@@ -64,7 +66,8 @@ import numpy as np, subprocess as sp
 #other options to decompose more models. It is very easy to implement your own :)
 #If you pass "outdir" then this will also write the coefficient tables in the right
 #format into those directories
-Unit   = Am.utils.Decomposer(N_modes = N_modes, n_s = n_s, Lbox = Lbox, Nmax = Nmax, ModeTol = ModeTol, MaxModeCount = MaxModeCount)
+Unit   = Am.utils.Decomposer(N_modes = N_modes, n_s = n_s, Lbox = Lbox, Nmax = Nmax, 
+                             ModeTol = ModeTol, MaxModeCount = MaxModeCount)
 coeffL = Unit.go(Am.models.Local,   Am.basis.BasicBasisDecompose, outdir = outdir)
 coeffS = Unit.go(Am.models.ScalarI, Am.basis.BasicBasisDecompose, mass = 1, outdir = outdir)
 
