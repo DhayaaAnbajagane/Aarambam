@@ -1,12 +1,14 @@
+<p>&nbsp;</p>
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/source/LOGO_dark.png">
   <source media="(prefers-color-scheme: light)" srcset="docs/source/LOGO_light.png">
   <img alt="Logo" src="docs/source/LOGO_dark.png" title="Logo">
 </picture>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
 
-[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![License](https://img.shields.io/badge/license-GPL-blue.svg)](LICENSE)
 [![Python Version](https://img.shields.io/badge/python-3.6%2B-blue.svg)](https://www.python.org/downloads/)
-[![Documentation Status](https://img.shields.io/readthedocs/baryonforge?color=blue)](https://baryonforge.readthedocs.io/en/latest)
 
 ## Overview
 
