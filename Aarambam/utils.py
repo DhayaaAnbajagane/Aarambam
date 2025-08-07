@@ -86,7 +86,7 @@ def collate_potential(OutputDir):
     out   = {}
     for t in ['Gauss_potential', 'Nongauss_potential']:
         
-        files = sorted(glob.glob(OutputDir + f'/{t}*'))
+        files = sorted(glob.glob(OutputDir + f'/{t}_*'))
         Nmesh = sum([int(f.split('_')[-1]) for f in files])
         arr   = np.zeros(Nmesh**3, dtype = np.float64)
         i     = 0
