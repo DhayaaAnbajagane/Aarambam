@@ -87,7 +87,7 @@ def collate_potential(OutputDir):
     for t in ['Gauss_potential', 'Nongauss_potential']:
         
         files = sorted(glob.glob(OutputDir + f'/{t}*'))
-        Nmesh = sum([int(f[-1]) for f in files])
+        Nmesh = sum([int(f.split('_')[-1]) for f in files])
         arr   = np.zeros(Nmesh**3, dtype = np.float64)
         i     = 0
         #Loop over files and concat
@@ -107,3 +107,31 @@ def collate_potential(OutputDir):
         out[t] = arr.reshape([Nmesh]*3)
 
     return out
+
+
+class Decomposer:
+
+    def __init__(self, N_modes, n_s, Lbox, Nmax, ModeTol, MaxModeCount, **kwargs):
+        
+        args = dict(N_modes = N_modes, n_s = n_s, Lbox = Lbox, Nmax = Nmax, 
+                    ModeTol = ModeTol, MaxModeCount = MaxModeCount)
+        args.update(**kwargs)
+
+        self.args = args
+
+
+    def go(self, Model, Basis, outdir = None, **kwargs):
+
+        inpars = self.args.copy()
+        inpars.update(**kwargs)
+
+        decomp = type('C', (Model, Basis), {})
+        instan = decomp(**inpars)
+        result = instan.go()
+
+        if outdir is not None:
+            assert os.path.exists(outdir), f"Path {outdir} does not exist"
+            instan.finalize(result, directory = outdir)
+
+        return result
+

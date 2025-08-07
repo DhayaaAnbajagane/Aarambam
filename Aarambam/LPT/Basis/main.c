@@ -32,11 +32,11 @@ void print_timed_done(int n) {
   clock_t tot_time = clock() - start_time;
   int tot_hours = (int) floor(((double) tot_time) / 60. / 60. / CLOCKS_PER_SEC);
   int tot_mins = (int) floor(((double) tot_time) / 60. / CLOCKS_PER_SEC) - 60 * tot_hours;
-  double tot_secs = (((double) tot_time) / CLOCKS_PER_SEC) - 60. * (((double) tot_mins) * 60. * ((double) tot_hours));
+  double tot_secs = (((double) tot_time) / CLOCKS_PER_SEC) - 60. * (((double) tot_mins) + 60. * ((double) tot_hours));
   clock_t diff_time = clock() - previous_time;
   int diff_hours = (int) floor(((double) diff_time) / 60. / 60. / CLOCKS_PER_SEC);
   int diff_mins = (int) floor(((double) diff_time) / 60. / CLOCKS_PER_SEC) - 60 *diff_hours;
-  double diff_secs = (((double) diff_time) / CLOCKS_PER_SEC) - 60. * (((double) diff_mins) * 60. * ((double) diff_hours));
+  double diff_secs = (((double) diff_time) / CLOCKS_PER_SEC) - 60. * (((double) diff_mins) + 60. * ((double) diff_hours));
   for (int i = 0; i < n; i++)
    printf(" ");
   printf("Done [%02d:%02d:%05.2f, %02d:%02d:%05.2f]\n", diff_hours, diff_mins, diff_secs, tot_hours, tot_mins, tot_secs);

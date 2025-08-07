@@ -317,9 +317,9 @@ class Basis:
         return mode_bispectra_covariance 
     
 
-    def basis_expansion(self, model_list, check_convergence=True, silent=False, regularization = 0, Niter = 1e4, 
+    def basis_expansion(self, model_list, regularization = 0, Niter = 1e4, 
                         rtol = 1e-12, bad_modes = False, RR_tol = 1e-2, cond_tol = 1e9,
-                        max_modes = None, rho_reg = 0, cond_reg = 0):
+                        max_modes = None):
         # Expand given model shape functions with respect to separable basis
 
         N_models = len(model_list)
@@ -333,7 +333,9 @@ class Basis:
         k1, k2, k3 = self.tetrapyd_grid         # (N_tetrapyd_points)
         p_max = self.mode_p_max
 
-        if max_modes is None: max_modes = p1.size
+        if max_modes is None: 
+            print(f"NO max_modes SET. DEFAULTING TO {p1.size}. LOWER THIS VALUE TO SPEED UP DECOMPOSITION.")
+            max_modes = p1.size
 
         # Evaluate given shape functions and their covariance on a tetrapyd
         # 'S' is a matrix of size (N_models, N_tetrapyd_points)
@@ -370,7 +372,7 @@ class Basis:
         
         badmask |= bad_modes        
         badinds = np.where(badmask)[0]
-        print("Zeroing out mode inds", badinds)
+        print("Zeroing out mode inds", badinds, "\n")
 
         #Try to get a SLURM env variable, else default to os.cpu_count()
         cpus_allocated = int(os.environ.get("SLURM_CPUS_ON_NODE", os.cpu_count()))
@@ -464,17 +466,16 @@ class Basis:
 
             pbar.close()
 
-            print("USING MODES", np.where(OMP_msk)[0])
+            print("\n USING MODES", np.where(OMP_msk)[0])
 
             alpha_tmp, exit_code = conjugate_gradient(QQ_tilde[np.ix_(OMP_msk, OMP_msk)] + np.eye(np.sum(OMP_msk)) * regularization, 
                                                       QS_tilde[OMP_msk], rtol = 1e-16, atol=0, maxiter = int(1e6))
             
             alpha_tilde = np.zeros_like(norms)
             alpha_tilde[OMP_msk] = alpha_tmp
-            print("Shape #{}/{} expanded using CG with exit code {}".format(model_no+1, N_models, exit_code))
+            print("\n Shape expanded using CG")
             alpha[model_no,:] = alpha_tilde / norms          # Reintroduce normalisation factor
 
-        print("CONDITIONING NUMBER:", np.linalg.cond(QQ_tilde[np.ix_(OMP_msk, OMP_msk)]), flush = True)
         expansion_coefficients = alpha
         
         # Optional check on convergence of the mode expansion
