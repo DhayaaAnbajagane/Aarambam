@@ -1,4 +1,4 @@
-from ..utils import make_example_config
+from ..utils import make_example_config_basis
 import argparse
 
 def main():
@@ -8,6 +8,6 @@ def main():
     args = args.parse_args()
     
     with open(args.config_path, 'w') as f:
-        f.write(make_example_config())
+        f.write(make_example_config_basis())
 
     print("FINISHED WRITING CONFIG TO PATH:", args.config_path)
