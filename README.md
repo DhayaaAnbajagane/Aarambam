@@ -22,7 +22,7 @@ The method implemented in `Aarambam` was introduced in Anbajagane & Lee (2025a) 
 (The first two letters of the logo are from the Tamil script. You can do a process of elimination using the English letters to guess what those letters' sounds are ;) )
 
 ## Environment
-The python part of the code has a few dependencies --- namely `numpy`, `scipy`, `tqdm`, `joblib`, and `threadpoolctl`. The last one is more non-standard but is very helpful in managing oversubscription. I promise it is easy to install! The C-level code has its own dependencies, I list them below in the Installation instructions. You can do install all of these from conda-forge:
+The python part of the code has a few dependencies --- namely `numpy`, `scipy`, `tqdm`, `joblib`, `cython` and `threadpoolctl`. The last one is more non-standard but is very helpful in managing oversubscription. I promise it is easy to install! The C-level code has its own dependencies, I list them below in the Installation instructions. You can do install all of these from conda-forge:
 
 ```bash
 conda create -p {YOUR_ENV_PATH}
@@ -72,9 +72,11 @@ make install
 ```
 You may be able to skip the `CC=` addition if your computing cluster already supplied `mpicc` in an easily findable way. The above `make` command will take a while to run (FFTW2 has a lot of libraries to install). FFTW2 is a hard requirement as this piece of LPT code originates from before the 2000s, and FFTW2 was officially deprecated only in 1999.
 
+If you have trouble installing this, please contact dhayaa at uchicago dot edu. I've tested installation at multiple computing clusters now, but there's always edge-cases:)
+
 ## Example
 
-We provide examples of how to use this code in [this notebook](examples/BasisDecomposition.ipynb) and [this python script](examples/MakeICs.py). I copy the snippets of the script below.
+We provide examples of how to use this code in [this notebook](examples/BasisDecomposition.ipynb) and [this python script](examples/MakeICs.py). I copy a snippet of the script below (you will need to fill in other pieces. Look at the scripts for details).
 
 ```python
 import Aarambam as Am
