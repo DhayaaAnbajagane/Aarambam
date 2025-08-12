@@ -12,9 +12,9 @@
 
 ## Overview
 
-`Aarambam` (pronounced "Aah-rum-bum", named after the Tamil word for beginnings) is a codebase for generating initial conditions (ICs) corresponding to arbitrary bispectrum templates. 
+`Aarambam` (_pronounced "Aah-rum-bum", named after the Tamil word for beginnings_) is a codebase for generating initial conditions (ICs) corresponding to arbitrary bispectrum templates. 
 
-It provides an end-to-end pipeline for generating the ICs of a N-body simulation given some analytic bispectrum template. This is a largely modified version of two packages --- [CMB-BEST](https://github.com/Wuhyun/CMB-BEST/tree/main) by Wuhyun Sohn, and [2LPTPNG](https://github.com/dsjamieson/2LPTPNG/tree/main) by Drew Jamieson (which itself derives from [2LPTIC](https://github.com/manodeep/2LPTic) and previous codebases) --- so please see those packages for the original implementations. The modifications allow for the decomposition of arbitrary bispectra into separable functions, and the subsequent generation of initial conditions corresponding to these functions. 
+It provides an end-to-end pipeline for generating the ICs of a N-body simulation given some analytic bispectrum template. The novelty in the codebase is performing a decomposition of arbitrary bispectra into separable functions, and then subsequently generating non-Gaussian initial conditions corresponding to these functions. This is a largely modified version of two packages --- [CMB-BEST](https://github.com/Wuhyun/CMB-BEST/tree/main) by Wuhyun Sohn, and [2LPTPNG](https://github.com/dsjamieson/2LPTPNG/tree/main) by Drew Jamieson (which itself derives from [2LPTIC](https://github.com/manodeep/2LPTic) and previous codebases) --- so please see those packages for the original implementations that enabled this work!
 
 The method implemented in `Aarambam` was introduced in Anbajagane & Lee (2025a) and Anbajagane & Lee (2025b). Citations to the same are requested if you are using this code for a publication. Contact dhayaa at uchicago dot edu if you have any questions. Happy simulating!
 
@@ -22,7 +22,13 @@ The method implemented in `Aarambam` was introduced in Anbajagane & Lee (2025a) 
 (The first two letters of the logo are from the Tamil script. You can do a process of elimination using the English letters to guess what those letters' sounds are ;) )
 
 ## Environment
-The python part of the code has a few dependencies --- namely `numpy`, `scipy`, `tqdm`, `joblib`, and `threadpoolctl`. The last one is more non-standard but is very helpful in managing oversubscription. I promise it is easy to install! The C-level code has its own dependencies, I list them below in the Installation instructions.
+The python part of the code has a few dependencies --- namely `numpy`, `scipy`, `tqdm`, `joblib`, and `threadpoolctl`. The last one is more non-standard but is very helpful in managing oversubscription. I promise it is easy to install! The C-level code has its own dependencies, I list them below in the Installation instructions. You can do install all of these from conda-forge:
+
+```bash
+conda create -p {YOUR_ENV_PATH}
+conda activate {YOUR_ENV_PATH}
+conda install numpy scipy tqdm joblib cython threadpoolctl -c conda-forge
+```
 
 ## Installation
 
@@ -53,6 +59,18 @@ export Aarambam_CC=
 export Aarambam_GSL_ROOT=
 export Aarambam_OPENMPI_ROOT=
 ```
+
+If your computing cluster does not provide an install of FFTW2 (most do not...) then you can install it via the following steps:
+
+```bash
+wget https://www.fftw.org/fftw-2.1.5.tar.gz
+tar -xvzf fftw-2.1.5.tar.gz
+cd fftw-2.1.5; mkdir build;
+./configure --prefix=${PWD}/build --enable-threads --enable-openmp --enable-mpi --enable-type-prefix CC={ADD_PATH_TO_MPICC_EXECUTABLE}
+make
+make install
+```
+You may be able to skip the `CC=` addition if your computing cluster already supplied `mpicc` in an easily findable way. The above `make` command will take a while to run (FFTW2 has a lot of libraries to install). FFTW2 is a hard requirement as this piece of LPT code originates from before the 2000s, and FFTW2 was officially deprecated only in 1999.
 
 ## Example
 

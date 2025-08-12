@@ -80,7 +80,7 @@ if(DEFINED ENV{Aarambam_OPENMPI_ROOT})
 else()
   # split the colon‐delimited env vars into a CMake list and combine
   string(REPLACE ":" ";" _LD_PATHS  $ENV{LD_LIBRARY_PATH})
-  string(REPLACE ":" ";" _LIB_PATHS $ENV{LIBRARY_PATH})
+  string(REPLACE ":" ";" _LIB_PATHS "$ENV{LIBRARY_PATH}")
   list(APPEND _SEARCH_PATHS ${_LD_PATHS} ${_LIB_PATHS})
 
   # look for libmpi.so (or .dylib/.a) on your LD_LIBRARY_PATH or LIBRARY_PATH
