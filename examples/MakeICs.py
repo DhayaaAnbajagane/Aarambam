@@ -50,14 +50,14 @@ if __name__ == '__main__':
 
     #Now make the LPT config file. This command is a utility that takes
     #in the arguments and puts it in the right text format
-    CONFIG = Am.utils.make_config(Nmesh = Nmesh, Nsample= Nsample, Nmax = Nmax, Lbox = Lbox, FileBase = 'Aarambam_ics',
-                                   OutputDir = outdir, 
-                                   GlassFile = outdir + '/dummy_glass_dmonly_64.dat', GlassTileFac = 4,
-                                   seed = 42, Om = OmegaM, Ode = OmegaDE, h = h, sigma8 = sigma8, n_s = n_s,
-                                   z_ini = z_ini, Fnl = Fnl, 
-                                   N_modes = N_modes, TransferPath = outdir + '/TransferFunctionConverted.dat',
-                                   AlphaPath = outdir + '/AlphaTable.dat', AiPath = outdir + '/AiTable.dat',
-                                   SavePotentialField = int(True), NWriteoutProcesses = Nprocs)
+    CONFIG = Am.utils.make_config_basis(Nmesh = Nmesh, Nsample= Nsample, Nmax = Nmax, Lbox = Lbox, FileBase = 'Aarambam_ics',
+                                        OutputDir = outdir, 
+                                        GlassFile = outdir + '/dummy_glass_dmonly_64.dat', GlassTileFac = 4,
+                                        seed = 42, Om = OmegaM, Ode = OmegaDE, h = h, sigma8 = sigma8, n_s = n_s,
+                                        z_ini = z_ini, Fnl = Fnl, 
+                                        N_modes = N_modes, TransferPath = outdir + '/TransferFunctionConverted.dat',
+                                        AlphaPath = outdir + '/AlphaTable.dat', AiPath = outdir + '/AiTable.dat',
+                                        SavePotentialField = int(True), NWriteoutProcesses = Nprocs)
     
     with open(outdir + '/LPTconfig', 'w') as f: f.write(CONFIG)
 

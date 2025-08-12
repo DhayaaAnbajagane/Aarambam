@@ -1,7 +1,7 @@
 import numpy as np, os, sys, gc
 import textwrap, glob, tqdm
 
-DEFAULT_CONFIG = """
+DEFAULT_BASIS_CONFIG = """
 Nmesh                               %(Nmesh)d
 Nsample                             %(Nsample)d
 Nmax                                %(Nmax)d
@@ -52,27 +52,27 @@ WDM_Vtherm_On                       0
 WDM_PartMass_in_kev                 10.0
 """
 
-DEFAULT_INPUTS = dict(Nmesh = 256, Nsample = 256, Nmax = 256, Lbox = 512, FileBase = 'Aarambam_ics',
-                      OutputDir = os.environ['TMPDIR'], 
-                      GlassFile = os.path.dirname(__file__) + "/defaults/dummy_glass_dmonly_64.dat",
-                      GlassTileFac = 4,
-                      seed = 42, Om = 0.3, Ode = 0.7, h = 0.7, sigma8 = 0.8, n_s = 0.96, z_ini = 49,
-                      Fnl = 100, N_modes = 15, 
-                      TransferPath = os.path.dirname(__file__) + "/defaults/TransferFunctionConverted.dat",
-                      AlphaPath    = os.path.dirname(__file__) + "/defaults/AlphaTable.dat",
-                      AiPath       = os.path.dirname(__file__) + "/defaults/AiTable.dat",
-                      SavePotentialField = True, NWriteoutProcesses = os.cpu_count()
-                      )
+DEFAULT_BASIS_INPUTS = dict(Nmesh = 256, Nsample = 256, Nmax = 256, Lbox = 512, FileBase = 'Aarambam_ics',
+                            OutputDir = os.environ['TMPDIR'], 
+                            GlassFile = os.path.dirname(__file__) + "/defaults/dummy_glass_dmonly_64.dat",
+                            GlassTileFac = 4,
+                            seed = 42, Om = 0.3, Ode = 0.7, h = 0.7, sigma8 = 0.8, n_s = 0.96, z_ini = 49,
+                            Fnl = 100, N_modes = 15, 
+                            TransferPath = os.path.dirname(__file__) + "/defaults/TransferFunctionConverted.dat",
+                            AlphaPath    = os.path.dirname(__file__) + "/defaults/AlphaTable.dat",
+                            AiPath       = os.path.dirname(__file__) + "/defaults/AiTable.dat",
+                            SavePotentialField = True, NWriteoutProcesses = os.cpu_count()
+                            )
 
-def make_config(Nmesh, Nsample, Nmax, Lbox, FileBase, OutputDir, GlassFile, GlassTileFac,
-                seed, Om, Ode, h, sigma8, n_s, z_ini, Fnl, N_modes, TransferPath,
-                AlphaPath, AiPath, SavePotentialField, NWriteoutProcesses):
+def make_config_basis(Nmesh, Nsample, Nmax, Lbox, FileBase, OutputDir, GlassFile, GlassTileFac,
+                      seed, Om, Ode, h, sigma8, n_s, z_ini, Fnl, N_modes, TransferPath,
+                      AlphaPath, AiPath, SavePotentialField, NWriteoutProcesses):
 
-    return textwrap.dedent(DEFAULT_CONFIG % locals())
+    return textwrap.dedent(DEFAULT_BASIS_CONFIG % locals())
 
 
-def make_example_config():
-    return make_config(**DEFAULT_INPUTS)
+def make_example_config_basis():
+    return make_config_basis(**DEFAULT_BASIS_INPUTS)
 
 
 def camb2input(path):

@@ -94,7 +94,7 @@ coeffS = Unit.go(Am.models.ScalarI, Am.basis.BasicBasisDecompose, mass = 1, outd
 #Use the helper function to make the config in the right format
 #and write it to dir. You will need to pass a bunch of
 #values into make_config
-CONFIG = Am.utils.make_config(...)
+CONFIG = Am.utils.make_config_basis(...)
 with open(outdir + '/LPTconfig', 'w') as f: f.write(CONFIG)
 
 #Doing a pip install will provide you with executables in your env.

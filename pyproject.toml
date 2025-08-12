@@ -19,7 +19,7 @@ authors = [{ name = "You" }]
 Aarambam-2LPT-Basis = "Aarambam.LPT.Basis.cli:main"
 Aarambam-camb2input = "Aarambam.bin.camb2input:main"
 Aarambam-collate-potential   = "Aarambam.bin.collate_potential:main"
-Aarambam-make-example-config = "Aarambam.bin.make_example_config:main"
+Aarambam-make-example-config-basis = "Aarambam.bin.make_example_config_basis:main"
 
 [tool.scikit-build]
 # helpful verbosity and wheel tweaks
