@@ -106,3 +106,49 @@ class QuasiSingleField:
         S = 3 * np.sqrt(3 * kappa) * special.yv(mu, 8 * kappa) / special.yv(mu, 8/27)
         
         return S/(k1 * k2 * k3)**2 * 1/6
+
+
+class DBI:
+
+    def raw_bispectrum(self, k1, k2, k3): #Eq(7) in https://arxiv.org/pdf/1303.5084
+        
+        k1 = np.power(k1, (4 - self.args['n_s'])/3)
+        k2 = np.power(k2, (4 - self.args['n_s'])/3)
+        k3 = np.power(k3, (4 - self.args['n_s'])/3)
+        
+        S1 = -3/7 / np.power(k1 + k2 + k3, 2)
+        S2 = k1**5 * 3/6
+        S3 = (2*k1**4*k2 - 3*k1**3*k2**2) * 6/6
+        S4 = (k1**3*k2*k3 - 4*k1**2*k2**2*k3) * 6/6
+        B  = S1 * (S2 + S3 + S4) / np.power(k1*k2*k3, 3) 
+
+        return B
+    
+
+class SenatoreEFT1:
+    def raw_bispectrum(self, k1, k2, k3): #Eq(5) in https://arxiv.org/pdf/1303.5084
+        
+        k1 = np.power(k1, (4 - self.args['n_s'])/3)
+        k2 = np.power(k2, (4 - self.args['n_s'])/3)
+        k3 = np.power(k3, (4 - self.args['n_s'])/3)
+        
+        S1 = -9/17 / np.power(k1 + k2 + k3, 3)
+        S2 = k1**6 * 3/6
+        S3 = (3*k1**5*k2 - k1**4*k2**2 - 3*k1**3*k2**3) * 6/6
+        S4 = (3*k1**4*k2*k3 - 9*k1**3*k2**2*k3 - 2*np.power(k1*k2*k3, 2)) *  6/6
+        B  = S1 * (S2 + S3 + S4) / np.power(k1*k2*k3, 3)
+
+        return B
+
+
+class SenatoreEFT2:
+    def raw_bispectrum(self, k1, k2, k3): #Eq(6) in https://arxiv.org/pdf/1303.5084
+        
+        k1 = np.power(k1, (4 - self.args['n_s'])/3)
+        k2 = np.power(k2, (4 - self.args['n_s'])/3)
+        k3 = np.power(k3, (4 - self.args['n_s'])/3)
+        
+        S1 = 27 / np.power(k1 + k2 + k3, 3)
+        B  = S1 / (k1*k2*k3) 
+
+        return B

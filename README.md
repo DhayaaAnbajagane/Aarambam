@@ -22,7 +22,7 @@ The method implemented in `Aarambam` was introduced in Anbajagane & Lee (2025a) 
 (The first two letters of the logo are from the Tamil script. You can do a process of elimination using the English letters to guess what those letters' sounds are ;) )
 
 ## Environment
-The python part of the code has a few dependencies --- namely `numpy`, `scipy`, `tqdm`, `joblib`, `cython` and `threadpoolctl`. The last one is more non-standard but is very helpful in managing oversubscription. I promise it is easy to install! The C-level code has its own dependencies, I list them below in the Installation instructions. You can do install all of these from conda-forge:
+The python part of the code has a few dependencies --- namely `numpy`, `scipy`, `tqdm`, `joblib`, `cython` and `threadpoolctl`. The last one is more non-standard but is very helpful in managing oversubscription. I promise it is easy to install! The C-level code has its own dependencies, I list them below in the Installation instructions. You can install all of these from conda-forge:
 
 ```bash
 conda create -p {YOUR_ENV_PATH}
@@ -46,7 +46,7 @@ cd Aarambam
 pip install .
 ```
 
-There are a number of dependencies, particularly due to the 2LPT (2nd order Lagrangian Pertubration Theory) method provided in this package, namely `MPI`, `FFTW2` (NOT `FFTW3`, this is a legacy dependence from `2LPTIC` days), and `GSL`. The install will generally do its best to find the right compiled objects for these dependencies. Please set the following environment variables PRIOR to installation
+There are a number of dependencies, particularly due to the 2LPT (2nd order Lagrangian Pertubration Theory) method provided in this package, namely `MPI`, `FFTW2` (NOT `FFTW3`. Using `FFTW2` a legacy dependence from `2LPTIC` days), and `GSL`. The install will generally do its best to find the right compiled objects for these dependencies. Please set the following environment variables PRIOR to installation
 
 ```bash
 export Aarambam_FFTW2_ROOT=#path to where your /build directory is
@@ -60,7 +60,7 @@ export Aarambam_GSL_ROOT=
 export Aarambam_OPENMPI_ROOT=
 ```
 
-If your computing cluster does not provide an install of FFTW2 (most do not...) then you can install it via the following steps:
+If your computing cluster does not provide an install of FFTW2 (most do not since it is old...) then you can install it via the following steps:
 
 ```bash
 wget https://www.fftw.org/fftw-2.1.5.tar.gz
@@ -72,7 +72,7 @@ make install
 ```
 You may be able to skip the `CC=` addition if your computing cluster already supplied `mpicc` in an easily findable way. The above `make` command will take a while to run (FFTW2 has a lot of libraries to install). FFTW2 is a hard requirement as this piece of LPT code originates from before the 2000s, and FFTW2 was officially deprecated only in 1999.
 
-If you have trouble installing this, please contact dhayaa at uchicago dot edu. I've tested installation at multiple computing clusters now, but there's always edge-cases:)
+If you have trouble installing this, please contact dhayaa at uchicago dot edu. I've tested installation at multiple computing clusters now, but there can always be edge-cases:)
 
 ## Example
 
@@ -89,7 +89,7 @@ import numpy as np, subprocess as sp
 Unit   = Am.utils.Decomposer(N_modes = N_modes, n_s = n_s, Lbox = Lbox, Nmax = Nmax, 
                              ModeTol = ModeTol, MaxModeCount = MaxModeCount)
 coeffL = Unit.go(Am.models.Local,   Am.basis.BasicBasisDecompose, outdir = outdir)
-coeffS = Unit.go(Am.models.ScalarI, Am.basis.BasicBasisDecompose, mass = 1, outdir = outdir)
+coeffS = Unit.go(Am.models.ScalarI, Am.basis.BasicBasisDecompose, mass = 1, outdir = outdir) #This will overwrite the previous call
 
 #Use the helper function to make the config in the right format
 #and write it to dir. You will need to pass a bunch of
