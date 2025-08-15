@@ -16,10 +16,12 @@ license = { text = "GPL-3.0-or-later" }
 authors = [{ name = "You" }]
 
 [project.scripts]
-Aarambam-2LPT-Basis = "Aarambam.LPT.Basis.cli:main"
+Aarambam-2LPT-Basis    = "Aarambam.LPT.Basis.cli:main"
+Aarambam-2LPT-ResBasis = "Aarambam.LPT.ResBasis.cli:main"
 Aarambam-camb2input = "Aarambam.bin.camb2input:main"
 Aarambam-collate-potential   = "Aarambam.bin.collate_potential:main"
-Aarambam-make-example-config-basis = "Aarambam.bin.make_example_config_basis:main"
+Aarambam-make-example-config-basis    = "Aarambam.bin.make_example_config_basis:main"
+Aarambam-make-example-config-resbasis = "Aarambam.bin.make_example_config_resbasis:main"
 
 [tool.scikit-build]
 # helpful verbosity and wheel tweaks

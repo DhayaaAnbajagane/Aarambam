@@ -16,7 +16,7 @@
 
 It provides an end-to-end pipeline for generating the ICs of a N-body simulation given some analytic bispectrum template. The novelty in the codebase is performing a decomposition of arbitrary bispectra into separable functions, and then subsequently generating non-Gaussian initial conditions corresponding to these functions. This is a largely modified version of two packages --- [CMB-BEST](https://github.com/Wuhyun/CMB-BEST/tree/main) by Wuhyun Sohn, and [2LPTPNG](https://github.com/dsjamieson/2LPTPNG/tree/main) by Drew Jamieson (which itself derives from [2LPTIC](https://github.com/manodeep/2LPTic) and previous codebases) --- so please see those packages for the original implementations that enabled this work!
 
-The method implemented in `Aarambam` was introduced in Anbajagane & Lee (2025a) and Anbajagane & Lee (2025b). Citations to the same are requested if you are using this code for a publication. Contact dhayaa at uchicago dot edu if you have any questions. Happy simulating!
+The method implemented in `Aarambam` was introduced in Anbajagane & Lee (2025a) and Anbajagane & Lee (2025b). See `Attribution` section below for the requested citations. Happy simulating!
 
 
 (The first two letters of the logo are from the Tamil script. You can do a process of elimination using the English letters to guess what those letters' sounds are ;) )
@@ -72,7 +72,7 @@ make install
 ```
 You may be able to skip the `CC=` addition if your computing cluster already supplied `mpicc` in an easily findable way. The above `make` command will take a while to run (FFTW2 has a lot of libraries to install). FFTW2 is a hard requirement as this piece of LPT code originates from before the 2000s, and FFTW2 was officially deprecated only in 1999.
 
-If you have trouble installing this, please contact dhayaa at uchicago dot edu. I've tested installation at multiple computing clusters now, but there can always be edge-cases:)
+If you have trouble installing this, please contact Dhayaa (details below). I've tested installation at multiple computing clusters now, but there will always be edge-cases:)
 
 ## Example
 
@@ -105,3 +105,45 @@ sp.run(f"mpirun -np {Nprocs} Aarambam-2LPT-Basis {outdir + '/LPTconfig'}", shell
 #Finally, here's a helpful executable to combine I/O from individual processes.
 sp.run(f"Aarambam-collate-potential --file_dir {outdir}", shell = True, env = os.environ)
 ```
+
+## Attribution
+
+If you use the code or derivatives of it, please cite both of [Anbajagane & Lee 2025a](https://arxiv.org/abs/2409.03822) and [Anbajagane & Lee 2025b](https://arxiv.org/abs/2409.03822) who introduced and validated the code for a variety of models.
+
+```bibtex
+@ARTICLE{Anbajagane:2024:Baryonification,
+       author = {{Anbajagane}, Dhayaa and {Pandey}, Shivam and {Chang}, Chihway},
+        title = "{Map-level baryonification: Efficient modelling of higher-order correlations in the weak lensing and thermal Sunyaev-Zeldovich fields}",
+      journal = {arXiv e-prints},
+     keywords = {Astrophysics - Cosmology and Nongalactic Astrophysics, Astrophysics - Astrophysics of Galaxies},
+         year = 2024,
+        month = sep,
+          eid = {arXiv:2409.03822},
+        pages = {arXiv:2409.03822},
+archivePrefix = {arXiv},
+       eprint = {2409.03822},
+ primaryClass = {astro-ph.CO},
+       adsurl = {https://ui.adsabs.harvard.edu/abs/2024arXiv240903822A},
+      adsnote = {Provided by the SAO/NASA Astrophysics Data System}
+}
+
+@ARTICLE{Anbajagane:2024:Baryonification,
+       author = {{Anbajagane}, Dhayaa and {Pandey}, Shivam and {Chang}, Chihway},
+        title = "{Map-level baryonification: Efficient modelling of higher-order correlations in the weak lensing and thermal Sunyaev-Zeldovich fields}",
+      journal = {arXiv e-prints},
+     keywords = {Astrophysics - Cosmology and Nongalactic Astrophysics, Astrophysics - Astrophysics of Galaxies},
+         year = 2024,
+        month = sep,
+          eid = {arXiv:2409.03822},
+        pages = {arXiv:2409.03822},
+archivePrefix = {arXiv},
+       eprint = {2409.03822},
+ primaryClass = {astro-ph.CO},
+       adsurl = {https://ui.adsabs.harvard.edu/abs/2024arXiv240903822A},
+      adsnote = {Provided by the SAO/NASA Astrophysics Data System}
+}
+```
+
+## Contact
+
+Please contant Dhayaa Anbajagane (dhayaa at uchicago dot edu) for any questions on the pipeline.

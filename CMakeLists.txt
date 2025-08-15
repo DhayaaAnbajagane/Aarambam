@@ -16,19 +16,34 @@ set(CMAKE_C_EXTENSIONS ON)           # => gnu99, like GCC default in 2LPTPNG
 add_compile_options(-O3 -Wall -g)
 
 # --- Sources (OBJS without .o) ---
-set(SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR}/Aarambam/LPT/Basis/)
+set(BASIS_SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR}/Aarambam/LPT/Basis/)
 add_executable(2LPTBasis
-  ${SRC_DIR}/main.c
-  ${SRC_DIR}/power.c
-  ${SRC_DIR}/checkchoose.c
-  ${SRC_DIR}/allvars.c
-  ${SRC_DIR}/save.c
-  ${SRC_DIR}/read_param.c
-  ${SRC_DIR}/read_glass.c
-  ${SRC_DIR}/nrsrc/nrutil.c
-  ${SRC_DIR}/nrsrc/qromb.c
-  ${SRC_DIR}/nrsrc/polint.c
-  ${SRC_DIR}/nrsrc/trapzd.c
+  ${BASIS_SRC_DIR}/main.c
+  ${BASIS_SRC_DIR}/power.c
+  ${BASIS_SRC_DIR}/checkchoose.c
+  ${BASIS_SRC_DIR}/allvars.c
+  ${BASIS_SRC_DIR}/save.c
+  ${BASIS_SRC_DIR}/read_param.c
+  ${BASIS_SRC_DIR}/read_glass.c
+  ${BASIS_SRC_DIR}/nrsrc/nrutil.c
+  ${BASIS_SRC_DIR}/nrsrc/qromb.c
+  ${BASIS_SRC_DIR}/nrsrc/polint.c
+  ${BASIS_SRC_DIR}/nrsrc/trapzd.c
+)
+
+set(RESBASIS_SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR}/Aarambam/LPT/ResBasis/)
+add_executable(2LPTResBasis
+  ${RESBASIS_SRC_DIR}/main.c
+  ${RESBASIS_SRC_DIR}/power.c
+  ${RESBASIS_SRC_DIR}/checkchoose.c
+  ${RESBASIS_SRC_DIR}/allvars.c
+  ${RESBASIS_SRC_DIR}/save.c
+  ${RESBASIS_SRC_DIR}/read_param.c
+  ${RESBASIS_SRC_DIR}/read_glass.c
+  ${RESBASIS_SRC_DIR}/nrsrc/nrutil.c
+  ${RESBASIS_SRC_DIR}/nrsrc/qromb.c
+  ${RESBASIS_SRC_DIR}/nrsrc/polint.c
+  ${RESBASIS_SRC_DIR}/nrsrc/trapzd.c
 )
 
 # --- Include paths ---
@@ -48,7 +63,8 @@ else()
     PATH_SUFFIXES include
   )
 endif()
-target_include_directories(2LPTBasis PRIVATE ${GSL_INCLUDE_DIR})
+target_include_directories(2LPTBasis    PRIVATE ${GSL_INCLUDE_DIR})
+target_include_directories(2LPTResBasis PRIVATE ${GSL_INCLUDE_DIR})
 set(GSL_LIB_DIR "${GSL_INCLUDE_DIR}/../lib" CACHE PATH "GSL library directory" FORCE)
 
 # FFTW2
@@ -64,7 +80,8 @@ find_path(FFTW2_INCLUDE_DIR
   PATH_SUFFIXES include
   REQUIRED
 )
-target_include_directories(2LPTBasis PRIVATE ${FFTW2_INCLUDE_DIR})
+target_include_directories(2LPTBasis    PRIVATE ${FFTW2_INCLUDE_DIR})
+target_include_directories(2LPTResBasis PRIVATE ${FFTW2_INCLUDE_DIR})
 
 find_library(_FFTW2_LIB
   NAMES        fftw  dfftw
@@ -95,14 +112,19 @@ else()
 endif()
 
 # Local headers
-target_include_directories(2LPTBasis PRIVATE
-  ${SRC_DIR}
-  ${SRC_DIR}/nrsrc
-)
+target_include_directories(2LPTBasis PRIVATE    ${BASIS_SRC_DIR}    ${BASIS_SRC_DIR}/nrsrs)
+target_include_directories(2LPTResBasis PRIVATE ${RESBASIS_SRC_DIR} ${RESBASIS_SRC_DIR}/nrsrs)
 
 # --- Preprocessor options (OPT / OPTIONS in the Makefile) ---
 # Default Makefile switches:
 target_compile_definitions(2LPTBasis PRIVATE
+  NO64BITID=1
+  CORRECT_CIC=1
+  # PRODUCEGAS=1   # uncomment if you want this default ON
+  # ONLY_ZA=1      # uncomment if you want this default ON
+)
+
+target_compile_definitions(2LPTResBasis PRIVATE
   NO64BITID=1
   CORRECT_CIC=1
   # PRODUCEGAS=1   # uncomment if you want this default ON
@@ -115,6 +137,11 @@ target_link_directories(2LPTBasis PRIVATE
   ${GSL_LIB_DIR}
   ${FFTW2_LIB_DIR}
 )
+target_link_directories(2LPTResBasis PRIVATE
+  ${OPENMPI_LIB_DIR}
+  ${GSL_LIB_DIR}
+  ${FFTW2_LIB_DIR}
+)
 
 # --- Link libraries ---
 target_link_libraries(2LPTBasis PRIVATE
@@ -123,7 +150,16 @@ target_link_libraries(2LPTBasis PRIVATE
   drfftw_mpi dfftw_mpi drfftw dfftw
   gsl gslcblas
 )
-install(TARGETS 2LPTBasis RUNTIME DESTINATION Aarambam/bin)
+
+target_link_libraries(2LPTResBasis PRIVATE
+  m
+  mpi
+  drfftw_mpi dfftw_mpi drfftw dfftw
+  gsl gslcblas
+)
+
+install(TARGETS 2LPTBasis    RUNTIME DESTINATION Aarambam/bin)
+install(TARGETS 2LPTResBasis RUNTIME DESTINATION Aarambam/bin)
 
 
 # ─── CMB-BEST Python Extension ──────────────────────────────────────────────

@@ -64,6 +64,19 @@ DEFAULT_BASIS_INPUTS = dict(Nmesh = 256, Nsample = 256, Nmax = 256, Lbox = 512, 
                             SavePotentialField = True, NWriteoutProcesses = os.cpu_count()
                             )
 
+
+DEFAULT_RESBASIS_CONFIG = (
+DEFAULT_BASIS_CONFIG + 
+"""
+A_res               %(Pk_A_res)f
+w_res               %(Pk_w_res)f
+phi_res             %(Pk_phi_res)f
+"""
+)
+
+DEFAULT_RESBASIS_INPUTS = DEFAULT_BASIS_INPUTS.copy()
+DEFAULT_RESBASIS_INPUTS.update(dict(Pk_A_res = 0.9, Pk_w_res = 2, Pk_phi_res = 0.0))
+
 def make_config_basis(Nmesh, Nsample, Nmax, Lbox, FileBase, OutputDir, GlassFile, GlassTileFac,
                       seed, Om, Ode, h, sigma8, n_s, z_ini, Fnl, N_modes, TransferPath,
                       AlphaPath, AiPath, SavePotentialField, NWriteoutProcesses):
@@ -71,8 +84,19 @@ def make_config_basis(Nmesh, Nsample, Nmax, Lbox, FileBase, OutputDir, GlassFile
     return textwrap.dedent(DEFAULT_BASIS_CONFIG % locals())
 
 
+def make_config_resbasis(Nmesh, Nsample, Nmax, Lbox, FileBase, OutputDir, GlassFile, GlassTileFac,
+                         seed, Om, Ode, h, sigma8, n_s, z_ini, Fnl, N_modes, TransferPath,
+                         AlphaPath, AiPath, SavePotentialField, NWriteoutProcesses,
+                         Pk_A_res, Pk_w_res, Pk_phi_res):
+
+    return textwrap.dedent(DEFAULT_RESBASIS_CONFIG % locals())
+
+
 def make_example_config_basis():
     return make_config_basis(**DEFAULT_BASIS_INPUTS)
+
+def make_example_config_resbasis():
+    return make_config_resbasis(**DEFAULT_RESBASIS_INPUTS)
 
 
 def camb2input(path):

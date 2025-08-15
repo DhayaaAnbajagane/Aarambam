@@ -108,14 +108,14 @@ void print_setup(void) {
     pstr[i] = '*';
   printf("%s\n", pstr);
 
-  char exec[] = "Aarambam-2LPT-Basis";
+    char exec[] = "Aarambam-2LPT-ResBasis";
 
 
   pstr[0] = '*';
   for (int i = 1; i < 79/2 - 9; i++)
     pstr[i] = ' ';
   sprintf(&pstr[79/2 - 10], "%s", exec);
-  for (int i = 79/2 + 10; i < 78; i++)
+  for (int i = 79/2 + 13; i < 78; i++)
     pstr[i] = ' ';
   pstr[78] = '*';
   printf("%s\n", pstr);
@@ -129,7 +129,8 @@ void print_setup(void) {
   printf("                       Nglass = %d    GlassTileFac = %d\n\n", Nglass, GlassTileFac);
   printf("        Omega = %.4f         OmegaLambda = %.4f    OmegaBaryon = %.2e\n", Omega,  OmegaLambda, OmegaBaryon);
   printf("       sigma8 = %.4f     PrimoridalIndex = %.4f       Redshift = %.2e\n", Sigma8, PrimordialIndex, Redshift);
-  printf("   HubbleParam = %.4f  OmegaDM_2ndSpecies = %.2e          fNL = %+.2e\n\n", HubbleParam, OmegaDM_2ndSpecies, Fnl); 
+  printf("       A_Pk = %.4f     w_Pk = %.4f       phi_Pk = %.4f\n", A_res, w_res, phi_res);
+  printf("  HubbleParam = %.4f  OmegaDM_2ndSpecies = %.2e          fNL = %+.2e\n\n", HubbleParam, OmegaDM_2ndSpecies, Fnl); 
   printf("   FixedAmplitude = %d    PhaseFlip = % d   SphereMode = %d    Seed = %d\n", FixedAmplitude, PhaseFlip, SphereMode, Seed);   
 
   for (int i = 0; i < 79; i++)
@@ -207,9 +208,9 @@ void displacement_fields(void) {
   double kmax_ns = pow(kmax, (4 - PrimordialIndex)/3);
     
   double Pl; //for storing legendre coeffs
-  
-  MPI_Bcast(&SavePotentialField, 1, MPI_INT, 0, MPI_COMM_WORLD);
 
+   MPI_Bcast(&SavePotentialField, 1, MPI_INT, 0, MPI_COMM_WORLD);
+  
   //DHAYAA: Now need to read out the coefficients from a file
   //Load the Alpha Table
   double (*AlphaTable)[N_modes][N_modes] = malloc(sizeof(double) * N_modes * N_modes * N_modes);
@@ -288,7 +289,7 @@ void displacement_fields(void) {
   // Broadcast the full X0Table to all tasks
   MPI_Bcast(&(X0Table[0][0]), N_modes * 2, MPI_DOUBLE, 0, MPI_COMM_WORLD);
     
-
+    
   double t_012 = -AlphaTable[1][1][1]/AlphaTable[0][1][2];
   double u_002 = -AlphaTable[0][1][1]/AlphaTable[0][0][2];
   if (AlphaTable[0][1][2] == 0) t_012 = 0;
@@ -297,7 +298,6 @@ void displacement_fields(void) {
       printf("Set coeff t_012 = %lg \n", t_012);
   }
 
-  
 #ifdef CORRECT_CIC
   double fx, fy, fz, ff, smth;
 #endif
@@ -365,6 +365,7 @@ void displacement_fields(void) {
   memset(cpot_NG_re, 0, sizeof(long double) * TotalSizePlusAdditional);
   memset(cpot_NG_im, 0, sizeof(long double) * TotalSizePlusAdditional);
 
+
   memset(cpot, 0, sizeof(fftw_real) * TotalSizePlusAdditional);
 
   /* Ho in units of UnitLength_in_cm and c=1, i.e., internal units so far  */
@@ -372,7 +373,7 @@ void displacement_fields(void) {
   Beta = 1.5 * Omega / (2998. * 2998. / UnitLength_in_cm / UnitLength_in_cm * 3.085678e24 * 3.085678e24 ) / D0 ;     
 
   // if(ThisTask == 0){
-  //     printf("\n BETA: %e \n", Beta);
+  //     printf("BETA: %e \n", Beta);
   //     printf("UnitLength_in_cm: %e \n", UnitLength_in_cm);   
   //     printf("D0: %e \n", D0);
   //     printf("Anorm: %e \n", Anorm);   
@@ -441,6 +442,19 @@ void displacement_fields(void) {
                     }
 
                   phig = Anorm * exp( PrimordialIndex * log(kmag) );   /* initial normalized power */
+                  switch (WhichSpectrum)
+                    {
+                    case 0:
+                      phig *= 1.0;
+
+                    case 1:
+                      phig *= (1.0 + A_res * cos(w_res * kmag + phi_res));
+
+                    case 2:
+                      phig *= (1.0 + A_res * cos(w_res * log(kmag) + phi_res));
+                    }
+
+                    
 // ************** FAVN/DSJ ***************
                   if (!FixedAmplitude)
                     phig *= -log(ampl);
@@ -780,8 +794,6 @@ void displacement_fields(void) {
           rfftwnd_mpi(Forward_plan, 1, p_tmp, Workspace, FFTW_NORMAL_ORDER);
           MPI_Barrier(MPI_COMM_WORLD);
 
-          
-          
           for(ii = 0; ii < Local_nx; ii++)
               for(j = 0; j < Nmesh; j++)
                   for(k = 0; k <= Nmesh / 2 ; k++)
@@ -875,6 +887,7 @@ void displacement_fields(void) {
             if (N_j >= 10) print_size += 1;
             print_timed_done(23 - print_size);
           }
+
           MPI_Barrier(MPI_COMM_WORLD);
           }
       } //Close the Ni,Nj,Nk loop
@@ -1039,7 +1052,6 @@ void displacement_fields(void) {
 
                       fnl_fac = 0;
                       
-                      
                       //First handle the s_012 and t_012 piece. 
                       {
                       if ( (N_i == 0) && (N_j == 1) ) { //Subtract from the original kernel
@@ -1089,8 +1101,6 @@ void displacement_fields(void) {
 
   MPI_Barrier(MPI_COMM_WORLD);
   
-  
-
   //Trasnform to real space so we can write out the potential
   rfftwnd_mpi(Inverse_plan, 1, pot, Workspace, FFTW_NORMAL_ORDER);
   if(SavePotentialField==1) write_phi(pot, 0);
@@ -1129,7 +1139,7 @@ void displacement_fields(void) {
   free(cpot_NG);
 
 MPI_Barrier(MPI_COMM_WORLD);
-    
+
 if (ThisTask == 0) {printf("Writing potential to disc..."); fflush(stdout);};
 rfftwnd_mpi(Inverse_plan, 1, pot, Workspace, FFTW_NORMAL_ORDER);
 if(SavePotentialField==1) write_phi(pot, 1);
