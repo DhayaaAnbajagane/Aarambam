@@ -73,6 +73,7 @@ w_res               %(Pk_w_res)f
 phi_res             %(Pk_phi_res)f
 """
 )
+DEFAULT_RESBASIS_CONFIG = DEFAULT_RESBASIS_CONFIG.replace("0 #Fixed to 0 because we always want to use only the Transfer Function", r"%(Pk_mode)d")
 
 DEFAULT_RESBASIS_INPUTS = DEFAULT_BASIS_INPUTS.copy()
 DEFAULT_RESBASIS_INPUTS.update(dict(Pk_A_res = 0.9, Pk_w_res = 2, Pk_phi_res = 0.0))
@@ -87,7 +88,7 @@ def make_config_basis(Nmesh, Nsample, Nmax, Lbox, FileBase, OutputDir, GlassFile
 def make_config_resbasis(Nmesh, Nsample, Nmax, Lbox, FileBase, OutputDir, GlassFile, GlassTileFac,
                          seed, Om, Ode, h, sigma8, n_s, z_ini, Fnl, N_modes, TransferPath,
                          AlphaPath, AiPath, SavePotentialField, NWriteoutProcesses,
-                         Pk_A_res, Pk_w_res, Pk_phi_res):
+                         Pk_A_res, Pk_w_res, Pk_phi_res, Pk_mode):
 
     return textwrap.dedent(DEFAULT_RESBASIS_CONFIG % locals())
 
