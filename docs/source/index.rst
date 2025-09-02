@@ -20,11 +20,13 @@
 **Aarambam** is a tool for generating non-Gaussian initial conditions for N-body simulations.
 
 .. toctree::
-   :maxdepth: 4
+   :maxdepth: 2
+   :caption: Contents
+   :hidden:
 
    installation
-   quickstart
-   modules
+   api_reference
+
 
 Indices and tables
 -------------------
