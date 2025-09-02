@@ -1,6 +1,6 @@
 .. raw:: html
 
-   <div style="margin-top: 40px"></div>
+   <div style="margin-top: 150px"></div>
 
 .. image:: LOGO_light.png
    :class: only-light
