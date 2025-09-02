@@ -11,10 +11,10 @@ class ScalarI:
 
     Parameters
     ----------
-    - ``n_s`` : float
+    - n_s : float
         Scalar spectral index used to rescale each wavenumber by
         :math:`k^{(4-n_s)/3}` for near scale invariance.
-    - ``mass`` : float
+    - mass : float
         Massive-field parameter :math:`\\mu > 0` controlling both the frequency
         of the clock signal and several non-analytic amplitudes. Here,
         :math:`\\mu = \\sqrt{(m/H)^2 - 9/4}`.
@@ -85,10 +85,10 @@ class ScalarII:
 
     Parameters
     ----------
-    - ``n_s`` : float
+    - n_s : float
         Scalar spectral index used to rescale each wavenumber by
         :math:`k^{(4-n_s)/3}` for near scale invariance.
-    - ``mass`` : float
+    - mass : float
         Massive-field parameter :math:`\\mu > 0` controlling both the frequency
         of the clock signal and several non-analytic amplitudes. Here,
         :math:`\\mu = \\sqrt{(m/H)^2 - 9/4}`.
@@ -220,10 +220,10 @@ class HeavySpinCollider:
 
     Parameters
     ----------
-    - ``n_s`` : float
+    - n_s : float
         Scalar spectral index used to rescale each wavenumber by
         :math:`k^{(4-n_s)/3}` for near scale invariance.
-    - ``spin`` : int
+    - spin : int
         The spin of the particle. Must be an integer.
     """
      
@@ -260,10 +260,10 @@ class LowSpeedCollider:
 
     Parameters
     ----------
-    - ``n_s`` : float
+    - n_s : float
         Scalar spectral index used to rescale each wavenumber by
         :math:`k^{(4-n_s)/3}` for near scale invariance.
-    - ``alpha`` : float
+    - alpha : float
         A dimension factor defined as :math:`\\alpha \\equiv c_{\\rm s} m / H`.
     """
 
@@ -310,15 +310,15 @@ class MultiSpeedCollider:
 
     Parameters
     ----------
-    - ``n_s`` : float
+    - n_s : float
         Scalar spectral index used to rescale each wavenumber by
         :math:`k^{(4-n_s)/3}` for near scale invariance.
-    - ``'c1'`` : float
+    - c1 : float
         The sound speed of the first leg of the interaction, in units of the speed of light
-    - ``c2`` : float
-        Same as ``c1`` but for the second leg of the interaction.
-    - ``c3`` : float
-        Same as ``c1`` but for the second leg of the interaction.
+    - c2 : float
+        Same as c1 but for the second leg of the interaction.
+    - c3 : float
+        Same as c1 but for the second leg of the interaction.
     """
     def raw_bispectrum(self, k1, k2, k3):
         

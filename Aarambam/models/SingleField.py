@@ -11,7 +11,7 @@ class Local:
 
     Parameters
     ----------
-    - ``n_s`` : float
+    - n_s : float
         Scalar spectral index used to rescale each wavenumber by
         :math:`k^{(4-n_s)/3}` for near scale invariance.
     """
@@ -37,7 +37,7 @@ class Equilateral:
 
     Parameters
     ----------
-    - ``n_s`` : float
+    - n_s : float
         Scalar spectral index used to rescale each wavenumber by
         :math:`k^{(4-n_s)/3}` for near scale invariance.
     """
@@ -90,7 +90,7 @@ class Orthogonal:
 
     Parameters
     ----------
-    - ``n_s`` : float
+    - n_s : float
         Scalar spectral index used to rescale each wavenumber by
         :math:`k^{(4-n_s)/3}` for near scale invariance.
     """
@@ -141,10 +141,10 @@ class QuasiSingleField:
 
     Parameters
     ----------
-    - ``n_s`` : float
+    - n_s : float
         Scalar spectral index used to rescale each wavenumber by
         :math:`k^{(4-n_s)/3}` for near scale invariance.
-    - ``mass`` : float
+    - mass : float
         Massive-field parameter :math:`\\mu > 0` controlling both the frequency
         of the clock signal and several non-analytic amplitudes. Here,
         :math:`\\mu = \\sqrt{(m/H)^2 - 9/4}`.
@@ -177,7 +177,7 @@ class DBI:
 
     Parameters
     ----------
-    - ``n_s`` : float
+    - n_s : float
         Scalar spectral index used to rescale each wavenumber by
         :math:`k^{(4-n_s)/3}` for near scale invariance.
     """
@@ -208,7 +208,7 @@ class SenatoreEFT1:
 
     Parameters
     ----------
-    - ``n_s`` : float
+    - n_s : float
         Scalar spectral index used to rescale each wavenumber by
         :math:`k^{(4-n_s)/3}` for near scale invariance.
     """
@@ -239,7 +239,7 @@ class SenatoreEFT2:
 
     Parameters
     ----------
-    - ``n_s`` : float
+    - n_s : float
         Scalar spectral index used to rescale each wavenumber by
         :math:`k^{(4-n_s)/3}` for near scale invariance.
     """
