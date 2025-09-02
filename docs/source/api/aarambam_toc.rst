@@ -2,7 +2,7 @@ Aarambam
 ========
 
 .. toctree::
-   :maxdepth: 2
+   :maxdepth: 4
 
    ../cli
    Aarambam/index
