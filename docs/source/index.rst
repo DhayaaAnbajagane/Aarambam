@@ -1,6 +1,13 @@
 .. image:: LOGO_light.png
-   :width: 65 %
+   :class: only-light
+   :width: 65%
    :align: center
+
+.. image:: LOGO_dark.png
+   :class: only-dark
+   :width: 65%
+   :align: center
+
 
 
 
