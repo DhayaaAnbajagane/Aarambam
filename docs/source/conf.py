@@ -43,7 +43,7 @@ autoapi_options = [
     "show-module-summary",
     "imported-members",
 ]
-autoapi_ignore = ["*/tests/*", "*/test_*", "*_version.py", "*/bin/*", "LPT/*/cli.py*", "cli", "cli.py"]
+autoapi_ignore = ["*/tests/*", "*/test_*", "*_version.py", "*/bin/*", "**/cli.py*", "**cli"]
 autoapi_python_class_content = "both"
 
 # -- Numpydoc -----------------------------------------------------------------
