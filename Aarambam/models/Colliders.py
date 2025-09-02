@@ -2,6 +2,23 @@ import numpy as np
 from scipy import special
 
 class ScalarI:
+    """
+    Scalar-I bispectrum template from Sohn+ 2024 (https://arxiv.org/abs/2404.07203).
+    See their Equation 2.15. Corresponds to the interaction :math:`\\dot{\\phi}^2 \\sigma`.
+
+    This object must be used with the `utils.Decomposer` class. That class instance
+    should be provided with the parameters necessary to compute this model (mass, spin, etc.)
+
+    Parameters
+    ----------
+    - ``n_s`` : float
+        Scalar spectral index used to rescale each wavenumber by
+        :math:`k^{(4-n_s)/3}` for near scale invariance.
+    - ``mass`` : float
+        Massive-field parameter :math:`\\mu > 0` controlling both the frequency
+        of the clock signal and several non-analytic amplitudes. Here,
+        :math:`\\mu = \\sqrt{(m/H)^2 - 9/4}`.
+    """
 
     def raw_bispectrum(self, k1, k2, k3):
     
@@ -50,13 +67,32 @@ class ScalarI:
         N     = N_11*N_12*N_13 + N_21 * (N_22 + N_23*N_24) + N_31*N_32*N_33*N_34
         N     = N * 3
 
-        S     = S/N * 3/6
+        S     = S/N * 3/6 #Symmetry factor
 
         
-        return S/(k1 * k2 * k3)**2 
+        return S/(k1 * k2 * k3)**2 #convert back to bispectrum
     
 
 class ScalarII:
+
+    """
+    Scalar-II bispectrum template from Sohn+ 2024 (https://arxiv.org/abs/2404.07203).
+    See their Equation 2.20. Corresponds to a linear combinations of the interaction 
+    :math:`\\dot{\\phi}^2 \\sigma` and :math:`(\\partial{\\phi})^2 \\sigma`.
+
+    This object must be used with the `utils.Decomposer` class. That class instance
+    should be provided with the parameters necessary to compute this model (mass, spin, etc.)
+
+    Parameters
+    ----------
+    - ``n_s`` : float
+        Scalar spectral index used to rescale each wavenumber by
+        :math:`k^{(4-n_s)/3}` for near scale invariance.
+    - ``mass`` : float
+        Massive-field parameter :math:`\\mu > 0` controlling both the frequency
+        of the clock signal and several non-analytic amplitudes. Here,
+        :math:`\\mu = \\sqrt{(m/H)^2 - 9/4}`.
+    """
         
     def raw_bispectrum(self, k1, k2, k3):
         
@@ -174,6 +210,23 @@ class ScalarII:
 
 class HeavySpinCollider:
         
+    """
+    Heavy Spin Collider template from Sohn+ 2024 (https://arxiv.org/abs/2404.07203).
+    See their Equation 2.24. Considers the interaction between the inflaton and a
+    massive particle, :math:`m \\gg H`, with arbitrary (integer) spin.
+
+    This object must be used with the `utils.Decomposer` class. That class instance
+    should be provided with the parameters necessary to compute this model (mass, spin, etc.)
+
+    Parameters
+    ----------
+    - ``n_s`` : float
+        Scalar spectral index used to rescale each wavenumber by
+        :math:`k^{(4-n_s)/3}` for near scale invariance.
+    - ``spin`` : int
+        The spin of the particle. Must be an integer.
+    """
+     
     def raw_bispectrum(self, k1, k2, k3):
         
         k1 = np.power(k1, (4 - self.args['n_s'])/3)
@@ -182,6 +235,8 @@ class HeavySpinCollider:
         kT = k1 + k2 + k3
 
         s  = self.args['spin']
+
+        assert isinstance(s, int), f"The provided spin must be an integer. You provided {type(s)}"
         
         P_s = special.eval_legendre(s, (k1**2 + k3**2 - k2**2)/(2*k1*k3))
         S_1 = k2 / np.power(k1*k3, 1 - s) / np.power(kT, 2*s + 1)
@@ -196,6 +251,22 @@ class HeavySpinCollider:
 
 class LowSpeedCollider:
     
+    """
+    Low Speed Collider template from Sohn+ 2024 (https://arxiv.org/abs/2404.07203).
+    See their Equation 2.33. 
+
+    This object must be used with the `utils.Decomposer` class. That class instance
+    should be provided with the parameters necessary to compute this model (mass, spin, etc.)
+
+    Parameters
+    ----------
+    - ``n_s`` : float
+        Scalar spectral index used to rescale each wavenumber by
+        :math:`k^{(4-n_s)/3}` for near scale invariance.
+    - ``alpha`` : float
+        A dimension factor defined as :math:`\\alpha \\equiv c_{\\rm s} m / H`.
+    """
+
     def raw_bispectrum(self, k1, k2, k3):
         
         k1_sq = k1 * k1   
@@ -229,7 +300,26 @@ class LowSpeedCollider:
     
     
 class MultiSpeedCollider:
-    
+    """
+    The multi speed Collider template from Sohn+ 2024 (https://arxiv.org/abs/2404.07203).
+    See their Equation 2.34. It is a variant of massless exchange between inflatons. See
+    Figure 1 of Anbajagane & Lee 2025 for an illustration of the relevant interaction.
+
+    This object must be used with the `utils.Decomposer` class. That class instance
+    should be provided with the parameters necessary to compute this model (mass, spin, etc.)
+
+    Parameters
+    ----------
+    - ``n_s`` : float
+        Scalar spectral index used to rescale each wavenumber by
+        :math:`k^{(4-n_s)/3}` for near scale invariance.
+    - ``'c1'`` : float
+        The sound speed of the first leg of the interaction, in units of the speed of light
+    - ``c2`` : float
+        Same as ``c1`` but for the second leg of the interaction.
+    - ``c3`` : float
+        Same as ``c1`` but for the second leg of the interaction.
+    """
     def raw_bispectrum(self, k1, k2, k3):
         
         k1 = np.power(k1, (4 - self.args['n_s'])/3)

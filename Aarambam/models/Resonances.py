@@ -1,7 +1,24 @@
 import numpy as np
 
 class LogResonance:
+    """
+    Logarithmic oscillations in the bispectrum, i.e. oscillations in :math:``\\log k``
+    See https://arxiv.org/pdf/1905.05697, Equation (12)
     
+    This object must be used with the `utils.Decomposer` class. That class instance
+    should be provided with the parameters necessary to compute this model (mass, spin, etc.)
+
+    Parameters
+    ----------
+    - ``n_s`` : float
+        Scalar spectral index used to rescale each wavenumber by
+        :math:`k^{(4-n_s)/3}` for near scale invariance.
+    - ``w_res`` : float
+        Frequency of the oscillations in the bispectrum.
+    - ``phi`` : float
+        The phase of the oscillations.
+    """
+
     def raw_bispectrum(self, k1, k2, k3): #https://arxiv.org/pdf/1905.05697, Equation (12)
         
         k1 = np.power(k1, (4 - self.args['n_s'])/3)
@@ -15,6 +32,23 @@ class LogResonance:
     
 
 class LinearResonance:
+    """
+    Linear oscillations in the bispectrum, i.e. oscillations in ``k``.
+    See https://arxiv.org/pdf/1905.05697, Equation (12)
+    
+    This object must be used with the `utils.Decomposer` class. That class instance
+    should be provided with the parameters necessary to compute this model (mass, spin, etc.)
+
+    Parameters
+    ----------
+    - ``n_s`` : float
+        Scalar spectral index used to rescale each wavenumber by
+        :math:`k^{(4-n_s)/3}` for near scale invariance.
+    - ``w_res`` : float
+        Frequency of the oscillations in the bispectrum.
+    - ``phi`` : float
+        The phase of the oscillations.
+    """
 
     def raw_bispectrum(self, k1, k2, k3): #https://arxiv.org/pdf/1905.05697, Equation (15)
         
@@ -30,7 +64,25 @@ class LinearResonance:
 
 class K2cosResonance:
 
-    def raw_bispectrum(self, k1, k2, k3): #Eq(16) in https://arxiv.org/pdf/1905.05697
+    """
+    The oscillatory bispectra from Adshead+ 2012, Eq(16) in https://arxiv.org/pdf/1905.05697.
+    Fairly similar to the linear resonance model but with a exponential dampening.
+    
+    This object must be used with the `utils.Decomposer` class. That class instance
+    should be provided with the parameters necessary to compute this model (mass, spin, etc.)
+
+    Parameters
+    ----------
+    - ``n_s`` : float
+        Scalar spectral index used to rescale each wavenumber by
+        :math:`k^{(4-n_s)/3}` for near scale invariance.
+    - ``w_res`` : float
+        Frequency of the oscillations in the bispectrum.
+    - ``phi`` : float
+        The phase of the oscillations.
+    """
+
+    def raw_bispectrum(self, k1, k2, k3):
         
         k1 = np.power(k1, (4 - self.args['n_s'])/3)
         k2 = np.power(k2, (4 - self.args['n_s'])/3)
@@ -45,6 +97,24 @@ class K2cosResonance:
 
 class KsinResonance:
 
+    """
+    A different oscillatory bispectra from Adshead+ 2012, Eq(16) in https://arxiv.org/pdf/1905.05697.
+    A complement to the :math:``K^2\\cos`` model provided in `Aarambam`.
+    
+    This object must be used with the `utils.Decomposer` class. That class instance
+    should be provided with the parameters necessary to compute this model (mass, spin, etc.)
+
+    Parameters
+    ----------
+    - ``n_s`` : float
+        Scalar spectral index used to rescale each wavenumber by
+        :math:`k^{(4-n_s)/3}` for near scale invariance.
+    - ``w_res`` : float
+        Frequency of the oscillations in the bispectrum.
+    - ``phi`` : float
+        The phase of the oscillations.
+    """
+
     def raw_bispectrum(self, k1, k2, k3): #Eq(17) in https://arxiv.org/pdf/1905.05697
         
         k1 = np.power(k1, (4 - self.args['n_s'])/3)
@@ -58,7 +128,22 @@ class KsinResonance:
         return S / (k1 * k2 * k3)**2
 
 class NBDsin:
+    """
+    Oscillatory bispectra caused by excited initial states, Non-Bunch Davies (NBD) vacua
+    
+    This object must be used with the `utils.Decomposer` class. That class instance
+    should be provided with the parameters necessary to compute this model (mass, spin, etc.)
 
+    Parameters
+    ----------
+    - ``n_s`` : float
+        Scalar spectral index used to rescale each wavenumber by
+        :math:`k^{(4-n_s)/3}` for near scale invariance.
+    - ``w_res`` : float
+        Frequency of the oscillations in the bispectrum.
+    - ``phi`` : float
+        The phase of the oscillations.
+    """
     def raw_bispectrum(self, k1, k2, k3): #Eq(21) in https://arxiv.org/pdf/1502.01592
         
         k1 = np.power(k1, (4 - self.args['n_s'])/3)

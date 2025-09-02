@@ -3,7 +3,19 @@ from scipy import special
 
 
 class Local:
-        
+    """
+    The standard local type non-Gaussianity.
+
+    This object must be used with the `utils.Decomposer` class. That class instance
+    should be provided with the parameters necessary to compute this model (mass, spin, etc.)
+
+    Parameters
+    ----------
+    - ``n_s`` : float
+        Scalar spectral index used to rescale each wavenumber by
+        :math:`k^{(4-n_s)/3}` for near scale invariance.
+    """
+
     def bispectrum(self, k1, k2, k3):
             
         S_1 = k1**2 * (k2 * k3) ** (self.args['n_s'] - 2)
@@ -16,6 +28,19 @@ class Local:
     
     
 class Equilateral:
+
+    """
+    The standard equilateral type non-Gaussianity.
+
+    This object must be used with the `utils.Decomposer` class. That class instance
+    should be provided with the parameters necessary to compute this model (mass, spin, etc.)
+
+    Parameters
+    ----------
+    - ``n_s`` : float
+        Scalar spectral index used to rescale each wavenumber by
+        :math:`k^{(4-n_s)/3}` for near scale invariance.
+    """
         
     def bispectrum(self, k1, k2, k3):
         
@@ -55,6 +80,21 @@ class Equilateral:
 
 class Orthogonal:
     
+    """
+    The standard orthogonal type non-Gaussianity. This is the simpler template in Senatore++
+    which is actively used in LSS analyses, and not the updated on in their appendix that is
+    better for LSS work.
+
+    This object must be used with the `utils.Decomposer` class. That class instance
+    should be provided with the parameters necessary to compute this model (mass, spin, etc.)
+
+    Parameters
+    ----------
+    - ``n_s`` : float
+        Scalar spectral index used to rescale each wavenumber by
+        :math:`k^{(4-n_s)/3}` for near scale invariance.
+    """
+
     def bispectrum(self, k1, k2, k3):
         
         k1_sq = k1 * k1   
@@ -92,6 +132,24 @@ class Orthogonal:
 
 class QuasiSingleField:
     
+    """
+    The Quasi Single Field model. See, for example, Equation 2.6 in
+    Sohn+ 2024 (https://arxiv.org/abs/2404.07203).
+
+    This object must be used with the `utils.Decomposer` class. That class instance
+    should be provided with the parameters necessary to compute this model (mass, spin, etc.)
+
+    Parameters
+    ----------
+    - ``n_s`` : float
+        Scalar spectral index used to rescale each wavenumber by
+        :math:`k^{(4-n_s)/3}` for near scale invariance.
+    - ``mass`` : float
+        Massive-field parameter :math:`\\mu > 0` controlling both the frequency
+        of the clock signal and several non-analytic amplitudes. Here,
+        :math:`\\mu = \\sqrt{(m/H)^2 - 9/4}`.
+    """
+
     def raw_bispectrum(self, k1, k2, k3):
         
         mu = self.args['mass']
@@ -110,7 +168,21 @@ class QuasiSingleField:
 
 class DBI:
 
-    def raw_bispectrum(self, k1, k2, k3): #Eq(7) in https://arxiv.org/pdf/1303.5084
+    """
+    The Dirac-Born-Infeld (DBI) model. See, for example, Eq(7) in https://arxiv.org/pdf/1303.5084.
+    There are no additional parameter in this model.
+
+    This object must be used with the `utils.Decomposer` class. That class instance
+    should be provided with the parameters necessary to compute this model (mass, spin, etc.)
+
+    Parameters
+    ----------
+    - ``n_s`` : float
+        Scalar spectral index used to rescale each wavenumber by
+        :math:`k^{(4-n_s)/3}` for near scale invariance.
+    """
+
+    def raw_bispectrum(self, k1, k2, k3): 
         
         k1 = np.power(k1, (4 - self.args['n_s'])/3)
         k2 = np.power(k2, (4 - self.args['n_s'])/3)
@@ -126,7 +198,22 @@ class DBI:
     
 
 class SenatoreEFT1:
-    def raw_bispectrum(self, k1, k2, k3): #Eq(5) in https://arxiv.org/pdf/1303.5084
+    """
+    The EFT-based template for the first cubic (self)-interaction of the inflaton.
+    See Eq(5) in https://arxiv.org/pdf/1303.5084. The equilateral and orthogonal
+    templates are linear combinations of this template with ``SenatoreEFT2``.
+
+    This object must be used with the `utils.Decomposer` class. That class instance
+    should be provided with the parameters necessary to compute this model (mass, spin, etc.)
+
+    Parameters
+    ----------
+    - ``n_s`` : float
+        Scalar spectral index used to rescale each wavenumber by
+        :math:`k^{(4-n_s)/3}` for near scale invariance.
+    """
+
+    def raw_bispectrum(self, k1, k2, k3):
         
         k1 = np.power(k1, (4 - self.args['n_s'])/3)
         k2 = np.power(k2, (4 - self.args['n_s'])/3)
@@ -142,7 +229,22 @@ class SenatoreEFT1:
 
 
 class SenatoreEFT2:
-    def raw_bispectrum(self, k1, k2, k3): #Eq(6) in https://arxiv.org/pdf/1303.5084
+    """
+    The EFT-based template for the second cubic (self)-interaction of the inflaton.
+    See Eq(6) in https://arxiv.org/pdf/1303.5084. The equilateral and orthogonal
+    templates are linear combinations of this template with ``SenatoreEFT2``.
+
+    This object must be used with the `utils.Decomposer` class. That class instance
+    should be provided with the parameters necessary to compute this model (mass, spin, etc.)
+
+    Parameters
+    ----------
+    - ``n_s`` : float
+        Scalar spectral index used to rescale each wavenumber by
+        :math:`k^{(4-n_s)/3}` for near scale invariance.
+    """
+
+    def raw_bispectrum(self, k1, k2, k3):
         
         k1 = np.power(k1, (4 - self.args['n_s'])/3)
         k2 = np.power(k2, (4 - self.args['n_s'])/3)

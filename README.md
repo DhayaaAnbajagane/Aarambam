@@ -14,9 +14,9 @@
 
 `Aarambam` (_pronounced "Aah-rum-bum", named after the Tamil word for beginnings_) is a codebase for generating initial conditions (ICs) corresponding to arbitrary bispectrum templates. 
 
-It provides an end-to-end pipeline for generating the ICs of a N-body simulation given some analytic bispectrum template. The novelty in the codebase is performing a decomposition of arbitrary bispectra into separable functions, and then subsequently generating non-Gaussian initial conditions corresponding to these functions. This is a largely modified version of two packages --- [CMB-BEST](https://github.com/Wuhyun/CMB-BEST/tree/main) by Wuhyun Sohn, and [2LPTPNG](https://github.com/dsjamieson/2LPTPNG/tree/main) by Drew Jamieson (which itself derives from [2LPTIC](https://github.com/manodeep/2LPTic) and previous codebases) --- so please see those packages for the original implementations that enabled this work!
+It provides an end-to-end pipeline for generating the ICs of a N-body simulation given some analytic bispectrum template. The novelty in the codebase is performing a decomposition of arbitrary bispectra into separable functions, and then subsequently generating non-Gaussian initial conditions corresponding to these functions. `Aarambam` is a robust integration of two largely modified versions of existing methods --- [CMB-BEST](https://github.com/Wuhyun/CMB-BEST/tree/main) by Wuhyun Sohn, and [2LPTPNG](https://github.com/dsjamieson/2LPTPNG/tree/main) by Drew Jamieson (which itself derives from [2LPTIC](https://github.com/manodeep/2LPTic) and previous codebases) --- so please see those packages for the original implementations that enabled this work!
 
-The method implemented in `Aarambam` was introduced in Anbajagane & Lee (2025a) and Anbajagane & Lee (2025b). See `Attribution` section below for the requested citations. Happy simulating!
+The method implemented in `Aarambam` was introduced in Anbajagane & Lee (2025a) and Anbajagane & Lee (2025b). See `Attribution` section below for the requested citations if you use this code. Happy simulating!
 
 
 (The first two letters of the logo are from the Tamil script. You can do a process of elimination using the English letters to guess what those letters' sounds are ;) )
@@ -76,7 +76,7 @@ If you have trouble installing this, please contact Dhayaa (details below). I've
 
 ## Example
 
-We provide examples of how to use this code in [this notebook](examples/BasisDecomposition.ipynb) and [this python script](examples/MakeICs.py). I copy a snippet of the script below (you will need to fill in other pieces. Look at the scripts for details).
+We provide examples of how to use this code in [this notebook](examples/BasisDecomposition.ipynb) and [this python script](examples/MakeICs.py). I copy a snippet of the script below (you will need to fill in other pieces. Look at the scripts for details). For initial conditions with oscillations in the power spectra, see [this python script](examples/MakeICsRes.py), which largerly follows the structure of the code block below, with some minor differences.
 
 ```python
 import Aarambam as Am
@@ -111,33 +111,26 @@ sp.run(f"Aarambam-collate-potential --file_dir {outdir}", shell = True, env = os
 If you use the code or derivatives of it, please cite both of [Anbajagane & Lee 2025a](https://arxiv.org/abs/2409.03822) and [Anbajagane & Lee 2025b](https://arxiv.org/abs/2409.03822) who introduced and validated the code for a variety of models.
 
 ```bibtex
-@ARTICLE{Anbajagane:2024:Baryonification,
-       author = {{Anbajagane}, Dhayaa and {Pandey}, Shivam and {Chang}, Chihway},
-        title = "{Map-level baryonification: Efficient modelling of higher-order correlations in the weak lensing and thermal Sunyaev-Zeldovich fields}",
+@ARTICLE{Anbajagane:2025:NonlinearI,
+       author = {{Anbajagane}, Dhayaa and {Lee}, Hayden},
+        title = "{Primordial Physics in the Nonlinear Universe: mapping cosmological collider models to weak-lensing observables}",
       journal = {arXiv e-prints},
      keywords = {Astrophysics - Cosmology and Nongalactic Astrophysics, Astrophysics - Astrophysics of Galaxies},
-         year = 2024,
-        month = sep,
-          eid = {arXiv:2409.03822},
-        pages = {arXiv:2409.03822},
+         year = 2025,
 archivePrefix = {arXiv},
-       eprint = {2409.03822},
+       eprint = {},
  primaryClass = {astro-ph.CO},
        adsurl = {https://ui.adsabs.harvard.edu/abs/2024arXiv240903822A},
       adsnote = {Provided by the SAO/NASA Astrophysics Data System}
 }
 
-@ARTICLE{Anbajagane:2024:Baryonification,
-       author = {{Anbajagane}, Dhayaa and {Pandey}, Shivam and {Chang}, Chihway},
-        title = "{Map-level baryonification: Efficient modelling of higher-order correlations in the weak lensing and thermal Sunyaev-Zeldovich fields}",
+@ARTICLE{Anbajagane:2025:NonlinearII,
+       author = {{Anbajagane}, Dhayaa and {Lee}, Hayden},
+        title = "{Primordial Physics in the Nonlinear Universe: signatures of inflationary resonances, excitations, and scale dependence}",
       journal = {arXiv e-prints},
-     keywords = {Astrophysics - Cosmology and Nongalactic Astrophysics, Astrophysics - Astrophysics of Galaxies},
-         year = 2024,
-        month = sep,
-          eid = {arXiv:2409.03822},
-        pages = {arXiv:2409.03822},
+         year = 2025,
 archivePrefix = {arXiv},
-       eprint = {2409.03822},
+       eprint = {},
  primaryClass = {astro-ph.CO},
        adsurl = {https://ui.adsabs.harvard.edu/abs/2024arXiv240903822A},
       adsnote = {Provided by the SAO/NASA Astrophysics Data System}
