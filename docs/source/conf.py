@@ -35,7 +35,7 @@ autoapi_type = "python"
 autoapi_dirs = ["../../Aarambam"]
 autoapi_root = "api"                      # generated under /api/
 autoapi_add_toctree_entry = True          # adds "API Reference" to TOC
-autoapi_keep_files = True                 # keep generated rst for debugging
+autoapi_keep_files = False                # keep generated rst for debugging
 autoapi_options = [
     "members",
     "undoc-members",
