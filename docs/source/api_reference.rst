@@ -2,6 +2,6 @@ API Reference
 =============
 
 .. toctree::
-   :maxdepth: 2
+   :maxdepth: 4
 
    api/aarambam_toc
