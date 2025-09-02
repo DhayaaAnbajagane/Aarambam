@@ -24,9 +24,9 @@ myst_enable_extensions = ["colon_fence", "deflist", "tasklist", "linkify"]
 
 # -- Intersphinx --------------------------------------------------------------
 intersphinx_mapping = {
-    "python": ("https://docs.python.org/3", {}),
-    "numpy": ("https://numpy.org/doc/stable/", {}),
-    "scipy": ("https://docs.scipy.org/doc/scipy/", {}),
+    "python": ("https://docs.python.org/3", None),
+    "numpy": ("https://numpy.org/doc/stable/", None),
+    "scipy": ("https://docs.scipy.org/doc/scipy/", None),
 }
 
 # -- AutoAPI (relative to THIS conf.py) --------------------------------------
