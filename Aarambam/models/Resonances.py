@@ -2,7 +2,7 @@ import numpy as np
 
 class LogResonance:
     """
-    Logarithmic oscillations in the bispectrum, i.e. oscillations in :math:``\\log k``
+    Logarithmic oscillations in the bispectrum, i.e. oscillations in :math:\\log k
     See https://arxiv.org/pdf/1905.05697, Equation (12)
     
     This object must be used with the `utils.Decomposer` class. That class instance
@@ -10,12 +10,12 @@ class LogResonance:
 
     Parameters
     ----------
-    - ``n_s`` : float
+    - n_s : float
         Scalar spectral index used to rescale each wavenumber by
         :math:`k^{(4-n_s)/3}` for near scale invariance.
-    - ``w_res`` : float
+    - w_res : float
         Frequency of the oscillations in the bispectrum.
-    - ``phi`` : float
+    - phi : float
         The phase of the oscillations.
     """
 
@@ -33,7 +33,7 @@ class LogResonance:
 
 class LinearResonance:
     """
-    Linear oscillations in the bispectrum, i.e. oscillations in ``k``.
+    Linear oscillations in the bispectrum, i.e. oscillations in k.
     See https://arxiv.org/pdf/1905.05697, Equation (12)
     
     This object must be used with the `utils.Decomposer` class. That class instance
@@ -41,12 +41,12 @@ class LinearResonance:
 
     Parameters
     ----------
-    - ``n_s`` : float
+    - n_s : float
         Scalar spectral index used to rescale each wavenumber by
         :math:`k^{(4-n_s)/3}` for near scale invariance.
-    - ``w_res`` : float
+    - w_res : float
         Frequency of the oscillations in the bispectrum.
-    - ``phi`` : float
+    - phi : float
         The phase of the oscillations.
     """
 
@@ -73,12 +73,12 @@ class K2cosResonance:
 
     Parameters
     ----------
-    - ``n_s`` : float
+    - n_s : float
         Scalar spectral index used to rescale each wavenumber by
         :math:`k^{(4-n_s)/3}` for near scale invariance.
-    - ``w_res`` : float
+    - w_res : float
         Frequency of the oscillations in the bispectrum.
-    - ``phi`` : float
+    - phi : float
         The phase of the oscillations.
     """
 
@@ -106,12 +106,12 @@ class KsinResonance:
 
     Parameters
     ----------
-    - ``n_s`` : float
+    - n_s : float
         Scalar spectral index used to rescale each wavenumber by
         :math:`k^{(4-n_s)/3}` for near scale invariance.
-    - ``w_res`` : float
+    - w_res : float
         Frequency of the oscillations in the bispectrum.
-    - ``phi`` : float
+    - phi : float
         The phase of the oscillations.
     """
 
@@ -136,12 +136,12 @@ class NBDsin:
 
     Parameters
     ----------
-    - ``n_s`` : float
+    - n_s : float
         Scalar spectral index used to rescale each wavenumber by
         :math:`k^{(4-n_s)/3}` for near scale invariance.
-    - ``w_res`` : float
+    - w_res : float
         Frequency of the oscillations in the bispectrum.
-    - ``phi`` : float
+    - phi : float
         The phase of the oscillations.
     """
     def raw_bispectrum(self, k1, k2, k3): #Eq(21) in https://arxiv.org/pdf/1502.01592
