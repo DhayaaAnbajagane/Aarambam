@@ -1,3 +1,7 @@
+.. raw:: html
+
+   <div style="margin-top: 40px"></div>
+
 .. image:: LOGO_light.png
    :class: only-light
    :width: 65%
