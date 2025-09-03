@@ -28,8 +28,7 @@ and Anbajagane & Lee 2025b, and is based on modifications to existing pipelines 
    api_reference
 
 
-Indices and tables
--------------------
+**Indices and tables**
 
 * :ref:`genindex`
 * :ref:`modindex`
