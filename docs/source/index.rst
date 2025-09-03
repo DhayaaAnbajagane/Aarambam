@@ -24,10 +24,18 @@ and Anbajagane & Lee 2025b, and is based on modifications to existing pipelines 
 
    <div style="margin-top: 50px"></div>
 
+**Contents**
 
 .. toctree::
    :maxdepth: 2
-   :caption: **Contents**
+
+   installation
+   api_reference
+   
+.. toctree::
+   :maxdepth: 2
+   :caption: Contents
+   :hidden:
 
    installation
    api_reference
