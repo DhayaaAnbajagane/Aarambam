@@ -20,13 +20,22 @@
 **Aarambam** is a tool for generating non-Gaussian initial conditions for N-body simulations. The method is introduced in Anbajagane & Lee 2025a
 and Anbajagane & Lee 2025b, and is based on modifications to existing pipelines for bispectrum modal decomposition and for 2LPT initial conditions.
 
+.. raw:: html
+
+   <div style="margin-top: 50px"></div>
+
+
 .. toctree::
    :maxdepth: 2
-   :caption: Contents
+   :caption: **Contents**
 
    installation
    api_reference
 
+
+.. raw:: html
+
+   <div style="margin-top: 50px"></div>
 
 **Indices and tables**
 
