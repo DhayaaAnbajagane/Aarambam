@@ -19,7 +19,7 @@ It provides an end-to-end pipeline for generating the ICs of a N-body simulation
 The method implemented in `Aarambam` was introduced in Anbajagane & Lee (2025a) and Anbajagane & Lee (2025b). See `Attribution` section below for the requested citations if you use this code. Happy simulating!
 
 
-(The first two letters of the logo are from the Tamil script. You can do a process of elimination using the English letters to guess what those letters' sounds are ;) )
+(The first two symbols of the logo are from the Tamil script. You can do a process of elimination using the English letters to guess what those symbols' sounds are ;) And thanks to [Emily Martsen](https://emartsen.github.io/) for advice on the logo design!)
 
 ## Environment
 The python part of the code has a few dependencies --- namely `numpy`, `scipy`, `tqdm`, `joblib`, `cython` and `threadpoolctl`. The last one is more non-standard but is very helpful in managing oversubscription. I promise it is easy to install! The C-level code has its own dependencies, I list them below in the Installation instructions. You can install all of these from conda-forge:
