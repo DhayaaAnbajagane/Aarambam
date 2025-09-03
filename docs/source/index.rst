@@ -31,14 +31,6 @@ and Anbajagane & Lee 2025b, and is based on modifications to existing pipelines 
 
    installation
    api_reference
-   
-.. toctree::
-   :maxdepth: 2
-   :caption: Contents
-   :hidden:
-
-   installation
-   api_reference
 
 
 .. raw:: html

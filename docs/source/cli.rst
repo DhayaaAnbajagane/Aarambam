@@ -5,15 +5,17 @@ The Aarambam package provides a command-line interface (CLI) for generating
 and processing non-Gaussian initial conditions. These commands wrap the
 underlying Python functions so you can run pipelines directly from the shell.
 
-Usage
------
-
 .. code-block:: bash
 
    Aarambam-<command> [options]
 
+
 Available Commands
 ------------------
+
+There are a number of available commands. The main ones are for running the built-in
+LPT executables. The rest are convenience functions to give example configs or
+cleanup output files.
 
 Aarambam-2LPT-Basis
 ~~~~~~~~~~~~~~~~~
@@ -31,7 +33,7 @@ or for mpi-runs you can do
 
    mpirun -np <N> Aarambam-2LPT-Basis <config>
 
-An example config can be generated as :command:`Aarambam-make-example-config-basis --config_path <path>`
+An example config can be generated as ``Aarambam-make-example-config-basis --config_path <path>``
 
 Aarambam-2LPT-ResBasis
 ~~~~~~~~~~~~~~~~~
@@ -43,7 +45,7 @@ exhibit oscillations as well.
 
    Aarambam-2LPT-Basis <config>
 
-An example config can be generated as :command:`Aarambam-make-example-config-resbasis --config_path <path>`
+An example config can be generated as ``Aarambam-make-example-config-resbasis --config_path <path>``
 
 
 Aarambam-collate-potential
