@@ -9,17 +9,19 @@
 
 [![License](https://img.shields.io/badge/license-GPL-blue.svg)](LICENSE)
 [![Python Version](https://img.shields.io/badge/python-3.6%2B-blue.svg)](https://www.python.org/downloads/)
+[![Documentation Status](https://img.shields.io/readthedocs/aarambam?color=blue)](https://aarambam.readthedocs.io/en/latest)
 
 ## Overview
 
 `Aarambam` (_pronounced "Aah-rum-bum", named after the Tamil word for beginnings_) is a codebase for generating initial conditions (ICs) corresponding to arbitrary bispectrum templates. 
 
-It provides an end-to-end pipeline for generating the ICs of a N-body simulation given some analytic bispectrum template. The novelty in the codebase is performing a decomposition of arbitrary bispectra into separable functions, and then subsequently generating non-Gaussian initial conditions corresponding to these functions. `Aarambam` is a robust integration of two largely modified versions of existing methods --- [CMB-BEST](https://github.com/Wuhyun/CMB-BEST/tree/main) by Wuhyun Sohn, and [2LPTPNG](https://github.com/dsjamieson/2LPTPNG/tree/main) by Drew Jamieson (which itself derives from [2LPTIC](https://github.com/manodeep/2LPTic) and previous codebases) --- so please see those packages for the original implementations that enabled this work!
-
-The method implemented in `Aarambam` was introduced in Anbajagane & Lee (2025a) and Anbajagane & Lee (2025b). See `Attribution` section below for the requested citations if you use this code. Happy simulating!
-
+It provides an end-to-end pipeline for generating the ICs of a N-body simulation given some analytic bispectrum template. The novelty in the codebase is performing a decomposition of arbitrary bispectra into separable functions, and then subsequently generating non-Gaussian initial conditions corresponding to these functions. `Aarambam` is a robust integration of two largely modified versions of existing methods --- [CMB-BEST](https://github.com/Wuhyun/CMB-BEST/tree/main) by Wuhyun Sohn, and [2LPTPNG](https://github.com/dsjamieson/2LPTPNG/tree/main) by Drew Jamieson (which itself derives from 2LPTIc and previous codebases) --- so please see those packages for the original implementations that enabled this work! The method implemented in `Aarambam` was introduced in Anbajagane & Lee (2025a) and Anbajagane & Lee (2025b). See `Attribution` section below for the requested citations if you use this code. Happy simulating!
 
 (The first two symbols of the logo are from the Tamil script. You can do a process of elimination using the English letters to guess what those symbols' sounds are ;) And thanks to [Emily Martsen](https://emartsen.github.io/) for advice on the logo design!)
+
+## Documentation
+
+I list a few examples below to get you started. More documentation is available [at readthedocs here](https://aarambam.readthedocs.io/en/latest/). Please contact me if you have any questions!
 
 ## Environment
 The python part of the code has a few dependencies --- namely `numpy`, `scipy`, `tqdm`, `joblib`, `cython` and `threadpoolctl`. The last one is more non-standard but is very helpful in managing oversubscription. I promise it is easy to install! The C-level code has its own dependencies, I list them below in the Installation instructions. You can install all of these from conda-forge:
