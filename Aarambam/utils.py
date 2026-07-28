@@ -2,7 +2,7 @@ import numpy as np, os, sys, gc
 import textwrap, glob, tqdm
 
 __all__ = ['DEFAULT_BASIS_CONFIG', 'DEFAULT_BASIS_INPUTS', 'DEFAULT_RESBASIS_CONFIG', 'DEFAULT_RESBASIS_INPUTS',
-           'make_config_basis', 'make_example_config_basis', 'make_example_config_resbasis', 
+           'make_config_basis', 'make_example_config_basis', 'make_example_config_resbasis',
            'collate_potential', 'camb2input', 'Decomposer']
 
 
@@ -346,92 +346,103 @@ def collate_potential(OutputDir):
     return out
 
 
-class Decomposer:
-    """
-    Bispectrum modal decomposition driver.
 
-    This class manages the setup and execution of a decomposition by combining
-    a physical model (e.g. a bispectrum template) with a modal basis expansion.
-    It constructs a hybrid class that inherits from both `Model` and `Basis`,
-    initializes it with the supplied arguments, runs the decomposition, and
-    optionally writes results to disk.
+class Decomposer:
+    """Unified driver for Legendre-modal and binned bispectrum decompositions.
+
+    Exactly one decomposition selector must be supplied:
+
+    * ``N_modes`` selects the Legendre/modal decomposition and additionally
+      requires ``ModeTol`` and ``MaxModeCount``.
+    * ``Binned_Nk`` selects the binned decomposition. ``Binned_filter`` chooses
+      the C-level interpolation scheme and defaults to
+      ``'hybrid_cubic_k3cubic'``.
 
     Parameters
     ----------
-    N_modes : int
-        Number of modes in the modal expansion.
     n_s : float
-        Scalar spectral index used in basis scaling.
+        Scalar spectral index used by either decomposition.
     Lbox : float
-        Side length of the simulation box in comoving units (e.g. Mpc/h).
+        Side length of the simulation box in comoving units.
     Nmax : int
-        Maximum index of modes to include.
-    ModeTol : float
-        Tolerance threshold for truncating modes.
-    MaxModeCount : int
-        Hard cutoff on the number of modes kept.
+        Maximum dimensionless wavenumber index.
+    N_modes : int, optional
+        Number of Legendre/modal basis modes. Supplying this selects the modal
+        decomposition.
+    ModeTol : float, optional
+        Modal truncation tolerance. Required when ``N_modes`` is supplied.
+    MaxModeCount : int, optional
+        Maximum number of retained modal terms. Required when ``N_modes`` is
+        supplied.
+    Binned_Nk : int, optional
+        Number of bins on each binned-kernel axis. Supplying this selects the
+        binned decomposition.
+    Binned_filter : str, optional
+        Binned interpolation/filter type. The supported values are those
+        accepted by ``BasicBinnedDecompose``, including ``'heaviside'``,
+        ``'hybrid_linear_k3linear'``, ``'hybrid_cubic_k3linear'``,
+        ``'hybrid_linear_k3cubic'`` and ``'hybrid_cubic_k3cubic'``.
     **kwargs : dict, optional
-        Extra keyword arguments passed through to the combined `Model` and
-        `Basis` classes when constructed.
-
-    Methods
-    -------
-    go(Model, Basis, outdir=None, **kwargs)
-        Run the decomposition by instantiating a combined class inheriting
-        from both `Model` and `Basis`. Returns the decomposition result, and
-        if `outdir` is provided, writes output using the instance’s `finalize`
-        method.
-
-    Notes
-    -----
-    * The `outdir` path must already exist; the code will raise an `AssertionError`
-      otherwise.
+        Model parameters and backend-specific settings forwarded to the
+        combined model/basis class.
 
     Examples
     --------
-    >>> dec = Decomposer(N_modes=50, n_s=0.965, Lbox=1000.0,
-    ...                  Nmax=30, ModeTol=1e-6, MaxModeCount=500)
-    >>> result = dec.go(Model=SomeBispectrumModel, Basis=PolynomialBasis)
-    >>> # Optionally save results to disk
-    >>> result = dec.go(Model=SomeBispectrumModel, Basis=PolynomialBasis,
-    ...                 outdir="./results")
+    Legendre/modal decomposition:
+
+    >>> dec = Decomposer(n_s = 0.965, Lbox = 1000.0, Nmax = 128,
+    ...                  N_modes = 50, ModeTol = 1e-6, MaxModeCount = 500)
+    >>> out = dec.go(Model = SomeBispectrumModel, Basis = BasicBasisDecompose)
+
+    Binned decomposition:
+
+    >>> dec = Decomposer(n_s = 0.965, Lbox = 1000.0, Nmax = 128,
+    ...                  Binned_Nk = 25)
+    >>> out = dec.go(Model = SomeBispectrumModel, Basis = BasicBinnedDecompose,
+    ...              outdir = './results')
     """
 
-    def __init__(self, N_modes, n_s, Lbox, Nmax, ModeTol, MaxModeCount, **kwargs):
-        
-        args = dict(N_modes = N_modes, n_s = n_s, Lbox = Lbox, Nmax = Nmax, 
-                    ModeTol = ModeTol, MaxModeCount = MaxModeCount)
-        args.update(**kwargs)
+    def __init__(self, n_s, Lbox, Nmax, N_modes = None, ModeTol = None, MaxModeCount = None, Binned_Nk = None, Binned_filter = 'hybrid_cubic_k3cubic', **kwargs):
+        use_legendre = N_modes is not None
+        use_binned   = Binned_Nk is not None
 
+        if use_legendre == use_binned:
+            raise ValueError('Supply exactly one of N_modes or Binned_Nk.')
+
+        args = dict(n_s = n_s, Lbox = Lbox, Nmax = Nmax)
+
+        if use_legendre:
+            if ModeTol is None or MaxModeCount is None:
+                raise ValueError('ModeTol and MaxModeCount are required when N_modes is supplied.')
+
+            args.update(N_modes = N_modes, ModeTol = ModeTol, MaxModeCount = MaxModeCount)
+            self.kind = 'legendre'
+        else:
+            if ModeTol is not None or MaxModeCount is not None:
+                raise ValueError('ModeTol and MaxModeCount apply only to the Legendre decomposition.')
+
+            args.update(Binned_Nk = Binned_Nk, Binned_filter = Binned_filter)
+            self.kind = 'binned'
+
+        args.update(**kwargs)
         self.args = args
 
+    @staticmethod
+    def _basis_kind(Basis):
+        defaults = getattr(Basis, 'DEFAULTS', {})
+        names    = [base.__name__.lower() for base in Basis.__mro__]
+
+        if 'Binned_Nk' in defaults or any('binned' in name for name in names):
+            return 'binned'
+        return 'legendre'
 
     def go(self, Model, Basis, outdir = None, **kwargs):
-        """
-        Run the modal decomposition for a chosen model and basis.
+        """Run the selected decomposition for a chosen model and basis."""
+        basis_kind = self._basis_kind(Basis)
+        if basis_kind != self.kind:
+            selector = 'Binned_Nk' if basis_kind == 'binned' else 'N_modes'
+            raise ValueError(f'{Basis.__name__} is a {basis_kind} basis; initialize Decomposer with {selector}.')
 
-        Parameters
-        ----------
-        Model : type
-            A class implementing the physical bispectrum/trispectrum model. See the
-            ``Aarambam.models`` module for examples.
-        Basis : type
-            A class implementing the modal basis expansion. This simply uses our modified
-            CMB-BEST formalism.
-        outdir : str, optional
-            Path to an existing directory where results should be written via
-            the model’s ``finalize`` method. If None (default), no files are written.
-        **kwargs : dict
-            Additional keyword arguments to override or supplement stored
-            parameters in ``self.args``. This is where all model parameters
-            are included.
-
-        Returns
-        -------
-        result : object
-            The output of the combined model-basis instance’s ``go()`` method.
-            The exact structure depends on the `Model` and `Basis` implementation.
-        """
         inpars = self.args.copy()
         inpars.update(**kwargs)
 
@@ -440,8 +451,7 @@ class Decomposer:
         result = instan.go()
 
         if outdir is not None:
-            assert os.path.exists(outdir), f"Path {outdir} does not exist"
+            assert os.path.exists(outdir), f'Path {outdir} does not exist'
             instan.finalize(result, directory = outdir)
 
         return result
-

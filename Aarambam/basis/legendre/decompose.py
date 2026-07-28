@@ -2,7 +2,7 @@ import os, sys, numpy as np, itertools
 from scipy import special
 from . import cmbbest as best
 
-class BasicBasisDecompose:
+class BasicLegendreDecompose:
     """
     Perform a modal decomposition of a theoretical bispectrum into a finite
     basis of separable templates.
