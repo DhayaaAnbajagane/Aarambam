@@ -17,6 +17,25 @@ There are a number of available commands. The main ones are for running the buil
 LPT executables. The rest are convenience functions to give example configs or
 cleanup output files.
 
+Aarambam-2LPT-Binned
+~~~~~~~~~~~~~~~~~
+
+The main cmdline executable for running the 2LPT code. Use it as
+
+.. code-block:: bash
+
+   Aarambam-2LPT-Binned <config>
+
+
+or for mpi-runs you can do
+
+.. code-block:: bash
+
+   mpirun -np <N> Aarambam-2LPT-Binned <config>
+
+An example config can be generated as ``Aarambam-make-example-config-binned --config_path <path>``
+
+
 Aarambam-2LPT-Basis
 ~~~~~~~~~~~~~~~~~
 
