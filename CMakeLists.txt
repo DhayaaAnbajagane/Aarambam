@@ -46,6 +46,21 @@ add_executable(2LPTResBasis
   ${RESBASIS_SRC_DIR}/nrsrc/trapzd.c
 )
 
+set(BINNED_SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR}/Aarambam/LPT/Binned/)
+add_executable(2LPTBinned
+  ${BINNED_SRC_DIR}/main.c
+  ${BINNED_SRC_DIR}/power.c
+  ${BINNED_SRC_DIR}/checkchoose.c
+  ${BINNED_SRC_DIR}/allvars.c
+  ${BINNED_SRC_DIR}/save.c
+  ${BINNED_SRC_DIR}/read_param.c
+  ${BINNED_SRC_DIR}/read_glass.c
+  ${BINNED_SRC_DIR}/nrsrc/nrutil.c
+  ${BINNED_SRC_DIR}/nrsrc/qromb.c
+  ${BINNED_SRC_DIR}/nrsrc/polint.c
+  ${BINNED_SRC_DIR}/nrsrc/trapzd.c
+)
+
 # --- Include paths ---
 # GSL
 if(DEFINED ENV{Aarambam_GSL_ROOT})
@@ -65,6 +80,7 @@ else()
 endif()
 target_include_directories(2LPTBasis    PRIVATE ${GSL_INCLUDE_DIR})
 target_include_directories(2LPTResBasis PRIVATE ${GSL_INCLUDE_DIR})
+target_include_directories(2LPTBinned   PRIVATE ${GSL_INCLUDE_DIR})
 set(GSL_LIB_DIR "${GSL_INCLUDE_DIR}/../lib" CACHE PATH "GSL library directory" FORCE)
 
 # FFTW2
@@ -82,6 +98,7 @@ find_path(FFTW2_INCLUDE_DIR
 )
 target_include_directories(2LPTBasis    PRIVATE ${FFTW2_INCLUDE_DIR})
 target_include_directories(2LPTResBasis PRIVATE ${FFTW2_INCLUDE_DIR})
+target_include_directories(2LPTBinned   PRIVATE ${FFTW2_INCLUDE_DIR})
 
 find_library(_FFTW2_LIB
   NAMES        fftw  dfftw
@@ -112,8 +129,9 @@ else()
 endif()
 
 # Local headers
-target_include_directories(2LPTBasis PRIVATE    ${BASIS_SRC_DIR}    ${BASIS_SRC_DIR}/nrsrs)
+target_include_directories(2LPTBasis    PRIVATE ${BASIS_SRC_DIR}    ${BASIS_SRC_DIR}/nrsrs)
 target_include_directories(2LPTResBasis PRIVATE ${RESBASIS_SRC_DIR} ${RESBASIS_SRC_DIR}/nrsrs)
+target_include_directories(2LPTBinned   PRIVATE ${BINNED_SRC_DIR}   ${BINNED_SRC_DIR}/nrsrs)
 
 # --- Preprocessor options (OPT / OPTIONS in the Makefile) ---
 # Default Makefile switches:
@@ -131,6 +149,14 @@ target_compile_definitions(2LPTResBasis PRIVATE
   # ONLY_ZA=1      # uncomment if you want this default ON
 )
 
+target_compile_definitions(2LPTBinned PRIVATE
+  NO64BITID=1
+  CORRECT_CIC=1
+  # PRODUCEGAS=1   # uncomment if you want this default ON
+  # ONLY_ZA=1      # uncomment if you want this default ON
+)
+
+
 # --- Link directories (LIBS part: -L...) ---
 target_link_directories(2LPTBasis PRIVATE
   ${OPENMPI_LIB_DIR}
@@ -138,6 +164,11 @@ target_link_directories(2LPTBasis PRIVATE
   ${FFTW2_LIB_DIR}
 )
 target_link_directories(2LPTResBasis PRIVATE
+  ${OPENMPI_LIB_DIR}
+  ${GSL_LIB_DIR}
+  ${FFTW2_LIB_DIR}
+)
+target_link_directories(2LPTBinned PRIVATE
   ${OPENMPI_LIB_DIR}
   ${GSL_LIB_DIR}
   ${FFTW2_LIB_DIR}
@@ -158,8 +189,16 @@ target_link_libraries(2LPTResBasis PRIVATE
   gsl gslcblas
 )
 
+target_link_libraries(2LPTBinned PRIVATE
+  m
+  mpi
+  drfftw_mpi dfftw_mpi drfftw dfftw
+  gsl gslcblas
+)
+
 install(TARGETS 2LPTBasis    RUNTIME DESTINATION Aarambam/bin)
 install(TARGETS 2LPTResBasis RUNTIME DESTINATION Aarambam/bin)
+install(TARGETS 2LPTBinned   RUNTIME DESTINATION Aarambam/bin)
 
 
 # ─── CMB-BEST Python Extension ──────────────────────────────────────────────
@@ -168,9 +207,9 @@ find_package(Python3 REQUIRED COMPONENTS Interpreter Development.Module NumPy)
 find_package(OpenMP)  # for -fopenmp
 
 # paths
-set(CMB_SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR}/Aarambam/basis)
+set(CMB_SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR}/Aarambam/basis/legendre)
 set(CMB_PYX    ${CMB_SRC_DIR}/cmbbest.pyx)
-set(CMB_C      ${CMAKE_CURRENT_BINARY_DIR}/Aarambam/basis/cmbbest.c)
+set(CMB_C      ${CMAKE_CURRENT_BINARY_DIR}/Aarambam/basis/legendre/cmbbest.c)
 
 # 1 generate cmbbest.c
 add_custom_command(
@@ -216,6 +255,6 @@ endif()
 
 # 4 install into your package
 install(TARGETS cmbbest
-  RUNTIME DESTINATION Aarambam/basis      # no-op on MODULE, but fine
-  LIBRARY DESTINATION Aarambam/basis      # .so goes here under site-packages/Aarambam/basis
+  RUNTIME DESTINATION Aarambam/basis/legendre      # no-op on MODULE, but fine
+  LIBRARY DESTINATION Aarambam/basis/legendre      # .so goes here under site-packages/Aarambam/basis
 )

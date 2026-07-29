@@ -1,3 +1,4 @@
-# Aarambam/basis/__init__.py
-from .cmbbest import *  # or import specific names you want to expose
-from .decompose import BasicBasisDecompose
+from . import legendre, binned
+
+from .legendre import BasicLegendreDecompose
+from .binned   import BasicBinnedDecompose

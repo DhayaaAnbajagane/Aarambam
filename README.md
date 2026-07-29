@@ -15,7 +15,7 @@
 
 `Aarambam` (_pronounced "Aah-rum-bum", named after the Tamil word for beginnings_) is a codebase for generating initial conditions (ICs) corresponding to arbitrary bispectrum templates. 
 
-It provides an end-to-end pipeline for generating the ICs of a N-body simulation given some analytic bispectrum template. The novelty in the codebase is performing a decomposition of arbitrary bispectra into separable functions, and then subsequently generating non-Gaussian initial conditions corresponding to these functions. `Aarambam` is a robust integration of two largely modified versions of existing methods --- [CMB-BEST](https://github.com/Wuhyun/CMB-BEST/tree/main) by Wuhyun Sohn, and [2LPTPNG](https://github.com/dsjamieson/2LPTPNG/tree/main) by Drew Jamieson (which itself derives from 2LPTIc and previous codebases) --- so please see those packages for the original implementations that enabled this work! The method implemented in `Aarambam` was introduced in Anbajagane & Lee (2025a) and Anbajagane & Lee (2025b). See `Attribution` section below for the requested citations if you use this code. Happy simulating!
+It provides an end-to-end pipeline for generating the ICs of a N-body simulation given some analytic bispectrum template. The novelty in the codebase is performing a decomposition of arbitrary bispectra into separable functions, and then subsequently generating non-Gaussian initial conditions corresponding to these functions. `Aarambam` provides multiple ways of decomposing the bispectrum, each method differing in the regime it is most applicable. The methods have been introduced over a series of different papers. See `Attribution` section below for the requested citations if you use this code. Happy simulating!
 
 (The first two symbols of the logo are from the Tamil script. You can do a process of elimination using the English letters to guess what those symbols' sounds are ;) And thanks to [Emily Martsen](https://emartsen.github.io/) for advice on the logo design!)
 
@@ -78,7 +78,7 @@ If you have trouble installing this, please contact Dhayaa (details below). I've
 
 ## Example
 
-We provide examples of how to use this code in [this notebook](examples/BasisDecomposition.ipynb) and [this python script](examples/MakeICs.py). I copy a snippet of the script below (you will need to fill in other pieces. Look at the scripts for details). For initial conditions with oscillations in the power spectra, see [this python script](examples/MakeICsRes.py), which largerly follows the structure of the code block below, with some minor differences.
+We provide examples of how to use this code in [this notebook](examples/BinnedBasisDecomposition.ipynb) and [this python script](examples/MakeICsBinned.py). See other notebooks/scripts in those directories for the other execution modes. I copy a snippet of the script below (you will need to fill in other pieces. Look at the scripts for details).
 
 ```python
 import Aarambam as Am
@@ -90,19 +90,19 @@ import numpy as np, subprocess as sp
 #format into those directories
 Unit   = Am.utils.Decomposer(N_modes = N_modes, n_s = n_s, Lbox = Lbox, Nmax = Nmax, 
                              ModeTol = ModeTol, MaxModeCount = MaxModeCount)
-coeffL = Unit.go(Am.models.Local,   Am.basis.BasicBasisDecompose, outdir = outdir)
-coeffS = Unit.go(Am.models.ScalarI, Am.basis.BasicBasisDecompose, mass = 1, outdir = outdir) #This will overwrite the previous call
+coeffL = Unit.go(Am.models.Local,   Am.binned.BasicBinnedDecompose, outdir = outdir)
+coeffS = Unit.go(Am.models.ScalarI, Am.binned.BasicBinnedDecompose, mass = 1, outdir = outdir) #This will overwrite the previous call
 
 #Use the helper function to make the config in the right format
 #and write it to dir. You will need to pass a bunch of
 #values into make_config
-CONFIG = Am.utils.make_config_basis(...)
+CONFIG = Am.utils.make_config_binned(...)
 with open(outdir + '/LPTconfig', 'w') as f: f.write(CONFIG)
 
 #Doing a pip install will provide you with executables in your env.
 #The Aarambam-2LPT-Basis one is the main LPT one for us. We run it with
 #subprocess just for simplicity. You could also run it from cmd line
-sp.run(f"mpirun -np {Nprocs} Aarambam-2LPT-Basis {outdir + '/LPTconfig'}", shell = True, env = os.environ)
+sp.run(f"mpirun -np {Nprocs} Aarambam-2LPT-Binned {outdir + '/LPTconfig'}", shell = True, env = os.environ)
 
 #Finally, here's a helpful executable to combine I/O from individual processes.
 sp.run(f"Aarambam-collate-potential --file_dir {outdir}", shell = True, env = os.environ)
@@ -110,7 +110,7 @@ sp.run(f"Aarambam-collate-potential --file_dir {outdir}", shell = True, env = os
 
 ## Attribution
 
-If you use the code or derivatives of it, please cite both of [Anbajagane & Lee 2025a](https://arxiv.org/abs/2409.03822) and [Anbajagane & Lee 2025b](https://arxiv.org/abs/2409.03822) who introduced and validated the code for a variety of models.
+If you use the legendre-based decomposition code or derivatives of it, please cite both of [Anbajagane & Lee 2025a](https://arxiv.org/abs/2409.03822) and [Anbajagane & Lee 2025b](https://arxiv.org/abs/2409.03822) who introduced and validated the code for a variety of models. If you use the binned bispectrum method, please cite [Anbajagane & Dalal 2026](https://arxiv.org/abs/2607.24939)
 
 ```bibtex
 @ARTICLE{Anbajagane:2025:NonlinearI,
@@ -141,4 +141,4 @@ archivePrefix = {arXiv},
 
 ## Contact
 
-Please contant Dhayaa Anbajagane (dhayaa at uchicago dot edu) for any questions on the pipeline.
+Please contant Dhayaa Anbajagane (dhayaacosmo at gmail dot com) for any questions on the pipeline.
