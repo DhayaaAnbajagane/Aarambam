@@ -46,7 +46,7 @@ if __name__ == '__main__':
     #Pass in the relevant model and decomposer. Pass any args the model requires.
     #And finally, if you pass in outdir, then the decomposed coeffs will be written out
     #in the format ready for running LPT!
-    coeff = Unit.go(Am.models.ScalarI, Am.basis.BasicBasisDecompose, mass = 1, outdir = outdir)
+    coeff = Unit.go(Am.models.ScalarI, Am.legendre.BasicLegendreDecompose, mass = 1, outdir = outdir)
 
     #Now make the LPT config file. This command is a utility that takes
     #in the arguments and puts it in the right text format

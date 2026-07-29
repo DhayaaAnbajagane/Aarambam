@@ -14,12 +14,54 @@ __all__ = ['BasicBinnedDecompose']
 
 
 class BasicBinnedDecompose:
-    """Decompose an Aarambam bispectrum into C-compatible binned kernel tables.
+    """Decompose a primordial bispectrum into C-compatible binned tables.
 
-    Edge placement is always roughness-adaptive in log(k), the adaptive target
-    is always the kernel, k1 and k2 always share identical edges, cell values
-    are always evaluated at geometric bin centers, and the kernel denominator is
-    always the mean of the three P_i P_j terms with A_phi = 1.
+    The class is intended to be combined with an Aarambam bispectrum model by
+    multiple inheritance. It evaluates the model bispectrum, shape function,
+    kernel denominator and quadratic kernel on a three-dimensional product grid,
+    then constructs the interpolation coefficients consumed by the binned PNG
+    initial-condition implementation.
+
+    Bin edges are placed adaptively in ``log(k)`` using the roughness of the
+    quadratic kernel. The first two kernel legs share the same edges, table
+    values are sampled at geometric bin centers, and the kernel is defined as
+
+    ``K = B / [(P1 P2 + P1 P3 + P2 P3) / 3]``
+
+    with a unit primordial-power amplitude.
+
+    Parameters
+    ----------
+    n_s : float
+        Scalar spectral index used to construct the primordial power spectrum,
+        ``P_phi(k) = k**(n_s - 4)``.
+    Lbox : float
+        Side length of the simulation box. When ``Binned_kmin`` is not supplied,
+        the minimum tabulated wavenumber is ``2 pi / Lbox``.
+    Nmax : int
+        Maximum dimensionless wavenumber index. When ``Binned_kmax`` is not
+        supplied, the maximum tabulated wavenumber is
+        ``(2 pi / Lbox) * Nmax``.
+    **kwargs
+        Model parameters and binned-backend options. Supported backend options
+        are listed in :attr:`DEFAULTS`.
+
+    Attributes
+    ----------
+    args : dict
+        Validated model and backend configuration.
+    logger : logging.Logger
+        Logger used for edge-generation, table-building and output messages.
+    _binned_output : dict
+        Most recent in-memory decomposition returned by :meth:`go`. This
+        attribute is created only after a successful call to :meth:`go` or
+        :meth:`load_binned_tables`.
+
+    Notes
+    -----
+    The class does not define a physical bispectrum model by itself. The combined
+    model class must provide either ``bispectrum(k1, k2, k3)`` or
+    ``raw_bispectrum(k1, k2, k3)``.
     """
 
     DEFAULTS = {
@@ -37,6 +79,33 @@ class BasicBinnedDecompose:
     }
 
     def __init__(self, n_s, Lbox, Nmax, **kwargs):
+        """Initialize the binned decomposition backend.
+
+        Parameters
+        ----------
+        n_s : float
+            Scalar spectral index entering ``P_phi(k) = k**(n_s - 4)``.
+        Lbox : float
+            Positive simulation-box side length.
+        Nmax : int
+            Positive maximum wavenumber index used to set the default upper
+            tabulation limit.
+        **kwargs
+            Model parameters and optional binned settings. Recognized binned
+            settings are ``Binned_Nk``, ``Binned_kmin``, ``Binned_kmax``,
+            ``Binned_filter``, ``Binned_hybrid_input_interpolator``,
+            ``Binned_hybrid_output_filter``, ``Binned_linear_coordinate``,
+            ``Binned_enforce_triangle``, ``Binned_center_triangle_only``,
+            ``Binned_progress`` and ``Binned_adaptive_pilot_N``.
+
+        Raises
+        ------
+        TypeError
+            If an unrecognized keyword beginning with ``Binned_`` is supplied.
+        ValueError
+            If the box size, maximum wavenumber index, bin count, adaptive pilot
+            resolution or interpolation settings are invalid.
+        """
         unknown = sorted(name for name in kwargs if name.startswith('Binned_') and name not in self.DEFAULTS)
         if unknown:
             raise TypeError(f'Unknown binned options: {unknown}.')
@@ -233,7 +302,45 @@ class BasicBinnedDecompose:
         }
 
     def go(self):
-        """Compute the binned decomposition and standard-limit comparisons."""
+        """Compute the binned decomposition and standard-limit comparisons.
+
+        The method generates the adaptive edges, samples all supported
+        quantities, constructs the interpolation coefficients and evaluates the
+        exact and reconstructed shape and kernel in squeezed, equilateral and
+        folded configurations. No files are written; use :meth:`finalize` to
+        serialize the returned tables.
+
+        Returns
+        -------
+        out : dict
+            In-memory binned decomposition containing: 
+
+            ``edges``
+                Tuple of the three bin-edge arrays.
+            ``K`` and ``K_coeff``
+                Kernel values at bin centers and their interpolation
+                coefficients.
+            ``auxiliary`` and ``auxiliary_coefficients``
+                Corresponding values and coefficients for the bispectrum ``B``,
+                denominator ``denom`` and shape function ``S``.
+            ``valid_center`` and ``valid_box``
+                Triangle-validity masks for bin centers and product cells.
+            ``filter_mode``, ``hybrid_input_interpolator`` and
+            ``hybrid_output_filter``
+                Normalized interpolation metadata.
+            ``K_original``, ``K_apprx``, ``S_original`` and ``S_apprx``
+                Arrays of shape ``(100, 3)`` containing exact and reconstructed
+                values in squeezed, equilateral and folded limits.
+            ``kbin``
+                The 100 logarithmically spaced wavenumbers used for those limit
+                comparisons.
+
+        Notes
+        -----
+        The returned dictionary is also attached to ``self._binned_output`` so
+        that :meth:`evaluate_binned_quantity` can be called without explicitly
+        passing ``out``.
+        """
         self.logger.info('Starting binned decomposition for %s.', self._model_name())
         out                      = self.generate_table(self.generate_edges())
         out['template']          = self._model_name()
@@ -244,7 +351,33 @@ class BasicBinnedDecompose:
         return out
 
     def finalize(self, out, directory):
-        """Write the complete C-readable B/K/D/S table set."""
+        """Write a completed decomposition to C-readable text tables.
+
+        Parameters
+        ----------
+        out : dict
+            Decomposition dictionary returned by :meth:`go` or reconstructed by
+            :meth:`load_binned_tables`. It must contain the bin edges, kernel
+            values and coefficients, validity masks, auxiliary ``B``, ``denom``
+            and ``S`` tables, and interpolation metadata expected by
+            :func:`write_outputs`.
+        directory : str or os.PathLike
+            Destination directory. Missing directories are created by the output
+            writer. Existing files with the standard ``BinnedKernel`` prefix are
+            replaced.
+
+        Returns
+        -------
+        None
+            The method writes the table files and logs their destination.
+
+        See Also
+        --------
+        go
+            Construct the in-memory decomposition.
+        load_binned_tables
+            Load previously written tables for interpolation.
+        """
         write_outputs(out, directory, self.args)
         self.logger.info('Binned kernel tables written to %s.', directory)
 

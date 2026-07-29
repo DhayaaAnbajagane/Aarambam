@@ -2,7 +2,9 @@ import numpy as np, os, sys, gc
 import textwrap, glob, tqdm
 
 __all__ = ['DEFAULT_BASIS_CONFIG', 'DEFAULT_BASIS_INPUTS', 'DEFAULT_RESBASIS_CONFIG', 'DEFAULT_RESBASIS_INPUTS',
-           'make_config_basis', 'make_example_config_basis', 'make_example_config_resbasis',
+           'DEFAULT_BINNED_CONFIG', 'DEFAULT_BINNED_INPUTS',
+           'make_config_basis', 'make_config_resbasis', 'make_config_binned',
+           'make_example_config_basis', 'make_example_config_resbasis', 'make_example_config_binned',
            'collate_potential', 'camb2input', 'Decomposer']
 
 
@@ -82,6 +84,82 @@ DEFAULT_RESBASIS_CONFIG = DEFAULT_RESBASIS_CONFIG.replace("0 #Fixed to 0 because
 
 DEFAULT_RESBASIS_INPUTS = DEFAULT_BASIS_INPUTS.copy()
 DEFAULT_RESBASIS_INPUTS.update(dict(Pk_A_res = 0.9, Pk_w_res = 2, Pk_phi_res = 0.0))
+
+
+
+DEFAULT_BINNED_CONFIG = """
+Nmesh                               %(Nmesh)d
+Nsample                             %(Nsample)d
+Nmax                                %(Nmax)d
+Box                                 %(Lbox)f
+FileBase                            %(FileBase)s
+OutputDir                           %(OutputDir)s
+GlassFile                           %(GlassFile)s 
+GlassTileFac                        %(GlassTileFac)d
+
+Seed                                %(seed)d
+
+
+Omega                               %(Om)f
+OmegaLambda                         %(Ode)f
+OmegaBaryon                         0.00000 #Doesn't really matter since we use the transfer function from CAMB
+OmegaDM_2ndSpecies                  0.00
+HubbleParam                         %(h)f
+Sigma8                              %(sigma8)f
+PrimordialIndex                     %(n_s)f
+Redshift                            %(z_ini)f
+Fnl                                 %(Fnl)f
+
+FixedAmplitude                      0
+PhaseFlip                           0
+SphereMode                          0
+SavePotentialField                  %(SavePotentialField)d
+
+WhichSpectrum                       0 #Fixed to 0 because we always want to use only the Transfer Function
+WhichTransfer                       2 #Fixed to 2 because we always want a tabulated Transfer function (from CAMB)
+
+FileWithInputSpectrum               ThisIsAFakeStringThatIsNeverUsed
+FileWithInputTransfer               %(TransferPath)s
+FileWithBinnedK1Edges               %(BinnedK1EdgesPath)s
+FileWithBinnedK2Edges               %(BinnedK2EdgesPath)s
+FileWithBinnedK3Edges               %(BinnedK3EdgesPath)s
+FileWithBinnedKernelValues          %(BinnedKernelValuesPath)s
+BinnedPNGFilter                     %(BinnedPNGFilterCode)d         #1,2,3 for top-hat/linear/cubic
+BinnedPNGOutputFilter               %(BinnedPNGOutputFilterCode)d   #1,2,3 for constant/linear/cubic
+BinnedPNGCoordinate                 2                               #1,2   for k/log(k). WE ONLY IMPLEMENT LOG(k) FOR NOW
+BinnedPNGUseInternalSymmetry        1                               #No reason to turn-off. Uses symmetry between k1, k2
+BinnedPNGCacheBlockSize             %(BinnedPNGCacheBlockSize)d #Cache to speed-up code, but increases memory usage by a factor of the block size
+
+NumFilesWrittenInParallel           %(NWriteoutProcesses)d
+
+InputSpectrum_UnitLength_in_cm      3.085678e24 #One Mpc in cm. This is fixed
+UnitLength_in_cm                    3.085678e24 #One Mpc in cm, units of  Pkdgrav (gadget uses kpc)
+UnitMass_in_g                       1.989e43
+UnitVelocity_in_cm_per_s            1e5
+
+ShapeGamma                          0.0    #Dont use this but it complains if I dont include it.
+WDM_On                              0
+WDM_Vtherm_On                       0
+WDM_PartMass_in_kev                 10.0
+"""
+
+DEFAULT_BINNED_INPUTS = dict(Nmesh = 256, Nsample = 256, Nmax = 256, Lbox = 512, FileBase = 'Aarambam_ics',
+                             OutputDir = os.environ['TMPDIR'],
+                             GlassFile = os.path.dirname(__file__) + "/defaults/dummy_glass_dmonly_64.dat",
+                             GlassTileFac = 4,
+                             seed = 42, Om = 0.3, Ode = 0.7, h = 0.7, sigma8 = 0.8, n_s = 0.96, z_ini = 49,
+                             Fnl = 100,
+                             TransferPath = os.path.dirname(__file__) + "/defaults/TransferFunctionConverted.dat",
+                             BinnedK1EdgesPath      = os.path.dirname(__file__) + "/defaults/BinnedKernel_k1_edges.txt",
+                             BinnedK2EdgesPath      = os.path.dirname(__file__) + "/defaults/BinnedKernel_k2_edges.txt",
+                             BinnedK3EdgesPath      = os.path.dirname(__file__) + "/defaults/BinnedKernel_k3_edges.txt",
+                             BinnedKernelValuesPath = os.path.dirname(__file__) + "/defaults/BinnedKernel_hybrid_values.txt",
+                             BinnedPNGFilterCode       = 3,
+                             BinnedPNGOutputFilterCode = 3,
+                             BinnedPNGCacheBlockSize   = 4,
+                             SavePotentialField = True, NWriteoutProcesses = os.cpu_count()
+                            )
+
 
 def make_config_basis(Nmesh, Nsample, Nmax, Lbox, FileBase, OutputDir, GlassFile, GlassTileFac,
                       seed, Om, Ode, h, sigma8, n_s, z_ini, Fnl, N_modes, TransferPath,
@@ -271,17 +349,120 @@ def make_config_resbasis(Nmesh, Nsample, Nmax, Lbox, FileBase, OutputDir, GlassF
     return textwrap.dedent(DEFAULT_RESBASIS_CONFIG % locals())
 
 
+def make_config_binned(Nmesh, Nsample, Nmax, Lbox, FileBase, OutputDir, GlassFile, GlassTileFac,
+                       seed, Om, Ode, h, sigma8, n_s, z_ini, Fnl, TransferPath,
+                       BinnedK1EdgesPath, BinnedK2EdgesPath, BinnedK3EdgesPath, BinnedKernelValuesPath,
+                       BinnedPNGFilterCode, BinnedPNGOutputFilterCode, BinnedPNGCacheBlockSize,
+                       SavePotentialField, NWriteoutProcesses):
+    """
+    Generate a configuration string for the binned-PNG initial-condition generator.
+
+    The returned configuration uses precomputed one-dimensional bin-edge tables
+    and a C-readable binned-kernel table produced by
+    ``BasicBinnedDecompose.finalize``. The interpolation codes supplied here must
+    agree with the filter used when that kernel table was generated.
+
+    Parameters
+    ----------
+    Nmesh : int
+        Number of mesh cells per dimension used for the density and potential grids.
+    Nsample : int
+        Fourier sampling size used by the initial-condition generator. The assumed
+        Nyquist wavenumber is ``2*pi/Lbox * Nsample/2``.
+    Nmax : int
+        Maximum dimensionless wavenumber index used by the generator. This is
+        normally set to ``Nmesh/2``.
+    Lbox : float
+        Side length of the simulation box in comoving Mpc/h.
+    FileBase : str
+        Base name for the generated initial-condition files.
+    OutputDir : str
+        Directory in which the generated files are written.
+    GlassFile : str
+        Path to the glass particle load.
+    GlassTileFac : int
+        Number of times the supplied glass is tiled along each dimension.
+    seed : int
+        Random seed used to generate the Gaussian phases.
+    Om : float
+        Matter density parameter :math:`\\Omega_m`.
+    Ode : float
+        Dark-energy density parameter :math:`\\Omega_\\Lambda`.
+    h : float
+        Dimensionless Hubble parameter.
+    sigma8 : float
+        Linear-theory normalization at 8 Mpc/h.
+    n_s : float
+        Scalar spectral index.
+    z_ini : float
+        Initial redshift.
+    Fnl : float
+        Primordial non-Gaussian amplitude.
+    TransferPath : str
+        Path to the tabulated CAMB/CLASS transfer function in Aarambam format.
+    BinnedK1EdgesPath : str
+        Path to ``BinnedKernel_k1_edges.txt``.
+    BinnedK2EdgesPath : str
+        Path to ``BinnedKernel_k2_edges.txt``.
+    BinnedK3EdgesPath : str
+        Path to ``BinnedKernel_k3_edges.txt``.
+    BinnedKernelValuesPath : str
+        Path to the C-readable kernel table. Should have format
+        ``BinnedKernel_values.txt`` for the top-hat filter and
+        ``BinnedKernel_hybrid_values.txt`` for a hybrid filter.
+    BinnedPNGFilterCode : int
+        Interpolation code on the internal ``k1`` and ``k2`` legs:
+        ``1`` for top-hat, ``2`` for linear, or ``3`` for cubic.
+    BinnedPNGOutputFilterCode : int
+        Cell-local interpolation code on the output ``k3`` leg:
+        ``1`` for constant, ``2`` for linear, or ``3`` for cubic.
+    BinnedPNGCacheBlockSize : int
+        Number of output modes cached. Larger
+        values improve speed at the cost of proportionally greater memory use.
+    SavePotentialField : int or bool
+        Whether to save the Gaussian and non-Gaussian potential fields.
+    NWriteoutProcesses : int
+        Number of processes used for parallel file output.
+
+    Returns
+    -------
+    str
+        Configuration text formatted using ``DEFAULT_BINNED_CONFIG``.
+
+    Examples
+    --------
+    >>> cfg = make_config_binned(
+    ...     Nmesh = 256, Nsample = 256, Nmax = 128, Lbox = 1000.0,
+    ...     FileBase = 'ICs', OutputDir = './output/',
+    ...     GlassFile = 'glass256.dat', GlassTileFac = 2,
+    ...     seed = 12345, Om = 0.3, Ode = 0.7, h = 0.7,
+    ...     sigma8 = 0.8, n_s = 0.965, z_ini = 49.0, Fnl = 100.0,
+    ...     TransferPath = 'TransferFunctionConverted.dat',
+    ...     BinnedK1EdgesPath = 'BinnedKernel_k1_edges.txt',
+    ...     BinnedK2EdgesPath = 'BinnedKernel_k2_edges.txt',
+    ...     BinnedK3EdgesPath = 'BinnedKernel_k3_edges.txt',
+    ...     BinnedKernelValuesPath = 'BinnedKernel_hybrid_values.txt',
+    ...     BinnedPNGFilterCode = 3, BinnedPNGOutputFilterCode = 3,
+    ...     BinnedPNGCacheBlockSize = 4,
+    ...     SavePotentialField = True, NWriteoutProcesses = 8,
+    ... )
+    """
+    return textwrap.dedent(DEFAULT_BINNED_CONFIG % locals())
+
+
 def make_example_config_basis():
-    """
-    Generate example config for the standard IC generator 
-    """
+    """Return an example configuration for the standard modal IC generator."""
     return make_config_basis(**DEFAULT_BASIS_INPUTS)
 
+
 def make_example_config_resbasis():
-    """
-    Generate example config for the P(k) + B(k) IC generator 
-    """
+    """Return an example configuration for the modal P(k) + B(k) IC generator."""
     return make_config_resbasis(**DEFAULT_RESBASIS_INPUTS)
+
+
+def make_example_config_binned():
+    """Return an example configuration for the binned-PNG IC generator."""
+    return make_config_binned(**DEFAULT_BINNED_INPUTS)
 
 
 def camb2input(path):

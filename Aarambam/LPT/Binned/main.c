@@ -31,6 +31,8 @@ int frequency_of_primes (int n) {
   return freq;
 }
 
+#define TIMED_DONE_COLUMN 54
+
 void print_timed_done(int n) {
   clock_t now = clock();
   double tot = ((double)(now - start_time)) / CLOCKS_PER_SEC;
@@ -52,6 +54,13 @@ void print_timed_done(int n) {
   return;
 }
 
+static void print_timed_done_aligned(int printed_chars) {
+  int indent = TIMED_DONE_COLUMN - printed_chars;
+  if(indent < 1)
+    indent = 1;
+  print_timed_done(indent);
+}
+
 void handle_signal(int signal) {
     // Handle the signal, clean up resources
     MPI_Finalize();
@@ -59,6 +68,7 @@ void handle_signal(int signal) {
 }
 
 int main(int argc, char **argv) {
+  int timed_chars = 0;
 
   MPI_Init(&argc, &argv);
   MPI_Comm_rank(MPI_COMM_WORLD, &ThisTask);
@@ -97,9 +107,9 @@ int main(int argc, char **argv) {
 
   displacement_fields();
 
-  if (ThisTask == 0) {printf("Writing initial conditions snapshot..."); fflush(stdout);};
+  if (ThisTask == 0) {timed_chars = printf("Writing initial conditions snapshot..."); fflush(stdout);}
   write_particle_data();
-  if (ThisTask == 0 ) print_timed_done(10);
+  if (ThisTask == 0) print_timed_done_aligned(timed_chars);
   if(NumPart)
     free(P);
   free_ffts();
@@ -399,10 +409,6 @@ static void bpng_read_and_broadcast_table(void)
       printf("Loaded hybrid binned PNG kernel table: Nk=(%d,%d,%d), input_filter=%d, output_filter=%d, coord=%d, coeff_count=%d\n",
              BPNG.nk[0], BPNG.nk[1], BPNG.nk[2],
              BPNG.input_filter, BPNG.output_filter, BPNG.coord_mode, BPNG.coeff_count);
-      printf("  k1 internal edges: %s\n", FileWithBinnedK1Edges);
-      printf("  k2 internal edges: %s\n", FileWithBinnedK2Edges);
-      printf("  k3 output edges:   %s\n", FileWithBinnedK3Edges);
-      printf("  values:            %s\n", FileWithBinnedKernelValues);
     }
 
   MPI_Bcast(BPNG.nk, 3, MPI_INT, 0, MPI_COMM_WORLD);
@@ -746,6 +752,7 @@ static void bpng_compute_non_gaussian_potential_symmetric_blocked(
     fftw_complex *c_tmp, fftw_real *p_tmp, int block_size)
 {
   int n, a0, b0, ia, ib, na, nb, la, lb, start_b;
+  int timed_chars = 0;
   fftw_real **acache, **bcache;
 
   n = BPNG.nk[0];
@@ -756,15 +763,16 @@ static void bpng_compute_non_gaussian_potential_symmetric_blocked(
     {
       na = block_size;
       if(a0 + na > n) na = n - a0;
-      acache = bpng_alloc_real_field_cache(na);
-      for(la = 0; la < na; la++)
-        bpng_fill_cached_real_field(acache[la], cpot, 0, a0 + la);
 
       if(ThisTask == 0)
         {
-          printf("  binned PNG internal block a=[%d,%d) of %d\n", a0, a0 + na, n);
+          timed_chars = printf("  binned PNG internal block a=[%d,%d) of %d...", a0, a0 + na, n);
           fflush(stdout);
         }
+
+      acache = bpng_alloc_real_field_cache(na);
+      for(la = 0; la < na; la++)
+        bpng_fill_cached_real_field(acache[la], cpot, 0, a0 + la);
 
       for(b0 = a0; b0 < n; b0 += block_size)
         {
@@ -799,7 +807,7 @@ static void bpng_compute_non_gaussian_potential_symmetric_blocked(
         }
 
       bpng_free_real_field_cache(acache, na);
-      if(ThisTask == 0) print_timed_done(4);
+      if(ThisTask == 0) print_timed_done_aligned(timed_chars);
     }
 }
 
@@ -851,6 +859,7 @@ static void bpng_convolve_and_accumulate_hybrid(
 static void bpng_compute_non_gaussian_potential(fftw_complex *cpot, long double *cpot_NG_re, long double *cpot_NG_im)
 {
   int ia, ib, ib_start, use_symmetry, cache_block;
+  int timed_chars = 0;
   uint64_t bytes = 0;
   fftw_complex *cf1, *cf2, *c_tmp;
   fftw_real *f1, *f2, *p_tmp;
@@ -912,7 +921,7 @@ static void bpng_compute_non_gaussian_potential(fftw_complex *cpot, long double 
     {
       if(ThisTask == 0)
         {
-          printf("  binned PNG internal k1 basis %d/%d\n", ia + 1, BPNG.nk[0]);
+          timed_chars = printf("  binned PNG internal k1 basis %d/%d...", ia + 1, BPNG.nk[0]);
           fflush(stdout);
         }
 
@@ -941,7 +950,7 @@ static void bpng_compute_non_gaussian_potential(fftw_complex *cpot, long double 
                                                   cpot_NG_re, cpot_NG_im, ia, ib, use_symmetry);
             }
         }
-      if(ThisTask == 0) print_timed_done(4);
+      if(ThisTask == 0) print_timed_done_aligned(timed_chars);
     }
 
   free(cf1);
@@ -965,6 +974,7 @@ void displacement_fields(void) {
   gsl_rng *random_generator;
   ptrdiff_t i, j, k, ii, jj, kk, axes;
   int n;
+  int timed_chars = 0;
   int sendTask, recvTask;
   double t_of_k, phig, Beta, twb;
   fftw_complex *(cpot);  /* For computing nongaussian fnl ic */
@@ -1054,7 +1064,7 @@ void displacement_fields(void) {
     }
 
 
-  if (ThisTask == 0) {printf("Setting Gaussian potential..."); fflush(stdout);};
+  if (ThisTask == 0) {timed_chars = printf("Setting Gaussian potential..."); fflush(stdout);}
 
   bytes=0; /*initialize*/
   cpot = (fftw_complex *) malloc(sizeof(fftw_real) * TotalSizePlusAdditional);
@@ -1069,32 +1079,10 @@ void displacement_fields(void) {
 
   memset(cpot_NG_re, 0, sizeof(long double) * TotalSizePlusAdditional);
   memset(cpot_NG_im, 0, sizeof(long double) * TotalSizePlusAdditional);
-
-
-  /* first, clean the cpot array */
-  // for(i = 0; i < Local_nx; i++)
-  //   for(j = 0; j < Nmesh; j++)
-  //     for(k = 0; k <= Nmesh / 2; k++)
-  //         {
-  //           cpot[(i * Nmesh + j) * (Nmesh / 2 + 1) + k].re = 0;
-  //           cpot[(i * Nmesh + j) * (Nmesh / 2 + 1) + k].im = 0;
-
-
-  //         }
-
   memset(cpot, 0, sizeof(fftw_real) * TotalSizePlusAdditional);
 
   /* Ho in units of UnitLength_in_cm and c=1, i.e., internal units so far  */
-  /* Beta = 3/2 H(z)^2 a^3 Om(a) / D0 = 3/2 Ho^2 Om0 / D0 at redshift z = 0.0 */ 
-  Beta = 1.5 * Omega / (2998. * 2998. / UnitLength_in_cm / UnitLength_in_cm * 3.085678e24 * 3.085678e24 ) / D0 ;     
-
-  if(ThisTask == 0){
-      printf("BETA: %e \n", Beta);
-      printf("UnitLength_in_cm: %e \n", UnitLength_in_cm);   
-      printf("D0: %e \n", D0);
-      printf("Anorm: %e \n", Anorm);   
-  }
-  
+  Beta = 1.5 * Omega / (2998. * 2998. / UnitLength_in_cm / UnitLength_in_cm * 3.085678e24 * 3.085678e24 ) / D0 ;  
   
   for(i = 0; i < Nmesh; i++)
     {
@@ -1240,7 +1228,7 @@ void displacement_fields(void) {
         }
     }
 
- if (ThisTask == 0 ) print_timed_done(19);
+ if (ThisTask == 0) print_timed_done_aligned(timed_chars);
  /*** For non-local models it is important to keep all factors of SQRT(-1) as done below ***/
  /*** Notice also that there is a minus to convert from Bardeen to gravitational potential ***/
 
@@ -1309,7 +1297,7 @@ void displacement_fields(void) {
 
 MPI_Barrier(MPI_COMM_WORLD);
     
-if (ThisTask == 0) {printf("Writing potential to disc..."); fflush(stdout);};
+if (ThisTask == 0) {timed_chars = printf("Writing potential to disc..."); fflush(stdout);}
 rfftwnd_mpi(Inverse_plan, 1, pot, Workspace, FFTW_NORMAL_ORDER);
 if(SavePotentialField==1) write_phi(pot, 1);
 MPI_Barrier(MPI_COMM_WORLD);   
@@ -1327,10 +1315,10 @@ for(ii = 0; ii < Local_nx; ii++){
       }
     }
   }
-if (ThisTask == 0 ) print_timed_done(20);
+if (ThisTask == 0) print_timed_done_aligned(timed_chars);
 
 MPI_Barrier(MPI_COMM_WORLD);
-if (ThisTask == 0) {printf("Computing gradient of non-Gaussian potential..."); fflush(stdout);};
+if (ThisTask == 0) {timed_chars = printf("Computing gradient of non-Gaussian potential..."); fflush(stdout);}
 
 /*****  Now 2LPT ****/
 
@@ -1400,14 +1388,14 @@ ASSERT_ALLOC(cdisp[0] && cdisp[1] && cdisp[2]);
 
   free(cpot);
 
-  if (ThisTask == 0 ) print_timed_done(1);
+  if (ThisTask == 0) print_timed_done_aligned(timed_chars);
 
 
        MPI_Barrier(MPI_COMM_WORLD);
  
       /* Compute displacement gradient */
 
-      if (ThisTask == 0) {printf("Computing 2LPT potential..."); fflush(stdout);};
+      if (ThisTask == 0) {timed_chars = printf("Computing 2LPT potential..."); fflush(stdout);}
 
       for(i = 0; i < 6; i++)
 	{
@@ -1611,8 +1599,8 @@ ASSERT_ALLOC(cdisp[0] && cdisp[1] && cdisp[2]);
 	    }
 	}
 
-      if (ThisTask == 0 ) print_timed_done(21);
-      if (ThisTask == 0) {printf("Computing displacements and velocitites..."); fflush(stdout);};
+      if (ThisTask == 0) print_timed_done_aligned(timed_chars);
+      if (ThisTask == 0) {timed_chars = printf("Computing displacements and velocitites..."); fflush(stdout);}
 
       /* read-out displacements */
 
@@ -1696,7 +1684,7 @@ ASSERT_ALLOC(cdisp[0] && cdisp[1] && cdisp[2]);
 	}
     }
  
-      if (ThisTask == 0 ) print_timed_done(6);
+      if (ThisTask == 0) print_timed_done_aligned(timed_chars);
 
   for(axes = 0; axes < 3; axes++) free(cdisp[axes]);
   for(axes = 0; axes < 3; axes++) free(cdisp2[axes]);
