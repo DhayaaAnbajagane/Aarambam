@@ -251,6 +251,6 @@ class SenatoreEFT2:
         k3 = np.power(k3, (4 - self.args['n_s'])/3)
         
         S1 = 27 / np.power(k1 + k2 + k3, 3)
-        B  = S1 / (k1*k2*k3) 
+        B  = S1 / (k1*k2*k3) * 1/6 #Fully symmetric, so 1/6 for the permutation sum
 
         return B
