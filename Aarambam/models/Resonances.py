@@ -1,5 +1,7 @@
 import numpy as np
 
+__all__ = ['LogResonance', 'LinearResonance', 'K2cosResonance', 'KsinResonance', 'NBDsin']
+
 class LogResonance:
     """
     Logarithmic oscillations in the bispectrum, i.e. oscillations in :math:`\\log k`.
