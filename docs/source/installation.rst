@@ -50,6 +50,28 @@ paths).
    export Aarambam_GSL_ROOT=/path/to/gsl           # contains include/gsl/ and lib/ (or lib64/)
    export Aarambam_OPENMPI_ROOT=/path/to/openmpi   # contains lib/libmpi.so
 
+Snapshots use 32-bit particle IDs by default, which allows at most :math:`2^{31}-1` particles
+(the executables stop with a message beyond that). For larger runs, build with 64-bit IDs:
+
+.. code-block:: bash
+
+   export Aarambam_64BIT_IDS=ON    # then pip install as usual
+
+The C sources of the 2LPT executables live in ``src/lpt`` (``common/`` shared by both methods,
+``modal/`` and ``binned/``). They are compiled into ``Aarambam/bin/2LPTBasis`` and
+``Aarambam/bin/2LPTBinned`` and are not shipped in the wheel.
+
+Running the tests
+-----------------
+
+.. code-block:: bash
+
+   python -m pytest tests                                                   # tests marked mpi skip without the executables
+   AARAMBAM_LPT_BIN=/path/to/Aarambam/bin python -m pytest tests -m mpi     # 32^3 runs, ~10 s
+
+``tests/large/run_large_tests.py`` runs larger rank-independence checks and refuses to start on a
+busy node.
+
 Installing FFTW2
 ----------------
 

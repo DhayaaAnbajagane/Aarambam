@@ -38,3 +38,20 @@ Grid sizes
   ``Nsample/2``. Using ``Nmesh >= 3/2 Nsample`` keeps the aliased power of those
   products (and the Nyquist planes) out of the sampled modes; ``Nmesh = Nsample`` runs
   but is not alias-free.
+
+Size limits
+-----------
+
+The 2LPT executables use FFTW2 and the Gadget-1 snapshot format, which limit some sizes to
+32-bit integers. They check these limits at startup and stop with a message instead of
+silently overflowing:
+
+* Each MPI rank's FFT slab, ``Local_nx * Nmesh * 2 (Nmesh/2 + 1)`` reals, must stay below
+  :math:`2^{31}` (FFTW2's own ``int`` sizes). Use more ranks for large ``Nmesh``.
+* Each rank writes one snapshot file, whose position block (12 bytes per particle) must fit a
+  4-byte block marker, i.e. fewer than about 179 million particles per rank.
+* Particle IDs are 32-bit by default, so at most :math:`2^{31}-1` particles in total
+  (about :math:`1290^3`). Build with ``Aarambam_64BIT_IDS=ON`` (see :doc:`installation`) to write
+  8-byte IDs; the code reading the snapshots must then expect 64-bit IDs.
+
+Grid indices and the particle gather are 64-bit, so these are the only limits.

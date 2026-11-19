@@ -7,7 +7,7 @@
 <p>&nbsp;</p>
 <p>&nbsp;</p>
 
-[![License](https://img.shields.io/badge/license-GPL-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
+[![License](https://img.shields.io/badge/license-GPL--3.0-blue.svg)](LICENSE)
 [![Python Version](https://img.shields.io/badge/python-3.9%2B-blue.svg)](https://www.python.org/downloads/)
 [![Documentation Status](https://img.shields.io/readthedocs/aarambam?color=blue)](https://aarambam.readthedocs.io/en/latest)
 
@@ -100,13 +100,13 @@ CONFIG = Am.utils.make_config_binned(...)
 with open(outdir + '/LPTconfig', 'w') as f: f.write(CONFIG)
 
 #Doing a pip install will provide you with executables in your env.
-#Aarambam-2LPT-Binned is the one that reads the binned tables written above
-#(Aarambam-2LPT-Basis / -ResBasis read the Legendre ones). We run it with
+#'aarambam 2lpt binned' runs the executable that reads the binned tables written above
+#('aarambam 2lpt basis' / 'resbasis' read the Legendre ones). We run it with
 #subprocess just for simplicity. You could also run it from cmd line
-sp.run(f"mpirun -np {Nprocs} Aarambam-2LPT-Binned {outdir + '/LPTconfig'}", shell = True, env = os.environ)
+sp.run(f"mpirun -np {Nprocs} aarambam 2lpt binned {outdir + '/LPTconfig'}", shell = True, env = os.environ)
 
 #Finally, here's a helpful executable to combine I/O from individual processes.
-sp.run(f"Aarambam-collate-potential --file_dir {outdir}", shell = True, env = os.environ)
+sp.run(f"aarambam collate --file_dir {outdir}", shell = True, env = os.environ)
 ```
 
 ## Attribution
