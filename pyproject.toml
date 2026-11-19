@@ -2,7 +2,7 @@
 requires = [
   "scikit-build-core>=0.9",
   "Cython>=3.0",
-  "numpy>=1.22",        # if your Cython uses NumPy; drop if not
+  "numpy>=1.22",        # the Cython extension compiles against NumPy
 ]
 build-backend = "scikit_build_core.build"
 
@@ -14,6 +14,13 @@ readme = "README.md"
 requires-python = ">=3.9"
 license = { text = "GPL-3.0-or-later" }
 authors = [{ name = "Dhayaa" }]
+dependencies = [
+  "numpy>=1.22",
+  "scipy>=1.12",        # cg(rtol=) in basis/legendre/cmbbest.pyx
+  "tqdm",
+  "joblib",
+  "threadpoolctl",
+]
 
 [project.scripts]
 Aarambam-2LPT-Basis    = "Aarambam.LPT.Basis.cli:main"
