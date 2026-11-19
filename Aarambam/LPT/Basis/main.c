@@ -14,7 +14,7 @@
 #include <assert.h>
 
 #define ASSERT_ALLOC(cond) {                                                                                  \
-  if(!cond)                                                                                                   \
+  if(!(cond))                                                                                                 \
     {                                                                                                         \
       printf("failed to allocate %g Mbyte on Task %d\n", bytes / (1024.0 * 1024.0), ThisTask);                \
       printf("bailing out.\n");                                                                               \
