@@ -19,7 +19,7 @@ set(CMAKE_C_EXTENSIONS ON)           # => gnu99, like GCC default in 2LPTPNG
 add_compile_options(-O3 -Wall -g)
 
 # --- Sources (OBJS without .o) ---
-set(BASIS_SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR}/Aarambam/LPT/Basis/)
+set(BASIS_SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR}/src/lpt/basis)
 add_executable(2LPTBasis
   ${BASIS_SRC_DIR}/main.c
   ${BASIS_SRC_DIR}/power.c
@@ -34,7 +34,7 @@ add_executable(2LPTBasis
   ${BASIS_SRC_DIR}/nrsrc/trapzd.c
 )
 
-set(RESBASIS_SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR}/Aarambam/LPT/ResBasis/)
+set(RESBASIS_SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR}/src/lpt/resbasis)
 add_executable(2LPTResBasis
   ${RESBASIS_SRC_DIR}/main.c
   ${RESBASIS_SRC_DIR}/power.c
@@ -49,7 +49,7 @@ add_executable(2LPTResBasis
   ${RESBASIS_SRC_DIR}/nrsrc/trapzd.c
 )
 
-set(BINNED_SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR}/Aarambam/LPT/Binned/)
+set(BINNED_SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR}/src/lpt/binned)
 add_executable(2LPTBinned
   ${BINNED_SRC_DIR}/main.c
   ${BINNED_SRC_DIR}/power.c
