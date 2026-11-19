@@ -60,6 +60,7 @@ class BasicLegendreDecompose:
         -------
         dict
             A dictionary containing:
+
             - `S_original` : ndarray
               Original bispectrum evaluated on sample configurations.
             - `S_apprx` : ndarray
@@ -99,6 +100,7 @@ class BasicLegendreDecompose:
         -------
         dict
             Dictionary containing:
+
             - ``S_original`` : ndarray
               Original bispectrum shape values.
             - ``S_apprx`` : ndarray
@@ -184,9 +186,10 @@ class BasicLegendreDecompose:
         -------
         dict
             A dictionary with key ``AiTable`` containing an array of shape
-            (N_modes, 3). Each row contains:
-            - mode index
-            - coefficient for Ai
+            (N_modes, 3). Row p contains:
+
+            - the Legendre order p (the C code uses row N - 1 for basis mode N)
+            - x0 = P_p(kbar(k = 0)), the constant subtracted from the Legendre mode
             - coefficient for Aj (always zero here and never used in the actual analysis/papers)
         """
         scale = (4 - self.args['n_s'])/3
@@ -311,7 +314,7 @@ class BasicLegendreDecompose:
         Notes
         -----
         - Writes ``AlphaTable.dat`` with columns (p1, p2, p3, alpha).
-        - Writes ``AiTable.dat`` with columns (mode_index, x0, x1).
+        - Writes ``AiTable.dat`` with columns (p, x0, x1), p the Legendre order (x1 is unused).
         """
         
         #Write it all out into disk

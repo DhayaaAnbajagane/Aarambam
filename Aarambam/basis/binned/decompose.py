@@ -42,7 +42,7 @@ class BasicBinnedDecompose:
         Maximum dimensionless wavenumber index. When ``Binned_kmax`` is not
         supplied, the maximum tabulated wavenumber is
         ``(2 pi / Lbox) * Nmax``.
-    **kwargs
+    ``**kwargs``
         Model parameters and binned-backend options. Supported backend options
         are listed in :attr:`DEFAULTS`.
 
@@ -90,7 +90,7 @@ class BasicBinnedDecompose:
         Nmax : int
             Positive maximum wavenumber index used to set the default upper
             tabulation limit.
-        **kwargs
+        ``**kwargs``
             Model parameters and optional binned settings. Recognized binned
             settings are ``Binned_Nk``, ``Binned_kmin``, ``Binned_kmax``,
             ``Binned_filter``, ``Binned_hybrid_input_interpolator``,
@@ -124,11 +124,11 @@ class BasicBinnedDecompose:
 
     def _validate_settings(self):
         if self.args.get('n_s') is None:
-            raise ValueError('n_s is required for BinnedBasisDecompose.')
+            raise ValueError('n_s is required for BasicBinnedDecompose.')
         if self.args.get('Lbox') is None or float(self.args['Lbox']) <= 0:
-            raise ValueError('Lbox must be positive for BinnedBasisDecompose.')
+            raise ValueError('Lbox must be positive for BasicBinnedDecompose.')
         if self.args.get('Nmax') is None or int(self.args['Nmax']) <= 0:
-            raise ValueError('Nmax must be positive for BinnedBasisDecompose.')
+            raise ValueError('Nmax must be positive for BasicBinnedDecompose.')
         if int(self.args['Binned_Nk']) <= 0:
             raise ValueError('Binned_Nk must be positive.')
         if int(self.args['Binned_adaptive_pilot_N']) < 4:
@@ -325,8 +325,7 @@ class BasicBinnedDecompose:
                 denominator ``denom`` and shape function ``S``.
             ``valid_center`` and ``valid_box``
                 Triangle-validity masks for bin centers and product cells.
-            ``filter_mode``, ``hybrid_input_interpolator`` and
-            ``hybrid_output_filter``
+            ``filter_mode``, ``hybrid_input_interpolator`` and ``hybrid_output_filter``
                 Normalized interpolation metadata.
             ``K_original``, ``K_apprx``, ``S_original`` and ``S_apprx``
                 Arrays of shape ``(100, 3)`` containing exact and reconstructed

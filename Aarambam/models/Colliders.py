@@ -310,7 +310,7 @@ class MultiSpeedCollider:
     - c2 : float
         Same as c1 but for the second leg of the interaction.
     - c3 : float
-        Same as c1 but for the second leg of the interaction.
+        Same as c1 but for the third leg of the interaction.
     """
     def raw_bispectrum(self, k1, k2, k3):
         

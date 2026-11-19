@@ -538,7 +538,8 @@ void displacement_fields(void) {
 
  if (ThisTask == 0 ) print_timed_done(25);
  /*** For non-local models it is important to keep all factors of SQRT(-1) as done below ***/
- /*** Notice also that there is a minus to convert from Bardeen to gravitational potential ***/
+ /*** No sign flip is applied to the NG term: it is added to the Gaussian potential as is ***/
+ /*** (2LPTPNG noted a minus here to convert from Bardeen to gravitational potential)   ***/
 
   if (ThisTask == 0) {printf("Computing Legendre Basis non-Gaussian potential...\n"); fflush(stdout);};
 
@@ -895,7 +896,7 @@ void displacement_fields(void) {
   
   //Now need to include the extra templates for cancelling divergent terms :P
    
-  //Free four of the fields, since we won't use them anymore
+  //Free six of the fields (2..7), since we won't use them anymore
   for(N = 2; N < 8; N++) free(cfields[N]);
   
   for(N_i = 0; N_i <= 3; N_i++){
@@ -1053,7 +1054,7 @@ void displacement_fields(void) {
                       fnl_fac = 0;
                       
                       
-                      //First handle the s_012 and t_012 piece. 
+                      //First handle the t_012 piece (cancels the divergent (0,1,2) term). 
                       {
                       if ( (N_i == 0) && (N_j == 1) ) { //Subtract from the original kernel
                           fnl_fac += -AlphaTable[0][1][2] * t_012 * pow(kmag1, (4 - PrimordialIndex)/3 * (2 - 3.0));
@@ -1090,7 +1091,7 @@ void displacement_fields(void) {
 
           coord = (ii * Nmesh + j) * (Nmesh / 2 + 1) + k;
 
-          //One factor of nmesh3 due to the FFT from the save potential step above
+          //Copy the long-double accumulator into the FFTW complex array
           cpot_NG[coord].re = cpot_NG_re[coord]; 
           cpot_NG[coord].im = cpot_NG_im[coord];           
       }

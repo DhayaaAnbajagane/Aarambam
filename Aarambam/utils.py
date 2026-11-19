@@ -183,13 +183,15 @@ def make_config_basis(Nmesh, Nsample, Nmax, Lbox, FileBase, OutputDir, GlassFile
         Ntot =  Nsample^3, where Ntot is the total number of particles
     Nmax : int
         Maximum wavenumber index or mode cutoff used in the modal expansion. In units of
-        the fundamental frequency of the box. Normally set it to Nmesh/2 (the nyquist scale)
+        the fundamental frequency of the box. Must be >= Nsample (the C code asserts this);
+        normally set it equal to Nsample.
     Lbox : float
         Side length of the simulation box in comoving units (e.g. Mpc/h).
     FileBase : str
         Base name for all output files
     OutputDir : str
-        Directory where output files will be written.
+        Directory where output files will be written. The defaults use
+        ``$TMPDIR``, or ``tempfile.gettempdir()`` if it is unset.
     GlassFile : str
         Path to the glass file used to generate the initial particle load. Aarambam provides a default.
     GlassTileFac : int
@@ -222,7 +224,8 @@ def make_config_basis(Nmesh, Nsample, Nmax, Lbox, FileBase, OutputDir, GlassFile
     SavePotentialField : int
         Flag (0 or 1) indicating whether to save the potential field to disk.
     NWriteoutProcesses : int
-        Number of processes used for writing output files in parallel.
+        Written as ``NumFilesWrittenInParallel``. Kept for config compatibility: the C code
+        writes all files from task 0 and does not use it. Default 1.
 
     Returns
     -------
@@ -233,14 +236,14 @@ def make_config_basis(Nmesh, Nsample, Nmax, Lbox, FileBase, OutputDir, GlassFile
     Examples
     --------
     >>> cfg = make_config_basis(
-    ...     Nmesh=256, Nsample=256, Nmax=30, Lbox=1000.0,
+    ...     Nmesh=384, Nsample=256, Nmax=256, Lbox=1000.0,
     ...     FileBase="ICs", OutputDir="./output/",
     ...     GlassFile="glass256.dat", GlassTileFac=2,
     ...     seed=12345, Om=0.3, Ode=0.7, h=0.7,
     ...     sigma8=0.8, n_s=0.965, z_ini=99.0,
     ...     Fnl=10.0, N_modes=50,
     ...     TransferPath="transfer.dat", AlphaPath="alpha.dat", AiPath="ai.dat",
-    ...     SavePotentialField=1, NWriteoutProcesses=4
+    ...     SavePotentialField=1, NWriteoutProcesses=1
     ... )
     >>> print(cfg)  # prints the beginning of the config file
     """
@@ -272,13 +275,15 @@ def make_config_resbasis(Nmesh, Nsample, Nmax, Lbox, FileBase, OutputDir, GlassF
         Ntot =  Nsample^3, where Ntot is the total number of particles
     Nmax : int
         Maximum wavenumber index or mode cutoff used in the modal expansion. In units of
-        the fundamental frequency of the box. Normally set it to Nmesh/2 (the nyquist scale)
+        the fundamental frequency of the box. Must be >= Nsample (the C code asserts this);
+        normally set it equal to Nsample.
     Lbox : float
         Side length of the simulation box in comoving units (e.g. Mpc/h).
     FileBase : str
         Base name for all output files
     OutputDir : str
-        Directory where output files will be written.
+        Directory where output files will be written. The defaults use
+        ``$TMPDIR``, or ``tempfile.gettempdir()`` if it is unset.
     GlassFile : str
         Path to the glass file used to generate the initial particle load. Aarambam provides a default.
     GlassTileFac : int
@@ -311,7 +316,8 @@ def make_config_resbasis(Nmesh, Nsample, Nmax, Lbox, FileBase, OutputDir, GlassF
     SavePotentialField : int
         Flag (0 or 1) indicating whether to save the potential field to disk.
     NWriteoutProcesses : int
-        Number of processes used for writing output files in parallel.
+        Written as ``NumFilesWrittenInParallel``. Kept for config compatibility: the C code
+        writes all files from task 0 and does not use it. Default 1.
     Pk_A_res : float
         Amplitude of the power spectrum oscillations
     Pk_w_res : float
@@ -321,26 +327,26 @@ def make_config_resbasis(Nmesh, Nsample, Nmax, Lbox, FileBase, OutputDir, GlassF
     Pk_mode : int
         Control flag for the different P(k) oscillation options:
             0 - No oscillations
-            1 - Oscillations in :math:``k``.
-            2 - Oscillations in :math:``\\log k``.
+            1 - Oscillations in :math:`k`.
+            2 - Oscillations in :math:`\\log k`.
 
     Returns
     -------
     str
         A configuration file string with all placeholders filled by the given parameters.
-        The string is formatted according to ``DEFAULT_BASIS_CONFIG``.
+        The string is formatted according to ``DEFAULT_RESBASIS_CONFIG``.
 
     Examples
     --------
-    >>> cfg = make_config_basis(
-    ...     Nmesh=256, Nsample=256, Nmax=30, Lbox=1000.0,
+    >>> cfg = make_config_resbasis(
+    ...     Nmesh=384, Nsample=256, Nmax=256, Lbox=1000.0,
     ...     FileBase="ICs", OutputDir="./output/",
     ...     GlassFile="glass256.dat", GlassTileFac=2,
     ...     seed=12345, Om=0.3, Ode=0.7, h=0.7,
     ...     sigma8=0.8, n_s=0.965, z_ini=99.0,
     ...     Fnl=10.0, N_modes=50,
     ...     TransferPath="transfer.dat", AlphaPath="alpha.dat", AiPath="ai.dat",
-    ...     SavePotentialField=1, NWriteoutProcesses=4,
+    ...     SavePotentialField=1, NWriteoutProcesses=1,
     ...     Pk_A_res = 0.8, Pk_w_res = 3, Pk_phi_res = 0, Pk_mode = 1
     ... )
     >>> print(cfg)  # prints the beginning of the config file
@@ -370,14 +376,15 @@ def make_config_binned(Nmesh, Nsample, Nmax, Lbox, FileBase, OutputDir, GlassFil
         Fourier sampling size used by the initial-condition generator. The assumed
         Nyquist wavenumber is ``2*pi/Lbox * Nsample/2``.
     Nmax : int
-        Maximum dimensionless wavenumber index used by the generator. This is
-        normally set to ``Nmesh/2``.
+        Maximum dimensionless wavenumber index used by the generator. Must be
+        >= ``Nsample`` (the C code asserts this); normally set equal to ``Nsample``.
     Lbox : float
         Side length of the simulation box in comoving Mpc/h.
     FileBase : str
         Base name for the generated initial-condition files.
     OutputDir : str
-        Directory in which the generated files are written.
+        Directory in which the generated files are written. The defaults use
+        ``$TMPDIR``, or ``tempfile.gettempdir()`` if it is unset.
     GlassFile : str
         Path to the glass particle load.
     GlassTileFac : int
@@ -417,12 +424,14 @@ def make_config_binned(Nmesh, Nsample, Nmax, Lbox, FileBase, OutputDir, GlassFil
         Cell-local interpolation code on the output ``k3`` leg:
         ``1`` for constant, ``2`` for linear, or ``3`` for cubic.
     BinnedPNGCacheBlockSize : int
-        Number of output modes cached. Larger
-        values improve speed at the cost of proportionally greater memory use.
+        Number of filtered k1 (and k2) real-space basis fields kept in memory per block
+        when the k1 <-> k2 symmetry is used; 0 disables the blocked path. Larger values
+        cut repeated FFTs at the cost of roughly that many extra grids of memory.
     SavePotentialField : int or bool
         Whether to save the Gaussian and non-Gaussian potential fields.
     NWriteoutProcesses : int
-        Number of processes used for parallel file output.
+        Written as ``NumFilesWrittenInParallel``. Kept for config compatibility: the C code
+        writes all files from task 0 and does not use it. Default 1.
 
     Returns
     -------
@@ -432,7 +441,7 @@ def make_config_binned(Nmesh, Nsample, Nmax, Lbox, FileBase, OutputDir, GlassFil
     Examples
     --------
     >>> cfg = make_config_binned(
-    ...     Nmesh = 256, Nsample = 256, Nmax = 128, Lbox = 1000.0,
+    ...     Nmesh = 384, Nsample = 256, Nmax = 256, Lbox = 1000.0,
     ...     FileBase = 'ICs', OutputDir = './output/',
     ...     GlassFile = 'glass256.dat', GlassTileFac = 2,
     ...     seed = 12345, Om = 0.3, Ode = 0.7, h = 0.7,
@@ -444,7 +453,7 @@ def make_config_binned(Nmesh, Nsample, Nmax, Lbox, FileBase, OutputDir, GlassFil
     ...     BinnedKernelValuesPath = 'BinnedKernel_hybrid_values.txt',
     ...     BinnedPNGFilterCode = 3, BinnedPNGOutputFilterCode = 3,
     ...     BinnedPNGCacheBlockSize = 4,
-    ...     SavePotentialField = True, NWriteoutProcesses = 8,
+    ...     SavePotentialField = True, NWriteoutProcesses = 1,
     ... )
     """
     return textwrap.dedent(DEFAULT_BINNED_CONFIG % locals())
@@ -631,13 +640,13 @@ class Decomposer:
     --------
     Legendre/modal decomposition:
 
-    >>> dec = Decomposer(n_s = 0.965, Lbox = 1000.0, Nmax = 128,
+    >>> dec = Decomposer(n_s = 0.965, Lbox = 1000.0, Nmax = 256,
     ...                  N_modes = 50, ModeTol = 1e-6, MaxModeCount = 500)
-    >>> out = dec.go(Model = SomeBispectrumModel, Basis = BasicBasisDecompose)
+    >>> out = dec.go(Model = SomeBispectrumModel, Basis = BasicLegendreDecompose)
 
     Binned decomposition:
 
-    >>> dec = Decomposer(n_s = 0.965, Lbox = 1000.0, Nmax = 128,
+    >>> dec = Decomposer(n_s = 0.965, Lbox = 1000.0, Nmax = 256,
     ...                  Binned_Nk = 25)
     >>> out = dec.go(Model = SomeBispectrumModel, Basis = BasicBinnedDecompose,
     ...              outdir = './results')

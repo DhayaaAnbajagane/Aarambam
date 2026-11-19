@@ -50,7 +50,7 @@ double TransferFunc(double k)
       break;
 
     default:
-      printf(" TranferFunction Efstathiou implemented but not recommended\n");
+      printf(" TranferFunction Efstathiou is a stub (T(k) = 1); use WhichTransfer 2\n");
       transfer = TransferFunc_Efstathiou(k); 
       break;
     }

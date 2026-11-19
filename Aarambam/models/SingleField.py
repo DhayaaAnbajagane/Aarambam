@@ -145,9 +145,9 @@ class QuasiSingleField:
         Scalar spectral index used to rescale each wavenumber by
         :math:`k^{(4-n_s)/3}` for near scale invariance.
     - mass : float
-        Massive-field parameter :math:`\\mu > 0` controlling both the frequency
-        of the clock signal and several non-analytic amplitudes. Here,
-        :math:`\\mu = \\sqrt{(m/H)^2 - 9/4}`.
+        The order :math:`\\nu` of the Bessel function :math:`Y_\\nu` in the template, with
+        :math:`\\nu = \\sqrt{9/4 - (m/H)^2}` in :math:`[0, 3/2)` (Sohn+ 2024, below Eq. 2.6).
+        Larger :math:`\\nu` (lighter field) gives a more squeezed shape.
     """
 
     def raw_bispectrum(self, k1, k2, k3):
@@ -232,7 +232,7 @@ class SenatoreEFT2:
     """
     The EFT-based template for the second cubic (self)-interaction of the inflaton.
     See Eq(6) in https://arxiv.org/pdf/1303.5084. The equilateral and orthogonal
-    templates are linear combinations of this template with ``SenatoreEFT2``.
+    templates are linear combinations of this template with ``SenatoreEFT1``.
 
     This object must be used with the `utils.Decomposer` class. That class instance
     should be provided with the parameters necessary to compute this model (mass, spin, etc.)

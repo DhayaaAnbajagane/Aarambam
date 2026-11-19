@@ -173,7 +173,8 @@ int compare_doubles(const void *a, const void *b) {
 /* -------------------------------------------------------------------------
  * Binned PNG hybrid-kernel support.
  *
- * PNGBinnedRunner's IC-friendly hybrid table represents the quadratic kernel
+ * The hybrid table written by Decomposer(..., Binned_Nk = ...) with a
+ * 'hybrid_*' Binned_filter (Aarambam.basis.binned) represents the quadratic kernel
  * as
  *
  *   K(k1,k2,k3) = sum_{a,b,c} psi_a(k1) psi_b(k2) H_c(k3)
@@ -185,8 +186,8 @@ int compare_doubles(const void *a, const void *b) {
  * is therefore one convolution for every (a,b) pair.  The k3 polynomial is
  * applied after the convolution, mode by mode.
  *
- * The parameter file should point FileWithBinnedKernelValues at the
- * PNGBinnedRunner hybrid text table, e.g. <prefix>_hybrid_values.txt.
+ * The parameter file should point FileWithBinnedKernelValues at that
+ * hybrid text table, BinnedKernel_hybrid_values.txt.
  *
  * BinnedPNGFilter controls the global input-leg basis psi_a,psi_b:
  *   1 = top-hat / Heaviside on k1,k2
@@ -199,8 +200,8 @@ int compare_doubles(const void *a, const void *b) {
  *   3 = K0 + K1 u3 + K2 u3^2 + K3 u3^3
  *
  * BinnedPNGCoordinate controls both the bin centers and interpolation variable:
- *   1 = k, 2 = log(k).  Use 2 for tables generated with
- *       --Binned_linear_coordinate log.
+ *   1 = k, 2 = log(k).  Use 2: the Python side only supports
+ *       Binned_linear_coordinate = 'log', and make_config_binned always writes 2.
  * ------------------------------------------------------------------------- */
 
 #define BPNG_FILTER_TOPHAT    1
@@ -1266,7 +1267,8 @@ void displacement_fields(void) {
 
  if (ThisTask == 0) print_timed_done_aligned(timed_chars);
  /*** For non-local models it is important to keep all factors of SQRT(-1) as done below ***/
- /*** Notice also that there is a minus to convert from Bardeen to gravitational potential ***/
+ /*** No sign flip is applied to the NG term: it is added to the Gaussian potential as is ***/
+ /*** (2LPTPNG noted a minus here to convert from Bardeen to gravitational potential)   ***/
 
  
   /**** BINNED PRIMORDIAL POTENTIAL **************/

@@ -1,4 +1,4 @@
-# Aarambam/cli.py
+# Aarambam/LPT/ResBasis/cli.py
 import sys, os
 from importlib.resources import files
 

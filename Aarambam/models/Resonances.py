@@ -2,7 +2,7 @@ import numpy as np
 
 class LogResonance:
     """
-    Logarithmic oscillations in the bispectrum, i.e. oscillations in :math:\\log k
+    Logarithmic oscillations in the bispectrum, i.e. oscillations in :math:`\\log k`.
     See https://arxiv.org/pdf/1905.05697, Equation (12)
     
     This object must be used with the `utils.Decomposer` class. That class instance
@@ -78,8 +78,9 @@ class K2cosResonance:
         :math:`k^{(4-n_s)/3}` for near scale invariance.
     - w_res : float
         Frequency of the oscillations in the bispectrum.
-    - phi : float
-        The phase of the oscillations.
+    - alpha : float
+        Damping parameter: the template is multiplied by
+        :math:`\\alpha\\omega / (K \\sinh(\\alpha\\omega K))` with :math:`K = k_1 + k_2 + k_3`.
     """
 
     def raw_bispectrum(self, k1, k2, k3):
@@ -99,7 +100,7 @@ class KsinResonance:
 
     """
     A different oscillatory bispectra from Adshead+ 2012, Eq(16) in https://arxiv.org/pdf/1905.05697.
-    A complement to the :math:``K^2\\cos`` model provided in `Aarambam`.
+    A complement to the :math:`K^2\\cos` model provided in `Aarambam`.
     
     This object must be used with the `utils.Decomposer` class. That class instance
     should be provided with the parameters necessary to compute this model (mass, spin, etc.)
@@ -111,8 +112,9 @@ class KsinResonance:
         :math:`k^{(4-n_s)/3}` for near scale invariance.
     - w_res : float
         Frequency of the oscillations in the bispectrum.
-    - phi : float
-        The phase of the oscillations.
+    - alpha : float
+        Damping parameter: the template is multiplied by
+        :math:`\\alpha\\omega / (K \\sinh(\\alpha\\omega K))` with :math:`K = k_1 + k_2 + k_3`.
     """
 
     def raw_bispectrum(self, k1, k2, k3): #Eq(17) in https://arxiv.org/pdf/1905.05697
