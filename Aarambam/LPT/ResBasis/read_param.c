@@ -294,6 +294,9 @@ void broadcast_parameters()
     MPI_Bcast(&UnitMass_in_g, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
     MPI_Bcast(&InputSpectrum_UnitLength_in_cm, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
     MPI_Bcast(&WDM_PartMass_in_kev, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+    MPI_Bcast(&A_res, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+    MPI_Bcast(&w_res, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+    MPI_Bcast(&phi_res, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
 
     // Broadcast all INT parameters
     MPI_Bcast(&N_modes, 1, MPI_INT, 0, MPI_COMM_WORLD);
