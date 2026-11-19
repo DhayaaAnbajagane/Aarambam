@@ -1,6 +1,6 @@
 [build-system]
 requires = [
-  "scikit-build-core>=0.9",
+  "scikit-build-core>=0.11",  # PEP 639 license metadata
   "Cython>=3.0",
   "numpy>=1.22",        # the Cython extension compiles against NumPy
 ]
@@ -8,11 +8,12 @@ build-backend = "scikit_build_core.build"
 
 [project]
 name = "Aarambam"
-version = "1.0.0"
+version = "1.1.0"
 description = "Aarambam: 2LPT + basis tools"
 readme = "README.md"
 requires-python = ">=3.9"
-license = { text = "GPL-3.0-or-later" }
+license = "GPL-3.0-or-later"
+license-files = ["LICENSE"]
 authors = [{ name = "Dhayaa" }]
 dependencies = [
   "numpy>=1.22",
