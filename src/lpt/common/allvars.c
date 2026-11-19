@@ -1,3 +1,4 @@
+/* Definitions of the global variables declared in allvars.h. */
 #include "allvars.h"
 
 clock_t start_time;

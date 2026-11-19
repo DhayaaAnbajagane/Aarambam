@@ -1,3 +1,4 @@
+/* Shared core of the 2LPT executables (common/lpt_core.c) and the hooks each method supplies. */
 #ifndef AARAMBAM_LPT_CORE_H
 #define AARAMBAM_LPT_CORE_H
 

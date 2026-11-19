@@ -1,3 +1,5 @@
+/* Binned method of 2LPTBinned: banner and the binned-kernel non-Gaussian potential; the shared
+ * steps are in common/lpt_core.c. */
 #include <math.h>
 #include <string.h>
 #include <stdlib.h>
@@ -60,8 +62,6 @@ void print_setup(void) {
   printf("\n%s\n\n", pstr);
   return;
 }
-
-// Helper function for comparing doubles for qsort
 
 
 /* -------------------------------------------------------------------------

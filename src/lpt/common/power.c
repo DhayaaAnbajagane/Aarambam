@@ -1,3 +1,5 @@
+/* Primordial power spectrum (with the optional ResBasis oscillation), transfer function, sigma8
+ * normalisation and growth factors. */
 #include <math.h>
 #include "allvars.h"
 #include "proto.h"

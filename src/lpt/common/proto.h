@@ -1,3 +1,4 @@
+/* Prototypes of the functions shared by all methods. */
 
 #include <gsl/gsl_rng.h>
 

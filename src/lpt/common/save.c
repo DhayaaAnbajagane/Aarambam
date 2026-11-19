@@ -1,3 +1,4 @@
+/* Output: potential slab dumps (write_phi) and Gadget-1 snapshot files (write_particle_data). */
 #include <string.h>
 #include <math.h>
 #include <stdlib.h>

@@ -1,3 +1,4 @@
+/* Read the glass file, tile it over the box and distribute the particles over the MPI ranks. */
 #include <math.h>
 #include <stdlib.h>
 #include <mpi.h>

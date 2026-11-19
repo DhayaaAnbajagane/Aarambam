@@ -1,3 +1,5 @@
+/* Modal (Legendre basis) method of 2LPTBasis: banner, AlphaTable/X0 tables and the separable
+ * non-Gaussian potential; the shared steps are in common/lpt_core.c. */
 #include <math.h>
 #include <stdint.h>
 #include <stddef.h>
@@ -55,8 +57,6 @@ void print_setup(void) {
   printf("\n%s\n\n", pstr);
   return;
 }
-
-// Helper function for comparing doubles for qsort
 
 
 void displacement_fields(void) {
