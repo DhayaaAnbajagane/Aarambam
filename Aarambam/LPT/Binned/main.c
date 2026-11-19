@@ -299,6 +299,8 @@ static void bpng_read_kernel_coefficients_root(void)
   long long nc = bpng_ncell();
   long long q;
   int nmin;
+  long long nrows = 0;
+  char *seen;
 
   for(q = 0; q < ((long long)BPNG.coeff_count) * nc; q++)
     BPNG.Kcoeff[q] = 0.0;
@@ -322,6 +324,12 @@ static void bpng_read_kernel_coefficients_root(void)
    */
   nmin = 8 + 4 * BPNG.coeff_count;
 
+  /* Every data row must have exactly the column count implied by BinnedPNGOutputFilter, and every cell must
+   * appear exactly once. Rows used to be skipped silently, so a table written for a different filter gave
+   * all-zero (Gaussian) or misread kernels with a successful exit. */
+  seen = (char *) calloc(nc, 1);
+  if(!seen) FatalError(9112);
+
   while(fgets(line, sizeof(line), fd))
     {
       int n = bpng_parse_doubles(line, vals, 80);
@@ -329,20 +337,45 @@ static void bpng_read_kernel_coefficients_root(void)
       long long ind;
       if(n <= 0) continue;
 
+      if(n != nmin)
+        {
+          printf("Binned kernel table '%s': a row has %d columns, but BinnedPNGOutputFilter %d needs %d "
+                 "(6 + 4 x %d coefficients + 2). Was the table written with a different Binned_filter?\n",
+                 path, n, BinnedPNGOutputFilter, nmin, BPNG.coeff_count);
+          FatalError(9113);
+        }
+
       i = (int) vals[0];
       j = (int) vals[1];
       l = (int) vals[2];
       if(i < 0 || i >= BPNG.nk[0] || j < 0 || j >= BPNG.nk[1] || l < 0 || l >= BPNG.nk[2])
-        continue;
-      if(n < nmin)
-        continue;
+        {
+          printf("Binned kernel table '%s': cell (%d, %d, %d) is outside the edge files' Nk = (%d, %d, %d)\n",
+                 path, i, j, l, BPNG.nk[0], BPNG.nk[1], BPNG.nk[2]);
+          FatalError(9114);
+        }
 
       ind = bpng_cell_index(i,j,l);
+      if(seen[ind])
+        {
+          printf("Binned kernel table '%s': cell (%d, %d, %d) appears more than once\n", path, i, j, l);
+          FatalError(9114);
+        }
+      seen[ind] = 1;
+      nrows++;
+
       k_start = 6 + BPNG.coeff_count;
       for(c = 0; c < BPNG.coeff_count; c++)
         BPNG.Kcoeff[((long long)c) * nc + ind] = vals[k_start + c];
     }
   fclose(fd);
+  free(seen);
+
+  if(nrows != nc)
+    {
+      printf("Binned kernel table '%s' has %lld cells, but the edge files define %lld\n", path, nrows, nc);
+      FatalError(9115);
+    }
 }
 
 static void bpng_read_and_broadcast_table(void)
