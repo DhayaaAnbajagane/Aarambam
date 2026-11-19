@@ -11,6 +11,12 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+/* MPI counts are int: the particle gather moves each rank's buffer in pieces of at most this many bytes
+   (one rank can hold >= 2^31 bytes, e.g. 1024^3 particles on <= 16 ranks). */
+#ifndef SAVE_CHUNK_BYTES
+#define SAVE_CHUNK_BYTES (1LL << 30)
+#endif
+
 void write_phi(fftw_real *pot, int isNonGaus)
 {
     char buf_will[1100];
@@ -128,7 +134,14 @@ void write_particle_data(void)
       MPI_Recv(&numpart, 1, MPI_INT, task, 0, MPI_COMM_WORLD, &status);
 
       struct part_data *recvbuf = malloc(numpart * sizeof(struct part_data));
-      MPI_Recv(recvbuf, numpart * sizeof(struct part_data), MPI_BYTE, task, 1, MPI_COMM_WORLD, &status);
+      if(!recvbuf)
+        {
+          printf("Task 0: failed to allocate the particle buffer of task %d\n", task);
+          FatalError(24132);
+        }
+      for(long long off = 0, nb = (long long) numpart * sizeof(struct part_data); off < nb; off += SAVE_CHUNK_BYTES)
+        MPI_Recv((char *) recvbuf + off, (int) (nb - off < SAVE_CHUNK_BYTES ? nb - off : SAVE_CHUNK_BYTES), MPI_BYTE,
+                 task, 1, MPI_COMM_WORLD, &status);
 
       // Temporarily replace P and NumPart
       struct part_data *P_old = P;
@@ -146,7 +159,9 @@ void write_particle_data(void)
   } else {
     if (ThisTask == task) {
       MPI_Send(&NumPart, 1, MPI_INT, 0, 0, MPI_COMM_WORLD);
-      MPI_Send(P, NumPart * sizeof(struct part_data), MPI_BYTE, 0, 1, MPI_COMM_WORLD);
+      for(long long off = 0, nb = (long long) NumPart * sizeof(struct part_data); off < nb; off += SAVE_CHUNK_BYTES)
+        MPI_Send((char *) P + off, (int) (nb - off < SAVE_CHUNK_BYTES ? nb - off : SAVE_CHUNK_BYTES), MPI_BYTE, 0, 1,
+                 MPI_COMM_WORLD);
     }
   }
 
