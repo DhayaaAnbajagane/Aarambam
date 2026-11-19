@@ -7,8 +7,8 @@
 <p>&nbsp;</p>
 <p>&nbsp;</p>
 
-[![License](https://img.shields.io/badge/license-GPL-blue.svg)](LICENSE)
-[![Python Version](https://img.shields.io/badge/python-3.6%2B-blue.svg)](https://www.python.org/downloads/)
+[![License](https://img.shields.io/badge/license-GPL-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
+[![Python Version](https://img.shields.io/badge/python-3.9%2B-blue.svg)](https://www.python.org/downloads/)
 [![Documentation Status](https://img.shields.io/readthedocs/aarambam?color=blue)](https://aarambam.readthedocs.io/en/latest)
 
 ## Overview
@@ -24,7 +24,7 @@ It provides an end-to-end pipeline for generating the ICs of a N-body simulation
 I list a few examples below to get you started. More documentation is available [at readthedocs here](https://aarambam.readthedocs.io/en/latest/). Please contact me if you have any questions!
 
 ## Environment
-The python part of the code has a few dependencies --- namely `numpy`, `scipy`, `tqdm`, `joblib`, `cython` and `threadpoolctl`. The last one is more non-standard but is very helpful in managing oversubscription. I promise it is easy to install! The C-level code has its own dependencies, I list them below in the Installation instructions. You can install all of these from conda-forge:
+The python part of the code has a few dependencies --- namely `numpy`, `scipy` (>= 1.12), `tqdm`, `joblib` and `threadpoolctl`. The last one is more non-standard but is very helpful in managing oversubscription. I promise it is easy to install! `pip install` pulls these in automatically; `cython` is needed only at build time (and is also fetched automatically by `pip`). The C-level code has its own dependencies, I list them below in the Installation instructions. You can install all of these from conda-forge:
 
 ```bash
 conda create -p {YOUR_ENV_PATH}
@@ -48,18 +48,18 @@ cd Aarambam
 pip install .
 ```
 
-There are a number of dependencies, particularly due to the 2LPT (2nd order Lagrangian Pertubration Theory) method provided in this package, namely `MPI`, `FFTW2` (NOT `FFTW3`. Using `FFTW2` a legacy dependence from `2LPTIC` days), and `GSL`. The install will generally do its best to find the right compiled objects for these dependencies. Please set the following environment variables PRIOR to installation
+There are a number of dependencies, particularly due to the 2LPT (2nd order Lagrangian Perturbation Theory) method provided in this package, namely `MPI`, `FFTW2` (NOT `FFTW3`. Using `FFTW2` a legacy dependence from `2LPTIC` days), `GSL` and `OpenMP` (for the Cython extension). The install will generally do its best to find the right compiled objects for these dependencies. `FFTW2` is never searched for automatically, so you must ALWAYS set the following environment variable PRIOR to installation
 
 ```bash
-export Aarambam_FFTW2_ROOT=#path to where your /build directory is
+export Aarambam_FFTW2_ROOT=/path/to/fftw-2.1.5/build   # the --prefix used for FFTW2; contains include/dfftw.h and lib/
 ```
 
-If the install is not finding your correct installs of C-compilers, GSL etc. then you can explicitly specify paths with
+If the install is not finding your correct installs of C-compilers, GSL etc. then you can explicitly specify paths with the variables below. On most clusters you will need at least the GSL and MPI ones (otherwise the MPI library is searched for on `LD_LIBRARY_PATH`/`LIBRARY_PATH` and the system paths, and GSL only in `GSL_DIR`/`GSL_ROOT` and the system paths).
 
 ```bash
-export Aarambam_CC=
-export Aarambam_GSL_ROOT=
-export Aarambam_OPENMPI_ROOT=
+export Aarambam_CC=/path/to/mpicc               # default: the first mpicc on PATH
+export Aarambam_GSL_ROOT=/path/to/gsl           # contains include/gsl/ and lib/ (or lib64/)
+export Aarambam_OPENMPI_ROOT=/path/to/openmpi   # contains lib/libmpi.so
 ```
 
 If your computing cluster does not provide an install of FFTW2 (most do not since it is old...) then you can install it via the following steps:
@@ -68,11 +68,11 @@ If your computing cluster does not provide an install of FFTW2 (most do not sinc
 wget https://www.fftw.org/fftw-2.1.5.tar.gz
 tar -xvzf fftw-2.1.5.tar.gz
 cd fftw-2.1.5; mkdir build;
-./configure --prefix=${PWD}/build --enable-threads --enable-openmp --enable-mpi --enable-type-prefix CC={ADD_PATH_TO_MPICC_EXECUTABLE}
+./configure --prefix=${PWD}/build --enable-mpi --enable-type-prefix CC={ADD_PATH_TO_MPICC_EXECUTABLE}
 make
 make install
 ```
-You may be able to skip the `CC=` addition if your computing cluster already supplied `mpicc` in an easily findable way. The above `make` command will take a while to run (FFTW2 has a lot of libraries to install). FFTW2 is a hard requirement as this piece of LPT code originates from before the 2000s, and FFTW2 was officially deprecated only in 1999.
+You may be able to skip the `CC=` addition if your computing cluster already supplied `mpicc` in an easily findable way. Both flags are required: `--enable-mpi` builds the MPI-parallel FFTs, and `--enable-type-prefix` gives the double-precision libraries and headers their `d` prefix (`drfftw_mpi.h`, `libdrfftw_mpi`, ...), which is what Aarambam includes and links against. The above `make` command will take a while to run (FFTW2 has a lot of libraries to install). FFTW2 is a hard requirement as this piece of LPT code originates from the 2LPTic code, which was written against the FFTW2 MPI interface (FFTW 2.1.5, from 2003, is the last FFTW2 release).
 
 If you have trouble installing this, please contact Dhayaa (details below). I've tested installation at multiple computing clusters now, but there will always be edge-cases:)
 
@@ -82,14 +82,14 @@ We provide examples of how to use this code in [this notebook](examples/BinnedBa
 
 ```python
 import Aarambam as Am
-import numpy as np, subprocess as sp
+import numpy as np, subprocess as sp, os
 
 #This is the main code needed for decomposing a given template. Swap "ScalarI" with
 #other options to decompose more models. It is very easy to implement your own :)
 #If you pass "outdir" then this will also write the coefficient tables in the right
-#format into those directories
-Unit   = Am.utils.Decomposer(N_modes = N_modes, n_s = n_s, Lbox = Lbox, Nmax = Nmax, 
-                             ModeTol = ModeTol, MaxModeCount = MaxModeCount)
+#format into those directories. Passing Binned_Nk selects the binned decomposition
+#(pass N_modes, ModeTol and MaxModeCount instead for the Legendre one).
+Unit   = Am.utils.Decomposer(n_s = n_s, Lbox = Lbox, Nmax = Nmax, Binned_Nk = 20)
 coeffL = Unit.go(Am.models.Local,   Am.binned.BasicBinnedDecompose, outdir = outdir)
 coeffS = Unit.go(Am.models.ScalarI, Am.binned.BasicBinnedDecompose, mass = 1, outdir = outdir) #This will overwrite the previous call
 
@@ -100,7 +100,8 @@ CONFIG = Am.utils.make_config_binned(...)
 with open(outdir + '/LPTconfig', 'w') as f: f.write(CONFIG)
 
 #Doing a pip install will provide you with executables in your env.
-#The Aarambam-2LPT-Basis one is the main LPT one for us. We run it with
+#Aarambam-2LPT-Binned is the one that reads the binned tables written above
+#(Aarambam-2LPT-Basis / -ResBasis read the Legendre ones). We run it with
 #subprocess just for simplicity. You could also run it from cmd line
 sp.run(f"mpirun -np {Nprocs} Aarambam-2LPT-Binned {outdir + '/LPTconfig'}", shell = True, env = os.environ)
 
@@ -110,7 +111,7 @@ sp.run(f"Aarambam-collate-potential --file_dir {outdir}", shell = True, env = os
 
 ## Attribution
 
-If you use the legendre-based decomposition code or derivatives of it, please cite both of [Anbajagane & Lee 2025a](https://arxiv.org/abs/2409.03822) and [Anbajagane & Lee 2025b](https://arxiv.org/abs/2409.03822) who introduced and validated the code for a variety of models. If you use the binned bispectrum method, please cite [Anbajagane & Dalal 2026](https://arxiv.org/abs/2607.24939)
+If you use the legendre-based decomposition code or derivatives of it, please cite both of [Anbajagane & Lee 2025a](https://arxiv.org/abs/2509.02693) and [Anbajagane & Lee 2025b](https://arxiv.org/abs/2509.02695) who introduced and validated the code for a variety of models. If you use the binned bispectrum method, please cite [Anbajagane & Dalal 2026](https://arxiv.org/abs/2607.24939)
 
 ```bibtex
 @ARTICLE{Anbajagane:2025:NonlinearI,
@@ -120,9 +121,9 @@ If you use the legendre-based decomposition code or derivatives of it, please ci
      keywords = {Astrophysics - Cosmology and Nongalactic Astrophysics, Astrophysics - Astrophysics of Galaxies},
          year = 2025,
 archivePrefix = {arXiv},
-       eprint = {},
+       eprint = {2509.02693},
  primaryClass = {astro-ph.CO},
-       adsurl = {https://ui.adsabs.harvard.edu/abs/2024arXiv240903822A},
+       adsurl = {https://ui.adsabs.harvard.edu/abs/2025arXiv250902693A},
       adsnote = {Provided by the SAO/NASA Astrophysics Data System}
 }
 
@@ -132,13 +133,25 @@ archivePrefix = {arXiv},
       journal = {arXiv e-prints},
          year = 2025,
 archivePrefix = {arXiv},
-       eprint = {},
+       eprint = {2509.02695},
  primaryClass = {astro-ph.CO},
-       adsurl = {https://ui.adsabs.harvard.edu/abs/2024arXiv240903822A},
+       adsurl = {https://ui.adsabs.harvard.edu/abs/2025arXiv250902695A},
+      adsnote = {Provided by the SAO/NASA Astrophysics Data System}
+}
+
+@ARTICLE{Anbajagane:2026:NonlinearIII,
+       author = {{Anbajagane}, Dhayaa and {Dalal}, Neal},
+        title = "{Primordial Physics in the Nonlinear Universe: Revealing the oscillating halo bias from cosmological collider models}",
+      journal = {arXiv e-prints},
+         year = 2026,
+archivePrefix = {arXiv},
+       eprint = {2607.24939},
+ primaryClass = {astro-ph.CO},
+       adsurl = {https://ui.adsabs.harvard.edu/abs/2026arXiv260724939A},
       adsnote = {Provided by the SAO/NASA Astrophysics Data System}
 }
 ```
 
 ## Contact
 
-Please contant Dhayaa Anbajagane (dhayaacosmo at gmail dot com) for any questions on the pipeline.
+Please contact Dhayaa Anbajagane (dhayaacosmo at gmail dot com) for any questions on the pipeline.
