@@ -1,4 +1,4 @@
-import numpy as np, os, sys, gc
+import numpy as np, os, sys, gc, tempfile
 import textwrap, glob, tqdm
 
 __all__ = ['DEFAULT_BASIS_CONFIG', 'DEFAULT_BASIS_INPUTS', 'DEFAULT_RESBASIS_CONFIG', 'DEFAULT_RESBASIS_INPUTS',
@@ -60,7 +60,7 @@ WDM_PartMass_in_kev                 10.0
 """
 
 DEFAULT_BASIS_INPUTS = dict(Nmesh = 256, Nsample = 256, Nmax = 256, Lbox = 512, FileBase = 'Aarambam_ics',
-                            OutputDir = os.environ['TMPDIR'], 
+                            OutputDir = os.environ.get('TMPDIR', tempfile.gettempdir()), 
                             GlassFile = os.path.dirname(__file__) + "/defaults/dummy_glass_dmonly_64.dat",
                             GlassTileFac = 4,
                             seed = 42, Om = 0.3, Ode = 0.7, h = 0.7, sigma8 = 0.8, n_s = 0.96, z_ini = 49,
@@ -144,7 +144,7 @@ WDM_PartMass_in_kev                 10.0
 """
 
 DEFAULT_BINNED_INPUTS = dict(Nmesh = 256, Nsample = 256, Nmax = 256, Lbox = 512, FileBase = 'Aarambam_ics',
-                             OutputDir = os.environ['TMPDIR'],
+                             OutputDir = os.environ.get('TMPDIR', tempfile.gettempdir()),
                              GlassFile = os.path.dirname(__file__) + "/defaults/dummy_glass_dmonly_64.dat",
                              GlassTileFac = 4,
                              seed = 42, Om = 0.3, Ode = 0.7, h = 0.7, sigma8 = 0.8, n_s = 0.96, z_ini = 49,

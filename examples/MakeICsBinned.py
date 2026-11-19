@@ -1,9 +1,9 @@
 import Aarambam as Am
-import numpy as np, subprocess as sp, os, shutil
+import numpy as np, subprocess as sp, os, shutil, tempfile
 
 
 if __name__ == '__main__':
-    outdir = os.environ['TMPDIR'] + '/'
+    outdir = os.environ.get('TMPDIR', tempfile.gettempdir()) + '/'
     print(f"USING {outdir} AS BASE FOR CALCULATIONS")
     
     #Specify some defaults that get used everywhere
