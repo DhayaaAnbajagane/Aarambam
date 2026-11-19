@@ -1,3 +1,4 @@
+#include <mpi.h>
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
@@ -13,7 +14,9 @@ void read_parameterfile(char *fname)
 #define MAXTAGS 300
 
   FILE *fd;
-  char buf[200], buf1[200], buf2[200], buf3[200];
+#define MAXLINE 2048
+#define MAXSTRING 500   /* capacity of every STRING parameter, see allvars.c */
+  char buf[MAXLINE], buf1[MAXLINE], buf2[MAXLINE], buf3[MAXLINE];
   int i, j, nt;
   int id[MAXTAGS];
   void *addr[MAXTAGS];
@@ -197,10 +200,14 @@ void read_parameterfile(char *fname)
 
   if((fd = fopen(fname, "r")))
     {
-      while(!feof(fd))
+      while(fgets(buf, sizeof(buf), fd))
 	{
-	  buf[0] = 0;
-	  fgets(buf, 200, fd);
+	  if(strlen(buf) == sizeof(buf) - 1 && buf[sizeof(buf) - 2] != '\n')
+	    {
+	      fprintf(stdout, "Error in file %s: line longer than %d characters.\n", fname, MAXLINE - 1);
+	      errorFlag = 1;
+	      break;
+	    }
 
 	  if(sscanf(buf, "%s%s%s", buf1, buf2, buf3) < 2)
 	    continue;
@@ -224,7 +231,14 @@ void read_parameterfile(char *fname)
 		  *((double *) addr[j]) = atof(buf2);
 		  break;
 		case STRING:
-		  strcpy(addr[j], buf2);
+		  if(strlen(buf2) >= MAXSTRING)
+		    {
+		      fprintf(stdout, "Error in file %s: value of '%s' longer than %d characters.\n",
+			      fname, buf1, MAXSTRING - 1);
+		      errorFlag = 1;
+		    }
+		  else
+		    strcpy(addr[j], buf2);
 		  break;
 		case INT:
 		  *((int *) addr[j]) = atoi(buf2);
@@ -260,10 +274,10 @@ void read_parameterfile(char *fname)
 	}
     }
 
-  if(errorFlag)
+  if(errorFlag)            /* called on task 0 only: abort all tasks with a non-zero status */
     {
-      MPI_Finalize();
-      exit(0);
+      fflush(stdout);
+      MPI_Abort(MPI_COMM_WORLD, 1);
     }
 
 
@@ -271,6 +285,8 @@ void read_parameterfile(char *fname)
 #undef STRING
 #undef INT
 #undef MAXTAGS
+#undef MAXLINE
+#undef MAXSTRING
 }
 
 
@@ -315,11 +331,11 @@ void broadcast_parameters()
     MPI_Bcast(&WDM_Vtherm_On, 1, MPI_INT, 0, MPI_COMM_WORLD);
 
     // Broadcast all STRING parameters (use buffer size large enough)
-    MPI_Bcast(FileWithAlphaCoeff, 500, MPI_CHAR, 0, MPI_COMM_WORLD);
-    MPI_Bcast(FileWithX0Coeff, 500, MPI_CHAR, 0, MPI_COMM_WORLD);
-    MPI_Bcast(GlassFile, 500, MPI_CHAR, 0, MPI_COMM_WORLD);
-    MPI_Bcast(FileWithInputSpectrum, 500, MPI_CHAR, 0, MPI_COMM_WORLD);
-    MPI_Bcast(FileWithInputTransfer, 500, MPI_CHAR, 0, MPI_COMM_WORLD);
-    MPI_Bcast(OutputDir, 500, MPI_CHAR, 0, MPI_COMM_WORLD);
-    MPI_Bcast(FileBase, 500, MPI_CHAR, 0, MPI_COMM_WORLD);
+    MPI_Bcast(FileWithAlphaCoeff, sizeof(FileWithAlphaCoeff), MPI_CHAR, 0, MPI_COMM_WORLD);
+    MPI_Bcast(FileWithX0Coeff, sizeof(FileWithX0Coeff), MPI_CHAR, 0, MPI_COMM_WORLD);
+    MPI_Bcast(GlassFile, sizeof(GlassFile), MPI_CHAR, 0, MPI_COMM_WORLD);
+    MPI_Bcast(FileWithInputSpectrum, sizeof(FileWithInputSpectrum), MPI_CHAR, 0, MPI_COMM_WORLD);
+    MPI_Bcast(FileWithInputTransfer, sizeof(FileWithInputTransfer), MPI_CHAR, 0, MPI_COMM_WORLD);
+    MPI_Bcast(OutputDir, sizeof(OutputDir), MPI_CHAR, 0, MPI_COMM_WORLD);
+    MPI_Bcast(FileBase, sizeof(FileBase), MPI_CHAR, 0, MPI_COMM_WORLD);
 }

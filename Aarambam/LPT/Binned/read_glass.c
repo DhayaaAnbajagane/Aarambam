@@ -17,7 +17,7 @@ void read_glass(char *fname)
   size_t bytes;
   int *npart_Task;
   int num, numfiles, skip, nlocal;
-  char buf[500];
+  char buf[600];
 
 #define SKIP {my_fread(&dummy, sizeof(int), 1, fd);}
 #define SKIP2 {my_fread(&dummy2, sizeof(int), 1, fd);}
@@ -226,7 +226,7 @@ void read_glass(char *fname)
 int find_files(char *fname)
 {
   FILE *fd;
-  char buf[200], buf1[200];
+  char buf[600], buf1[600];
   int dummy;
 
   sprintf(buf, "%s.%d", fname, 0);

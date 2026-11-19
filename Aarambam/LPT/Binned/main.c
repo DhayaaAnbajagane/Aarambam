@@ -1800,7 +1800,7 @@ double fnl(double x)		/* Peacock & Dodds formula */
 void print_spec(void)
 {
   double k, knl, po, dl, dnl, neff, kf, kstart, kend, po2, po1, DDD;
-  char buf[1000];
+  char buf[1100];
   FILE *fd;
 
   if(ThisTask == 0)

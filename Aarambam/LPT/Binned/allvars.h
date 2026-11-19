@@ -128,7 +128,7 @@ extern int FixedAmplitude;
 extern int PhaseFlip;
 // ******* FAVN/DSJ ******
 
-extern char OutputDir[100], FileBase[100];
+extern char OutputDir[500], FileBase[500];
 extern int  NumFilesWrittenInParallel;
 
 

@@ -13,7 +13,7 @@
 
 void write_phi(fftw_real *pot, int isNonGaus)
 {
-    char buf_will[400];
+    char buf_will[1100];
     FILE *write_ptr;
     int total_size = TotalSizePlusAdditional;
     int i, j, k;
@@ -171,7 +171,7 @@ void save_local_data(int task)
   int blockmaxlen, maxlongidlen;
   int4byte dummy;
   FILE *fd;
-  char buf[300];
+  char buf[1100];
   int i, k, pc;
 #ifdef  PRODUCEGAS
   double meanspacing, shift_gas, shift_dm;

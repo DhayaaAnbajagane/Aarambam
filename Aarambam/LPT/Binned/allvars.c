@@ -62,7 +62,7 @@ int FixedAmplitude;
 int PhaseFlip;
 // *** FAVN/DSJ ***
 
-char OutputDir[100], FileBase[100];
+char OutputDir[500], FileBase[500];
 int NumFilesWrittenInParallel;
 
 
