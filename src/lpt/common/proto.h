@@ -54,7 +54,6 @@ void  read_parameterfile(char *fname);
 void  broadcast_parameters(void);
 void  read_glass(char *fname);
 
-void checkchoose(void);
 
 double tk_eh(double k);
 double tk_Efstathiou(double k);

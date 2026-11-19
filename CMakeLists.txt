@@ -18,53 +18,7 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_C_EXTENSIONS ON)           # => gnu99, like GCC default in 2LPTPNG
 add_compile_options(-O3 -Wall -g)
 
-# --- Sources (OBJS without .o) ---
-set(BASIS_SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR}/src/lpt/basis)
-add_executable(2LPTBasis
-  ${BASIS_SRC_DIR}/main.c
-  ${BASIS_SRC_DIR}/power.c
-  ${BASIS_SRC_DIR}/checkchoose.c
-  ${BASIS_SRC_DIR}/allvars.c
-  ${BASIS_SRC_DIR}/save.c
-  ${BASIS_SRC_DIR}/read_param.c
-  ${BASIS_SRC_DIR}/read_glass.c
-  ${BASIS_SRC_DIR}/nrsrc/nrutil.c
-  ${BASIS_SRC_DIR}/nrsrc/qromb.c
-  ${BASIS_SRC_DIR}/nrsrc/polint.c
-  ${BASIS_SRC_DIR}/nrsrc/trapzd.c
-)
-
-set(RESBASIS_SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR}/src/lpt/resbasis)
-add_executable(2LPTResBasis
-  ${RESBASIS_SRC_DIR}/main.c
-  ${RESBASIS_SRC_DIR}/power.c
-  ${RESBASIS_SRC_DIR}/checkchoose.c
-  ${RESBASIS_SRC_DIR}/allvars.c
-  ${RESBASIS_SRC_DIR}/save.c
-  ${RESBASIS_SRC_DIR}/read_param.c
-  ${RESBASIS_SRC_DIR}/read_glass.c
-  ${RESBASIS_SRC_DIR}/nrsrc/nrutil.c
-  ${RESBASIS_SRC_DIR}/nrsrc/qromb.c
-  ${RESBASIS_SRC_DIR}/nrsrc/polint.c
-  ${RESBASIS_SRC_DIR}/nrsrc/trapzd.c
-)
-
-set(BINNED_SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR}/src/lpt/binned)
-add_executable(2LPTBinned
-  ${BINNED_SRC_DIR}/main.c
-  ${BINNED_SRC_DIR}/power.c
-  ${BINNED_SRC_DIR}/checkchoose.c
-  ${BINNED_SRC_DIR}/allvars.c
-  ${BINNED_SRC_DIR}/save.c
-  ${BINNED_SRC_DIR}/read_param.c
-  ${BINNED_SRC_DIR}/read_glass.c
-  ${BINNED_SRC_DIR}/nrsrc/nrutil.c
-  ${BINNED_SRC_DIR}/nrsrc/qromb.c
-  ${BINNED_SRC_DIR}/nrsrc/polint.c
-  ${BINNED_SRC_DIR}/nrsrc/trapzd.c
-)
-
-# --- Include paths ---
+# --- Dependencies of the 2LPT executables ---
 # GSL
 if(DEFINED ENV{Aarambam_GSL_ROOT})
   set(GSL_INCLUDE_DIR "$ENV{Aarambam_GSL_ROOT}/include" CACHE PATH "GSL include directory" FORCE)
@@ -82,9 +36,6 @@ else()
     REQUIRED
   )
 endif()
-target_include_directories(2LPTBasis    PRIVATE ${GSL_INCLUDE_DIR})
-target_include_directories(2LPTResBasis PRIVATE ${GSL_INCLUDE_DIR})
-target_include_directories(2LPTBinned   PRIVATE ${GSL_INCLUDE_DIR})
 
 get_filename_component(_GSL_PREFIX "${GSL_INCLUDE_DIR}" DIRECTORY)
 find_library(GSL_LIBRARY
@@ -108,9 +59,6 @@ find_path(FFTW2_INCLUDE_DIR
   PATH_SUFFIXES include
   REQUIRED
 )
-target_include_directories(2LPTBasis    PRIVATE ${FFTW2_INCLUDE_DIR})
-target_include_directories(2LPTResBasis PRIVATE ${FFTW2_INCLUDE_DIR})
-target_include_directories(2LPTBinned   PRIVATE ${FFTW2_INCLUDE_DIR})
 
 find_library(_FFTW2_LIB
   NAMES        fftw  dfftw
@@ -142,83 +90,43 @@ else()
   get_filename_component(OPENMPI_LIB_DIR ${OPENMPI_MPI_LIB} DIRECTORY)
 endif()
 
-# Local headers
-target_include_directories(2LPTBasis    PRIVATE ${BASIS_SRC_DIR}    ${BASIS_SRC_DIR}/nrsrc)
-target_include_directories(2LPTResBasis PRIVATE ${RESBASIS_SRC_DIR} ${RESBASIS_SRC_DIR}/nrsrc)
-target_include_directories(2LPTBinned   PRIVATE ${BINNED_SRC_DIR}   ${BINNED_SRC_DIR}/nrsrc)
+# --- 2LPT executables: src/lpt/common (shared by all) + one directory per method ---
+set(LPT_DIR ${CMAKE_CURRENT_SOURCE_DIR}/src/lpt)
+set(LPT_COMMON_SRC
+  ${LPT_DIR}/common/save.c
+  ${LPT_DIR}/common/read_glass.c
+  ${LPT_DIR}/common/nrsrc/nrutil.c
+  ${LPT_DIR}/common/nrsrc/qromb.c
+  ${LPT_DIR}/common/nrsrc/polint.c
+  ${LPT_DIR}/common/nrsrc/trapzd.c
+)
 
-# --- Preprocessor options (OPT / OPTIONS in the Makefile) ---
-# Default Makefile switches:
-target_compile_definitions(2LPTBasis PRIVATE
+# Preprocessor options (OPT / OPTIONS in the original 2LPTic Makefile)
+set(LPT_DEFINITIONS
   NO64BITID=1
   CORRECT_CIC=1
   # PRODUCEGAS=1   # uncomment if you want this default ON
   # ONLY_ZA=1      # uncomment if you want this default ON
 )
 
-target_compile_definitions(2LPTResBasis PRIVATE
-  NO64BITID=1
-  CORRECT_CIC=1
-  # PRODUCEGAS=1   # uncomment if you want this default ON
-  # ONLY_ZA=1      # uncomment if you want this default ON
-)
+function(aarambam_lpt_executable name method_dir)
+  add_executable(${name} ${ARGN} ${LPT_COMMON_SRC})
+  target_include_directories(${name} PRIVATE
+    ${method_dir} ${LPT_DIR}/common ${LPT_DIR}/common/nrsrc ${GSL_INCLUDE_DIR} ${FFTW2_INCLUDE_DIR})
+  target_compile_definitions(${name} PRIVATE ${LPT_DEFINITIONS})
+  target_link_directories(${name} PRIVATE ${OPENMPI_LIB_DIR} ${GSL_LIB_DIR} ${FFTW2_LIB_DIR})
+  target_link_libraries(${name} PRIVATE m mpi drfftw_mpi dfftw_mpi drfftw dfftw gsl gslcblas)
+  # Installed binaries must find libmpi / libgsl without LD_LIBRARY_PATH
+  set_target_properties(${name} PROPERTIES INSTALL_RPATH "${OPENMPI_LIB_DIR};${GSL_LIB_DIR};${FFTW2_LIB_DIR}")
+  install(TARGETS ${name} RUNTIME DESTINATION Aarambam/bin)
+endfunction()
 
-target_compile_definitions(2LPTBinned PRIVATE
-  NO64BITID=1
-  CORRECT_CIC=1
-  # PRODUCEGAS=1   # uncomment if you want this default ON
-  # ONLY_ZA=1      # uncomment if you want this default ON
-)
-
-
-# --- Link directories (LIBS part: -L...) ---
-target_link_directories(2LPTBasis PRIVATE
-  ${OPENMPI_LIB_DIR}
-  ${GSL_LIB_DIR}
-  ${FFTW2_LIB_DIR}
-)
-target_link_directories(2LPTResBasis PRIVATE
-  ${OPENMPI_LIB_DIR}
-  ${GSL_LIB_DIR}
-  ${FFTW2_LIB_DIR}
-)
-target_link_directories(2LPTBinned PRIVATE
-  ${OPENMPI_LIB_DIR}
-  ${GSL_LIB_DIR}
-  ${FFTW2_LIB_DIR}
-)
-
-# --- Link libraries ---
-target_link_libraries(2LPTBasis PRIVATE
-  m
-  mpi
-  drfftw_mpi dfftw_mpi drfftw dfftw
-  gsl gslcblas
-)
-
-target_link_libraries(2LPTResBasis PRIVATE
-  m
-  mpi
-  drfftw_mpi dfftw_mpi drfftw dfftw
-  gsl gslcblas
-)
-
-target_link_libraries(2LPTBinned PRIVATE
-  m
-  mpi
-  drfftw_mpi dfftw_mpi drfftw dfftw
-  gsl gslcblas
-)
-
-# Installed binaries must find libmpi / libgsl without LD_LIBRARY_PATH
-set_target_properties(2LPTBasis 2LPTResBasis 2LPTBinned PROPERTIES
-  INSTALL_RPATH "${OPENMPI_LIB_DIR};${GSL_LIB_DIR};${FFTW2_LIB_DIR}"
-)
-
-install(TARGETS 2LPTBasis    RUNTIME DESTINATION Aarambam/bin)
-install(TARGETS 2LPTResBasis RUNTIME DESTINATION Aarambam/bin)
-install(TARGETS 2LPTBinned   RUNTIME DESTINATION Aarambam/bin)
-
+aarambam_lpt_executable(2LPTBasis ${LPT_DIR}/basis
+  ${LPT_DIR}/basis/main.c ${LPT_DIR}/basis/power.c ${LPT_DIR}/basis/allvars.c ${LPT_DIR}/basis/read_param.c)
+aarambam_lpt_executable(2LPTResBasis ${LPT_DIR}/resbasis
+  ${LPT_DIR}/resbasis/main.c ${LPT_DIR}/resbasis/power.c ${LPT_DIR}/resbasis/allvars.c ${LPT_DIR}/resbasis/read_param.c)
+aarambam_lpt_executable(2LPTBinned ${LPT_DIR}/binned
+  ${LPT_DIR}/binned/main.c ${LPT_DIR}/binned/power.c ${LPT_DIR}/binned/allvars.c ${LPT_DIR}/binned/read_param.c)
 
 # ─── CMB-BEST Python Extension ──────────────────────────────────────────────
 
