@@ -446,12 +446,15 @@ void displacement_fields(void) {
                     {
                     case 0:
                       phig *= 1.0;
+                      break;
 
                     case 1:
                       phig *= (1.0 + A_res * cos(w_res * kmag + phi_res));
+                      break;
 
                     case 2:
                       phig *= (1.0 + A_res * cos(w_res * log(kmag) + phi_res));
+                      break;
                     }
 
                     
