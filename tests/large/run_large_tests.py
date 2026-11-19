@@ -7,7 +7,7 @@ Usage:
 refuses to start if the 1-minute load average is above 25% of the cores, unless --force is given.
 
 Checks, for basis, resbasis (Pk_mode 1) and binned:
-  * Nmesh = 384, Nsample = 256 (the production 3/2 rule), GlassTileFac 4: runs on 1 and on --nproc ranks
+  * Nmesh = --nmesh (384), Nsample = --nsample (256), i.e. the production 3/2 rule: runs on 1 and on --nproc ranks
     give identical potentials (rank independence at a realistic size)
   * Nmesh = Nsample = 256 on --nproc ranks: NG/Gaussian rms ratio sane, no NaN
 Memory: ~4 GB per run at 384^3.
@@ -48,6 +48,7 @@ def main():
     p = argparse.ArgumentParser()
     p.add_argument('bin_dir'); p.add_argument('work_dir')
     p.add_argument('--nproc', type=int, default=8); p.add_argument('--force', action='store_true')
+    p.add_argument('--nmesh', type=int, default=384); p.add_argument('--nsample', type=int, default=256)
     a = p.parse_args()
 
     load, ncpu = os.getloadavg()[0], os.cpu_count()
@@ -56,12 +57,12 @@ def main():
 
     extra = {'resbasis': dict(Pk_mode=1)}
     for method in ('basis', 'resbasis', 'binned'):
-        kw = dict(Nmesh=384, Nsample=256, Nmax=256, GlassTileFac=4, **extra.get(method, {}))
-        d1, dn = (os.path.join(a.work_dir, f'{method}_384_np{n}') for n in (1, a.nproc))
+        kw = dict(Nmesh=a.nmesh, Nsample=a.nsample, Nmax=a.nsample, GlassTileFac=a.nsample // 64, **extra.get(method, {}))
+        d1, dn = (os.path.join(a.work_dir, f'{method}_{a.nmesh}_np{n}') for n in (1, a.nproc))
         run(a.bin_dir, method, d1, 1, **kw); run(a.bin_dir, method, dn, a.nproc, **kw)
         for f in ('Gauss', 'Nongauss'):
             same = np.array_equal(potential(d1, f), potential(dn, f))
-            print(f'{method:8s} 384/256 {f:8s} np1 == np{a.nproc}: {same}')
+            print(f'{method:8s} {a.nmesh}/{a.nsample} {f:8s} np1 == np{a.nproc}: {same}')
 
         d = os.path.join(a.work_dir, f'{method}_256')
         run(a.bin_dir, method, d, a.nproc, Nmesh=256, Nsample=256, Nmax=256, GlassTileFac=4, **extra.get(method, {}))
