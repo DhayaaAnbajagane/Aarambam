@@ -166,7 +166,7 @@ void read_glass(char *fname)
 
       if(!(P))
 	{
-	  printf("failed to allocate %g Mbyte (%lu particles) on Task %d\n", bytes / (1024.0 * 1024.0),
+	  printf("failed to allocate %g Mbyte (%d particles) on Task %d\n", bytes / (1024.0 * 1024.0),
 		 NumPart, ThisTask);
 	  FatalError(9891);
 	}
@@ -215,7 +215,7 @@ void read_glass(char *fname)
 
   if(count != NumPart)
     {
-      printf("fatal mismatch (%d %lu) on Task %d\n", count, NumPart, ThisTask);
+      printf("fatal mismatch (%d %d) on Task %d\n", count, NumPart, ThisTask);
       FatalError(1);
     }
 
