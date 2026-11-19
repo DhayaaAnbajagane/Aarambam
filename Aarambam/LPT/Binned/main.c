@@ -1713,7 +1713,7 @@ ASSERT_ALLOC(cdisp[0] && cdisp[1] && cdisp[2]);
 
 		  P[n].Pos[axes] = periodic_wrap(P[n].Pos[axes]);
 
-		  if(fabs(dis - 3./7. * dis2 > maxdisp))
+		  if(fabs(dis - 3./7. * dis2) > maxdisp)
 		    maxdisp = fabs(dis - 3./7. * dis2);
 		}
 	    }

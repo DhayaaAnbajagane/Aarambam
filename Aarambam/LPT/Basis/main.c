@@ -224,7 +224,7 @@ void displacement_fields(void) {
       int n1, n2, n3;
       double alpha;
 
-      sprintf(buf, FileWithAlphaCoeff);
+      snprintf(buf, sizeof(buf), "%s", FileWithAlphaCoeff);
 
       if (!(fd = fopen(buf, "r")))
       {
@@ -234,6 +234,12 @@ void displacement_fields(void) {
 
       while (fscanf(fd, " %d %d %d %lf ", &n1, &n2, &n3, &alpha) == 4)
       {
+          if (n1 < 0 || n1 >= N_modes || n2 < 0 || n2 >= N_modes || n3 < 0 || n3 >= N_modes)
+          {
+              printf("Alpha table '%s' has mode (%d, %d, %d), outside N_modes = %d. "
+                     "Was it decomposed with a different N_modes?\n", buf, n1, n2, n3, N_modes);
+              FatalError(18);
+          }
           AlphaTable[n3][n2][n1] = alpha;
           AlphaTable[n3][n1][n2] = alpha;
           AlphaTable[n2][n3][n1] = alpha;
@@ -265,7 +271,7 @@ void displacement_fields(void) {
       double alpha;
       int n1;
 
-      sprintf(buf, FileWithX0Coeff);
+      snprintf(buf, sizeof(buf), "%s", FileWithX0Coeff);
       if (!(fd = fopen(buf, "r")))
       {
           printf("can't read X0 coefficients in file '%s' on task %d\n", buf, ThisTask);
@@ -277,6 +283,11 @@ void displacement_fields(void) {
           double x0, x1;
           if (fscanf(fd, " %d %lf %lf ", &n1, &x0, &x1) == 3)
           {
+              if (n1 < 0 || n1 >= N_modes)
+              {
+                  printf("X0 table '%s' has row %d, outside N_modes = %d\n", buf, n1, N_modes);
+                  FatalError(18);
+              }
               X0Table[n1][0] = x0;
               X0Table[n1][1] = x1;
           }
@@ -1510,7 +1521,7 @@ ASSERT_ALLOC(cdisp[0] && cdisp[1] && cdisp[2]);
 
 		  P[n].Pos[axes] = periodic_wrap(P[n].Pos[axes]);
 
-		  if(fabs(dis - 3./7. * dis2 > maxdisp))
+		  if(fabs(dis - 3./7. * dis2) > maxdisp)
 		    maxdisp = fabs(dis - 3./7. * dis2);
 		}
 	    }
