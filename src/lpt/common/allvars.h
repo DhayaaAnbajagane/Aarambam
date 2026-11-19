@@ -1,3 +1,6 @@
+#ifndef AARAMBAM_ALLVARS_H
+#define AARAMBAM_ALLVARS_H
+
 #include <drfftw_mpi.h>
 #include <stdio.h>
 #include <time.h>
@@ -149,3 +152,5 @@ extern int Type, MinType, MaxType;
 extern int    WDM_On;
 extern int    WDM_Vtherm_On;
 extern double WDM_PartMass_in_kev;
+
+#endif

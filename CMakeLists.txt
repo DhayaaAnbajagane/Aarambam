@@ -96,6 +96,7 @@ set(LPT_COMMON_SRC
   ${LPT_DIR}/common/allvars.c
   ${LPT_DIR}/common/read_param.c
   ${LPT_DIR}/common/power.c
+  ${LPT_DIR}/common/lpt_core.c
   ${LPT_DIR}/common/save.c
   ${LPT_DIR}/common/read_glass.c
   ${LPT_DIR}/common/nrsrc/nrutil.c
