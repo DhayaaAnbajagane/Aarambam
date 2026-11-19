@@ -432,7 +432,7 @@ def make_example_config_binned():
     return make_config_binned(**DEFAULT_BINNED_INPUTS)
 
 
-#C filter codes of the binned 2LPT code (Aarambam/LPT/Binned allvars.h): 1 heaviside, 2 linear, 3 cubic
+#C filter codes of the binned 2LPT code (src/lpt/binned/binned_vars.h): 1 heaviside, 2 linear, 3 cubic
 _BINNED_CODES = {'heaviside': 1, 'top_hat': 1, 'linear': 2, 'cubic': 3}
 
 

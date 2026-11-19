@@ -93,10 +93,13 @@ Unit   = Am.utils.Decomposer(n_s = n_s, Lbox = Lbox, Nmax = Nmax, Binned_Nk = 20
 coeffL = Unit.go(Am.models.Local,   Am.binned.BasicBinnedDecompose, outdir = outdir)
 coeffS = Unit.go(Am.models.ScalarI, Am.binned.BasicBinnedDecompose, mass = 1, outdir = outdir) #This will overwrite the previous call
 
-#Use the helper function to make the config in the right format
-#and write it to dir. You will need to pass a bunch of
-#values into make_config
-CONFIG = Am.utils.make_config_binned(...)
+#Use the helper function to make the config in the right format and write it to dir.
+#binned_kernel_inputs reads the tables written by Unit.go(..., outdir = outdir) and returns
+#their paths and the matching C filter codes. Override the other defaults as needed.
+inputs = dict(Am.utils.DEFAULT_BINNED_INPUTS)
+inputs.update(Am.utils.binned_kernel_inputs(outdir))
+inputs.update(Nmesh = 384, Nsample = 256, Nmax = 256, Lbox = Lbox, OutputDir = outdir, Fnl = 100)
+CONFIG = Am.utils.make_config_binned(**inputs)
 with open(outdir + '/LPTconfig', 'w') as f: f.write(CONFIG)
 
 #Doing a pip install will provide you with executables in your env.
@@ -108,6 +111,37 @@ sp.run(f"mpirun -np {Nprocs} aarambam 2lpt binned {outdir + '/LPTconfig'}", shel
 #Finally, here's a helpful executable to combine I/O from individual processes.
 sp.run(f"aarambam collate --file_dir {outdir}", shell = True, env = os.environ)
 ```
+
+### Your own template
+
+Templates are small classes. Write one permutation term of the shape function
+$S = B\,(k_1k_2k_3)^2$, with its permutation weight, in the rescaled wavenumbers
+$\tilde k = k^{(4-n_s)/3}$; the base class adds the tilt and normalises to $S(1,1,1) = 1$:
+
+```python
+class MyTemplate(Am.models.ShapeTemplate):
+    def raw_shape(self, k1, k2, k3):
+        c = self.args['c']                        #any parameter passed to Decomposer.go(...)
+        return k1**2 / (k2 * k3) * 3/6 * (1 + c * k3 / (k1 + k2 + k3))
+
+coeff = Unit.go(MyTemplate, Am.binned.BasicBinnedDecompose, c = 0.5, outdir = outdir)
+```
+
+See the [conventions page](https://aarambam.readthedocs.io/en/latest/conventions.html) for the
+permutation weights and the amplitude convention ($B_\Phi = 6 f_{\rm NL} B_{\rm template}$).
+
+## Code layout and tests
+
+* `Aarambam/`: the Python package. `models` (templates), `basis/legendre` and `basis/binned`
+  (decompositions), `config` (2LPT config files), `postprocess`, `decomposer`, and `cli` (the
+  `aarambam` command). `Aarambam.utils` re-exports the config, postprocess and decomposer functions.
+* `src/lpt/`: the C sources of the two 2LPT executables, `2LPTBasis` (Legendre/modal, including the
+  oscillating-$P(k)$ "ResBasis" mode) and `2LPTBinned`. `common/` is shared by both.
+* `tests/`: `python -m pytest tests` runs the Python tests. Tests marked `mpi` run 32^3 ICs and need the
+  executables, e.g. `AARAMBAM_LPT_BIN=/path/to/site-packages/Aarambam/bin python -m pytest tests -m mpi`.
+
+Particle IDs are 32-bit by default (up to $2^{31}-1$ particles). Set `export Aarambam_64BIT_IDS=ON` before
+`pip install` for larger runs.
 
 ## Attribution
 
