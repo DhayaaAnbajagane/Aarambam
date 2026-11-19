@@ -1,4 +1,5 @@
 #include <math.h>
+#include <stdint.h>
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -183,7 +184,8 @@ void displacement_fields(void) {
     
   double a, b, c, d; //For holding coeffs
 
-  unsigned int bytes, nmesh3;
+  unsigned int bytes;
+  uint64_t nmesh3;              /* Nmesh^3 overflows 32 bits for Nmesh >= 1626 */
   int coord;
   fftw_complex *(cdisp[3]), *(cdisp2[3]) ; /* ZA and 2nd order displacements */
   fftw_real *(disp[3]), *(disp2[3]) ;
@@ -1111,7 +1113,7 @@ void displacement_fields(void) {
   MPI_Barrier(MPI_COMM_WORLD);   
   rfftwnd_mpi(Forward_plan, 1, pot, Workspace, FFTW_NORMAL_ORDER);
 
-  nmesh3 = ((unsigned int) Nmesh) * ((unsigned int) Nmesh ) * ((unsigned int) Nmesh);    
+  nmesh3 = ((uint64_t) Nmesh) * ((uint64_t) Nmesh) * ((uint64_t) Nmesh);    
 
   //Add NG potential to the full potential
   for(ii = 0; ii < Local_nx; ii++)
@@ -1448,7 +1450,7 @@ ASSERT_ALLOC(cdisp[0] && cdisp[1] && cdisp[2]);
 
       /* read-out displacements */
 
-      nmesh3 = Nmesh * Nmesh * Nmesh;
+      nmesh3 = (uint64_t) Nmesh * (uint64_t) Nmesh * (uint64_t) Nmesh;
       
       for(n = 0; n < NumPart; n++)
 	{
