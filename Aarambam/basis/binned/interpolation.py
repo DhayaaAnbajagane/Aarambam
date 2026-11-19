@@ -84,8 +84,10 @@ class BinnedProductInterpolator:
         if mode == 'log':
             return np.log(k)
         if mode in ['k', 'linear']:
-            return k
-        raise ValueError('Binned_linear_coordinate must be k or log.')
+            #The interpolation nodes here are geometric bin centres while the C code uses
+            #arithmetic ones for BinnedPNGCoordinate 1, and make_config_binned always writes 2.
+            raise NotImplementedError("Binned_linear_coordinate = 'k' is not supported by the 2LPT code yet; use 'log'.")
+        raise ValueError('Binned_linear_coordinate must be log.')
 
     def _center_for_polynomial(self, lo, hi):
         mode = str(self.args.get('Binned_linear_coordinate', 'log')).lower()
