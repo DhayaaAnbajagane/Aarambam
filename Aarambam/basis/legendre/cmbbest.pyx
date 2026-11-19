@@ -185,7 +185,7 @@ class Basis:
 
         if include_borderline:
             # 1D bounds for k grid points
-            interval_bounds = self.mode_k_min
+            interval_bounds = np.zeros(len(k_grid) + 1)
             interval_bounds[0] =  k_grid[0]
             interval_bounds[1:-1] = (k_grid[:-1] + k_grid[1:]) / 2
             interval_bounds[-1] = self.mode_k_max
@@ -439,7 +439,7 @@ class Basis:
 
                 cond_here = get_cond(np.where(OMP_msk)[0][0], OMP_msk, QQ_tilde) #Use existing True ind just so we can get cond of full matrix
                 with threadpoolctl.threadpool_limits(limits = 1):
-                    cond  = joblib.Parallel(n_jobs = os.cpu_count())(joblib.delayed(get_cond)(i, OMP_msk, QQ_tilde) 
+                    cond  = joblib.Parallel(n_jobs = cpus_allocated)(joblib.delayed(get_cond)(i, OMP_msk, QQ_tilde) 
                                                                      for i in np.where(np.invert(OMP_msk))[0])    
                 fcond     = cond/cond_here - 1
 
