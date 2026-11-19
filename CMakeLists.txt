@@ -1,13 +1,16 @@
-cmake_minimum_required(VERSION 3.16)
-project(Aarambam C)
+cmake_minimum_required(VERSION 3.18)   # find_* REQUIRED needs 3.18
 
 # --- Compiler: use mpicc ---
+# The compiler must be chosen before project(), otherwise CMake detects the
+# system cc first and only swaps in mpicc at generate time.
 if(DEFINED ENV{Aarambam_CC})
-  set(CMAKE_C_COMPILER $ENV{Aarambam_CC} CACHE FILEPATH "C compiler" FORCE)
+  set(CMAKE_C_COMPILER $ENV{Aarambam_CC})
 else()
   find_program(MPI_C_COMPILER NAMES mpicc REQUIRED)
-  set(CMAKE_C_COMPILER ${MPI_C_COMPILER} CACHE FILEPATH "MPI C compiler" FORCE)
+  set(CMAKE_C_COMPILER ${MPI_C_COMPILER})
 endif()
+
+project(Aarambam C)
 
 # --- Match Makefile flags: -O3 -Wall and GNU extensions (like drand48, M_PI) ---
 set(CMAKE_C_STANDARD 99)
@@ -76,12 +79,21 @@ else()
     NAMES        gsl/gsl_math.h
     HINTS        ${_GSL_HINT}
     PATH_SUFFIXES include
+    REQUIRED
   )
 endif()
 target_include_directories(2LPTBasis    PRIVATE ${GSL_INCLUDE_DIR})
 target_include_directories(2LPTResBasis PRIVATE ${GSL_INCLUDE_DIR})
 target_include_directories(2LPTBinned   PRIVATE ${GSL_INCLUDE_DIR})
-set(GSL_LIB_DIR "${GSL_INCLUDE_DIR}/../lib" CACHE PATH "GSL library directory" FORCE)
+
+get_filename_component(_GSL_PREFIX "${GSL_INCLUDE_DIR}" DIRECTORY)
+find_library(GSL_LIBRARY
+  NAMES        gsl
+  HINTS        ${_GSL_PREFIX}
+  PATH_SUFFIXES lib lib64
+  REQUIRED
+)
+get_filename_component(GSL_LIB_DIR ${GSL_LIBRARY} DIRECTORY)
 
 # FFTW2
 if(DEFINED ENV{Aarambam_FFTW2_ROOT})
@@ -113,13 +125,15 @@ if(DEFINED ENV{Aarambam_OPENMPI_ROOT})
   set(OPENMPI_LIB_DIR "$ENV{Aarambam_OPENMPI_ROOT}/lib" CACHE PATH "OpenMPI library directory" FORCE)
 else()
   # split the colon‐delimited env vars into a CMake list and combine
-  string(REPLACE ":" ";" _LD_PATHS  $ENV{LD_LIBRARY_PATH})
+  string(REPLACE ":" ";" _LD_PATHS  "$ENV{LD_LIBRARY_PATH}")
   string(REPLACE ":" ";" _LIB_PATHS "$ENV{LIBRARY_PATH}")
   list(APPEND _SEARCH_PATHS ${_LD_PATHS} ${_LIB_PATHS})
 
-  # look for libmpi.so (or .dylib/.a) on your LD_LIBRARY_PATH or LIBRARY_PATH
+  # look for libmpi.so (or .dylib/.a) next to mpicc, then on your LD_LIBRARY_PATH or LIBRARY_PATH
+  get_filename_component(_MPICC_BIN_DIR "${CMAKE_C_COMPILER}" DIRECTORY)
   find_library(OPENMPI_MPI_LIB
     NAMES mpi
+    HINTS "${_MPICC_BIN_DIR}/../lib" "${_MPICC_BIN_DIR}/../lib64"
     PATHS ${_SEARCH_PATHS}
     REQUIRED
   )
@@ -129,9 +143,9 @@ else()
 endif()
 
 # Local headers
-target_include_directories(2LPTBasis    PRIVATE ${BASIS_SRC_DIR}    ${BASIS_SRC_DIR}/nrsrs)
-target_include_directories(2LPTResBasis PRIVATE ${RESBASIS_SRC_DIR} ${RESBASIS_SRC_DIR}/nrsrs)
-target_include_directories(2LPTBinned   PRIVATE ${BINNED_SRC_DIR}   ${BINNED_SRC_DIR}/nrsrs)
+target_include_directories(2LPTBasis    PRIVATE ${BASIS_SRC_DIR}    ${BASIS_SRC_DIR}/nrsrc)
+target_include_directories(2LPTResBasis PRIVATE ${RESBASIS_SRC_DIR} ${RESBASIS_SRC_DIR}/nrsrc)
+target_include_directories(2LPTBinned   PRIVATE ${BINNED_SRC_DIR}   ${BINNED_SRC_DIR}/nrsrc)
 
 # --- Preprocessor options (OPT / OPTIONS in the Makefile) ---
 # Default Makefile switches:
@@ -196,6 +210,11 @@ target_link_libraries(2LPTBinned PRIVATE
   gsl gslcblas
 )
 
+# Installed binaries must find libmpi / libgsl without LD_LIBRARY_PATH
+set_target_properties(2LPTBasis 2LPTResBasis 2LPTBinned PROPERTIES
+  INSTALL_RPATH "${OPENMPI_LIB_DIR};${GSL_LIB_DIR};${FFTW2_LIB_DIR}"
+)
+
 install(TARGETS 2LPTBasis    RUNTIME DESTINATION Aarambam/bin)
 install(TARGETS 2LPTResBasis RUNTIME DESTINATION Aarambam/bin)
 install(TARGETS 2LPTBinned   RUNTIME DESTINATION Aarambam/bin)
@@ -204,14 +223,15 @@ install(TARGETS 2LPTBinned   RUNTIME DESTINATION Aarambam/bin)
 # ─── CMB-BEST Python Extension ──────────────────────────────────────────────
 
 find_package(Python3 REQUIRED COMPONENTS Interpreter Development.Module NumPy)
-find_package(OpenMP)  # for -fopenmp
+find_package(OpenMP REQUIRED COMPONENTS C)  # tetrapyd.c includes omp.h unconditionally
 
 # paths
 set(CMB_SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR}/Aarambam/basis/legendre)
 set(CMB_PYX    ${CMB_SRC_DIR}/cmbbest.pyx)
 set(CMB_C      ${CMAKE_CURRENT_BINARY_DIR}/Aarambam/basis/legendre/cmbbest.c)
 
-# 1 generate cmbbest.c
+# 1 generate cmbbest.c (the Makefile generator does not create the output dir)
+file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/Aarambam/basis/legendre)
 add_custom_command(
   OUTPUT ${CMB_C}
   COMMAND ${Python3_EXECUTABLE} -m cython -3 --fast-fail -o ${CMB_C} ${CMB_PYX}
@@ -247,11 +267,7 @@ target_include_directories(cmbbest PRIVATE
   ${Python3_NumPy_INCLUDE_DIRS}
   ${CMB_SRC_DIR}
 )
-if(OpenMP_C_FOUND)
-  target_link_libraries(cmbbest PRIVATE OpenMP::OpenMP_C)
-  target_compile_options(cmbbest PRIVATE -fopenmp)
-  target_link_options(cmbbest PRIVATE -fopenmp)
-endif()
+target_link_libraries(cmbbest PRIVATE OpenMP::OpenMP_C)
 
 # 4 install into your package
 install(TARGETS cmbbest
