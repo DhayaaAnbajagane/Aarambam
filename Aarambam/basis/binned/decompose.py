@@ -175,6 +175,7 @@ class BasicBinnedDecompose:
         return output
 
     def shape_function(self, k1, k2, k3):
+        """Return the shape S = B (k1 k2 k3)^2 of the symmetrised bispectrum."""
         return self.bispectrum(k1, k2, k3) * (np.asarray(k1) * np.asarray(k2) * np.asarray(k3))**2
 
     def primordial_power(self, k):
@@ -182,6 +183,7 @@ class BasicBinnedDecompose:
         return np.power(np.asarray(k, dtype=float), float(self.args['n_s']) - 4.0)
 
     def kernel_denominator(self, k1, k2, k3):
+        """Return mean(P1 P2 + P1 P3 + P2 P3) of the primordial power, the denominator of ``kernel``."""
         P1 = self.primordial_power(k1)
         P2 = self.primordial_power(k2)
         P3 = self.primordial_power(k3)

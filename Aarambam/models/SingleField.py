@@ -1,3 +1,4 @@
+"""Single-field templates: local, equilateral, orthogonal, quasi-single-field, DBI and the EFT shapes."""
 import numpy as np
 from scipy import special
 from .base import ShapeTemplate
@@ -18,6 +19,7 @@ class Local(ShapeTemplate):
     """
 
     def raw_shape(self, k1, k2, k3):
+        """One permutation term of the shape in the rescaled k (see ``ShapeTemplate``)."""
         return k1**2/(k2*k3) * 3/6
 
 
@@ -37,6 +39,7 @@ class Equilateral(ShapeTemplate):
     """
 
     def raw_shape(self, k1, k2, k3):
+        """One permutation term of the shape in the rescaled k (see ``ShapeTemplate``)."""
         S_1 = k1**2/(k2*k3) * 3/6
         S_2 = 1 * 1/6
         S_3 = k3/k1 * 6/6
@@ -61,6 +64,7 @@ class Orthogonal(ShapeTemplate):
     """
 
     def raw_shape(self, k1, k2, k3):
+        """One permutation term of the shape in the rescaled k (see ``ShapeTemplate``)."""
         S_1 = k1**2/(k2*k3) * 3/6
         S_2 = 1 * 1/6
         S_3 = k3/k1 * 6/6
@@ -88,6 +92,7 @@ class QuasiSingleField(ShapeTemplate):
     """
 
     def raw_shape(self, k1, k2, k3):
+        """One permutation term of the shape in the rescaled k (see ``ShapeTemplate``)."""
         nu    = self.args['mass']
         kappa = k1*k2*k3/(k1 + k2 + k3)**3
         return np.sqrt(kappa) * special.yv(nu, 8 * kappa) * 1/6
@@ -110,6 +115,7 @@ class DBI(ShapeTemplate):
     """
 
     def raw_shape(self, k1, k2, k3):
+        """One permutation term of the shape in the rescaled k (see ``ShapeTemplate``)."""
         S1 = -3/7 / np.power(k1 + k2 + k3, 2)
         S2 = k1**5 * 3/6
         S3 = (2*k1**4*k2 - 3*k1**3*k2**2) * 6/6
@@ -134,6 +140,7 @@ class SenatoreEFT1(ShapeTemplate):
     """
 
     def raw_shape(self, k1, k2, k3):
+        """One permutation term of the shape in the rescaled k (see ``ShapeTemplate``)."""
         S1 = -9/17 / np.power(k1 + k2 + k3, 3)
         S2 = k1**6 * 3/6
         S3 = (3*k1**5*k2 - k1**4*k2**2 - 3*k1**3*k2**3) * 6/6
@@ -158,4 +165,5 @@ class SenatoreEFT2(ShapeTemplate):
     """
 
     def raw_shape(self, k1, k2, k3):
+        """One permutation term of the shape in the rescaled k (see ``ShapeTemplate``)."""
         return 27 * (k1*k2*k3) / np.power(k1 + k2 + k3, 3) * 1/6 #Fully symmetric, so 1/6 for the permutation sum

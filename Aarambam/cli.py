@@ -17,6 +17,7 @@ def run_2lpt(method, args):
 
 
 def write_example_config(method, config_path):
+    """Write ``make_example_config_<method>()`` to ``config_path``."""
     from . import config
     with open(config_path, 'w') as f:
         f.write(getattr(config, f'make_example_config_{method}')())
@@ -24,6 +25,7 @@ def write_example_config(method, config_path):
 
 
 def collate(file_dir, seed = None):
+    """Save the collated potentials of ``file_dir`` as .npy files, then remove the per-rank files."""
     import numpy as np
     from .postprocess import collate_potential, find_potential_files
 
@@ -38,6 +40,7 @@ def collate(file_dir, seed = None):
 
 
 def camb2input(transfer_path):
+    """Convert a CAMB transfer function into ``<root>Converted<ext>`` (two-column ASCII)."""
     import numpy as np
     from .postprocess import camb2input as convert
 
@@ -73,6 +76,7 @@ def _parser():
 
 
 def main(argv = None):
+    """Entry point of the ``aarambam`` command."""
     args = _parser().parse_args(argv)
     if args.command == '2lpt':
         run_2lpt(args.method, [args.config])
@@ -91,20 +95,37 @@ def main(argv = None):
 #Aliases for the older Aarambam-* script names (pyproject [project.scripts])
 #------------------------------------------------------------------------------------------
 
-def lpt_basis():    run_2lpt('basis',    sys.argv[1:])
-def lpt_resbasis(): run_2lpt('resbasis', sys.argv[1:])
-def lpt_binned():   run_2lpt('binned',   sys.argv[1:])
+def lpt_basis():
+    """``Aarambam-2LPT-Basis``: alias of ``aarambam 2lpt basis``."""
+    run_2lpt('basis', sys.argv[1:])
+
+def lpt_resbasis():
+    """``Aarambam-2LPT-ResBasis``: alias of ``aarambam 2lpt resbasis``."""
+    run_2lpt('resbasis', sys.argv[1:])
+
+def lpt_binned():
+    """``Aarambam-2LPT-Binned``: alias of ``aarambam 2lpt binned``."""
+    run_2lpt('binned', sys.argv[1:])
 
 def _example(method):
     p = argparse.ArgumentParser(description = f'Write an example {method} LPT config.')
     p.add_argument('--config_path', action = 'store', type = str, required = True, help = "Path to put the example LPT config")
     write_example_config(method, p.parse_args().config_path)
 
-def example_basis():    _example('basis')
-def example_resbasis(): _example('resbasis')
-def example_binned():   _example('binned')
+def example_basis():
+    """``Aarambam-make-example-config-basis``: alias of ``aarambam example-config basis``."""
+    _example('basis')
+
+def example_resbasis():
+    """``Aarambam-make-example-config-resbasis``: alias of ``aarambam example-config resbasis``."""
+    _example('resbasis')
+
+def example_binned():
+    """``Aarambam-make-example-config-binned``: alias of ``aarambam example-config binned``."""
+    _example('binned')
 
 def collate_main():
+    """``Aarambam-collate-potential``: alias of ``aarambam collate``."""
     p = argparse.ArgumentParser(description = 'Combine per-rank potential files into .npy arrays.')
     p.add_argument('--file_dir', action = 'store', type = str, required = True, help = "Directory containing the potential files")
     p.add_argument('--seed',     action = 'store', type = int, default = None, help = "Seed to collate, if the directory holds several runs")
@@ -112,6 +133,7 @@ def collate_main():
     collate(a.file_dir, a.seed)
 
 def camb2input_main():
+    """``Aarambam-camb2input``: alias of ``aarambam camb2input``."""
     p = argparse.ArgumentParser(description = 'Convert a CAMB transfer function into the 2LPT input format.')
     p.add_argument('--transfer_path', action = 'store', type = str, required = True, help = "Path to CAMB transfer function")
     camb2input(p.parse_args().transfer_path)

@@ -1,3 +1,4 @@
+"""Legendre (modal) decomposition of a bispectrum template, built on the modified CMB-BEST code."""
 import os, sys, numpy as np, itertools
 from scipy import special
 from . import cmbbest as best

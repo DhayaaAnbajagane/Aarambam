@@ -1,3 +1,4 @@
+"""Cosmological-collider templates of Sohn+ 2024 (arXiv:2404.07203)."""
 import numpy as np, numbers
 from scipy import special
 from .base import ShapeTemplate
@@ -49,6 +50,7 @@ class ScalarI(ShapeTemplate):
     """
 
     def raw_shape(self, k1, k2, k3):
+        """One permutation term of the shape in the rescaled k (see ``ShapeTemplate``)."""
         return _scalar_I_shape(k1, k2, k3, self.args['mass']) * 3/6 #Symmetry factor
 
 
@@ -74,6 +76,7 @@ class ScalarII(ShapeTemplate):
     """
 
     def raw_shape(self, k1, k2, k3):
+        """One permutation term of the shape in the rescaled k (see ``ShapeTemplate``)."""
 
         mu    = self.args['mass']
         beta  = mu**2 + 1/4
@@ -137,6 +140,7 @@ class HeavySpinCollider(ShapeTemplate):
     """
 
     def raw_shape(self, k1, k2, k3):
+        """One permutation term of the shape in the rescaled k (see ``ShapeTemplate``)."""
 
         s  = self.args['spin']
         assert isinstance(s, numbers.Integral), f"The provided spin must be an integer. You provided {type(s)}"
@@ -168,6 +172,7 @@ class LowSpeedCollider(ShapeTemplate):
     """
 
     def raw_shape(self, k1, k2, k3):
+        """One permutation term of the shape in the rescaled k (see ``ShapeTemplate``)."""
 
         #Equilateral template, written in the rescaled k. This matches the tilt of
         #the ``Equilateral`` model exactly.
@@ -204,5 +209,6 @@ class MultiSpeedCollider(ShapeTemplate):
     """
 
     def raw_shape(self, k1, k2, k3):
+        """One permutation term of the shape in the rescaled k (see ``ShapeTemplate``)."""
         c1, c2, c3 = self.args['c1'], self.args['c2'], self.args['c3']
         return (k1*k2*k3) / (c1*k1 + c2*k2 + c3*k3)**3 * 6/6

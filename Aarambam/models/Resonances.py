@@ -1,3 +1,4 @@
+"""Oscillatory (resonance and feature) templates of Planck 2018 IX (arXiv:1905.05697)."""
 import numpy as np
 from .base import ShapeTemplate
 
@@ -24,6 +25,7 @@ class LogResonance(ShapeTemplate):
     normalise = None #Amplitude convention of the cited template, not S(1,1,1) = 1
 
     def raw_shape(self, k1, k2, k3): #https://arxiv.org/pdf/1905.05697, Equation (12)
+        """One permutation term of the shape in the rescaled k (see ``ShapeTemplate``)."""
         w, phi = self.args['w_res'], self.args['phi']
         return np.sin(w * np.log(k1 + k2 + k3) + phi) * 1/6
 
@@ -50,6 +52,7 @@ class LinearResonance(ShapeTemplate):
     normalise = None #Amplitude convention of the cited template, not S(1,1,1) = 1
 
     def raw_shape(self, k1, k2, k3): #https://arxiv.org/pdf/1905.05697, Equation (15)
+        """One permutation term of the shape in the rescaled k (see ``ShapeTemplate``)."""
         w, phi = self.args['w_res'], self.args['phi']
         return np.sin(w * (k1 + k2 + k3) + phi) * 1/6
 
@@ -78,6 +81,7 @@ class K2cosResonance(ShapeTemplate):
     normalise = None #Amplitude convention of the cited template, not S(1,1,1) = 1
 
     def raw_shape(self, k1, k2, k3):
+        """One permutation term of the shape in the rescaled k (see ``ShapeTemplate``)."""
         w, alpha = self.args['w_res'], self.args['alpha']
         K = k1 + k2 + k3
         return K**2 * ( (alpha*w) / (K * np.sinh(alpha*w*K))) * np.cos(w*K) * 1/6
@@ -107,6 +111,7 @@ class KsinResonance(ShapeTemplate):
     normalise = None #Amplitude convention of the cited template, not S(1,1,1) = 1
 
     def raw_shape(self, k1, k2, k3): #Eq(17) in https://arxiv.org/pdf/1905.05697
+        """One permutation term of the shape in the rescaled k (see ``ShapeTemplate``)."""
         w, alpha = self.args['w_res'], self.args['alpha']
         K = k1 + k2 + k3
         return K * ( (alpha*w) / (K * np.sinh(alpha*w*K))) * np.sin(w*K) * 1/6
@@ -133,6 +138,7 @@ class NBDsin(ShapeTemplate):
     normalise = None #Amplitude convention of the cited template, not S(1,1,1) = 1
 
     def raw_shape(self, k1, k2, k3): #Eq(21) in https://arxiv.org/pdf/1502.01592
+        """One permutation term of the shape in the rescaled k (see ``ShapeTemplate``)."""
         K  = k1 + k2 + k3
         w, phi = self.args['w_res'], self.args['phi']
         S1 = np.exp(-w*(K - 2*k1)) + np.exp(-w*(K - 2*k2)) + np.exp(-w*(K - 2*k3))

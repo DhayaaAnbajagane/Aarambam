@@ -75,6 +75,7 @@ class BinnedProductInterpolator:
 
     @staticmethod
     def centers(edges):
+        """Return the geometric bin centres of ``edges``."""
         return centers_from_edges(edges)
 
     def _coord_value(self, k):
@@ -101,6 +102,7 @@ class BinnedProductInterpolator:
         return out
 
     def point_values(self, k1, k2, k3):
+        """Evaluate every tabulated quantity (B, K, denom, S) at the given wavenumbers."""
         return {name: np.asarray(function(k1, k2, k3), dtype=float) for name, function in self.quantities.items()}
 
     @staticmethod
