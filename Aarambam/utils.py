@@ -68,7 +68,7 @@ DEFAULT_BASIS_INPUTS = dict(Nmesh = 256, Nsample = 256, Nmax = 256, Lbox = 512, 
                             TransferPath = os.path.dirname(__file__) + "/defaults/TransferFunctionConverted.dat",
                             AlphaPath    = os.path.dirname(__file__) + "/defaults/AlphaTable.dat",
                             AiPath       = os.path.dirname(__file__) + "/defaults/AiTable.dat",
-                            SavePotentialField = True, NWriteoutProcesses = os.cpu_count()
+                            SavePotentialField = True, NWriteoutProcesses = 1
                             )
 
 
@@ -157,7 +157,7 @@ DEFAULT_BINNED_INPUTS = dict(Nmesh = 256, Nsample = 256, Nmax = 256, Lbox = 512,
                              BinnedPNGFilterCode       = 3,
                              BinnedPNGOutputFilterCode = 3,
                              BinnedPNGCacheBlockSize   = 4,
-                             SavePotentialField = True, NWriteoutProcesses = os.cpu_count()
+                             SavePotentialField = True, NWriteoutProcesses = 1
                             )
 
 

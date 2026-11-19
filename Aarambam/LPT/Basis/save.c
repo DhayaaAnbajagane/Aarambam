@@ -113,14 +113,8 @@ void write_phi(fftw_real *pot, int isNonGaus)
 
 void write_particle_data(void)
 {
-  int nprocgroup, groupTask, masterTask;
-
-  if((NTask < NumFilesWrittenInParallel))
-    {
-      printf
-	("Fatal error.\nNumber of processors must be a smaller or equal than `NumFilesWrittenInParallel'.\n");
-      FatalError(24131);
-    }
+  /* Task 0 writes every file (one per task), so NumFilesWrittenInParallel is not used. It used to abort
+     here, after all the work, whenever NTask < NumFilesWrittenInParallel. */
 
   for (int task = 0; task < NTask; task++) {
   if (ThisTask == 0) {
