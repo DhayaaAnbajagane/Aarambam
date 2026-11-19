@@ -533,9 +533,12 @@ static double bpng_u_in_bin_axis(int axis, int bin, double k)
   return (x - xc) / dx;
 }
 
-static int bpng_mode_allowed(double kx, double ky, double kz, double kmag)
+/* Modes used by the NG term: the Gaussian field's support (SphereMode / Nsample test as in displacement_fields),
+ * never k = 0 and never the Nyquist planes, where the Gaussian field is zero and i*k is ill-defined. */
+static int bpng_mode_allowed(ptrdiff_t i, ptrdiff_t j, ptrdiff_t k, double kx, double ky, double kz, double kmag)
 {
   if(kmag == 0.0) return 0;
+  if(i == Nmesh / 2 || j == Nmesh / 2 || k == Nmesh / 2) return 0;   /* Gaussian field is zero there */
   if(SphereMode == 1)
     {
       if(kmag * Box / (2 * PI) > Nsample / 2) return 0;
@@ -678,7 +681,7 @@ static void bpng_build_input_filtered_field(fftw_complex *dst, fftw_complex *src
           kz = (k < Nmesh / 2) ? k * 2 * PI / Box : -(Nmesh - k) * 2 * PI / Box;
           kmag = sqrt(kx*kx + ky*ky + kz*kz);
 
-          if(!bpng_mode_allowed(kx, ky, kz, kmag)) continue;
+          if(!bpng_mode_allowed(i, j, k, kx, ky, kz, kmag)) continue;
           filt = bpng_input_basis_value(axis, node, kmag);
           if(filt == 0.0) continue;
 
@@ -863,7 +866,7 @@ static void bpng_accumulate_hybrid_convolution(fftw_complex *conv, long double *
           kz = (k < Nmesh / 2) ? k * 2 * PI / Box : -(Nmesh - k) * 2 * PI / Box;
           kmag = sqrt(kx*kx + ky*ky + kz*kz);
 
-          if(!bpng_mode_allowed(kx, ky, kz, kmag)) continue;
+          if(!bpng_mode_allowed(i, j, k, kx, ky, kz, kmag)) continue;
           ic = bpng_find_bin(BPNG.edges[2], BPNG.nk[2], kmag);
           if(ic < 0) continue;
 
