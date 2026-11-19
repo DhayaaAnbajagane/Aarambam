@@ -433,7 +433,7 @@ class Basis:
                     print(f"\n HIT LIMIT OF VAR_RES/VAR_TOT = {RR_tol:0.4e}. ENDING SEARCH", flush = True)
                     break
 
-                if np.sum(OMP_msk) == max_modes - 1: 
+                if (max_modes > 0) and (np.sum(OMP_msk) >= max_modes): 
                     print("\n USED ALL AVAILABLE MODES", flush = True)
                     break
 
