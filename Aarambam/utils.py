@@ -12,7 +12,7 @@ DEFAULT_BASIS_CONFIG = """
 Nmesh                               %(Nmesh)d
 Nsample                             %(Nsample)d
 Nmax                                %(Nmax)d
-Box                                 %(Lbox)f
+Box                                 %(Lbox).17g
 FileBase                            %(FileBase)s
 OutputDir                           %(OutputDir)s
 GlassFile                           %(GlassFile)s 
@@ -21,15 +21,15 @@ GlassTileFac                        %(GlassTileFac)d
 Seed                                %(seed)d
 
 
-Omega                               %(Om)f
-OmegaLambda                         %(Ode)f
+Omega                               %(Om).17g
+OmegaLambda                         %(Ode).17g
 OmegaBaryon                         0.00000 #Doesn't really matter since we use the transfer function from CAMB
 OmegaDM_2ndSpecies                  0.00
-HubbleParam                         %(h)f
-Sigma8                              %(sigma8)f
-PrimordialIndex                     %(n_s)f
-Redshift                            %(z_ini)f
-Fnl                                 %(Fnl)f
+HubbleParam                         %(h).17g
+Sigma8                              %(sigma8).17g
+PrimordialIndex                     %(n_s).17g
+Redshift                            %(z_ini).17g
+Fnl                                 %(Fnl).17g
 N_modes                             %(N_modes)d
 
 
@@ -75,9 +75,9 @@ DEFAULT_BASIS_INPUTS = dict(Nmesh = 256, Nsample = 256, Nmax = 256, Lbox = 512, 
 DEFAULT_RESBASIS_CONFIG = (
 DEFAULT_BASIS_CONFIG + 
 """
-A_res               %(Pk_A_res)f
-w_res               %(Pk_w_res)f
-phi_res             %(Pk_phi_res)f
+A_res               %(Pk_A_res).17g
+w_res               %(Pk_w_res).17g
+phi_res             %(Pk_phi_res).17g
 """
 )
 DEFAULT_RESBASIS_CONFIG = DEFAULT_RESBASIS_CONFIG.replace("0 #Fixed to 0 because we always want to use only the Transfer Function", r"%(Pk_mode)d")
@@ -91,7 +91,7 @@ DEFAULT_BINNED_CONFIG = """
 Nmesh                               %(Nmesh)d
 Nsample                             %(Nsample)d
 Nmax                                %(Nmax)d
-Box                                 %(Lbox)f
+Box                                 %(Lbox).17g
 FileBase                            %(FileBase)s
 OutputDir                           %(OutputDir)s
 GlassFile                           %(GlassFile)s 
@@ -100,15 +100,15 @@ GlassTileFac                        %(GlassTileFac)d
 Seed                                %(seed)d
 
 
-Omega                               %(Om)f
-OmegaLambda                         %(Ode)f
+Omega                               %(Om).17g
+OmegaLambda                         %(Ode).17g
 OmegaBaryon                         0.00000 #Doesn't really matter since we use the transfer function from CAMB
 OmegaDM_2ndSpecies                  0.00
-HubbleParam                         %(h)f
-Sigma8                              %(sigma8)f
-PrimordialIndex                     %(n_s)f
-Redshift                            %(z_ini)f
-Fnl                                 %(Fnl)f
+HubbleParam                         %(h).17g
+Sigma8                              %(sigma8).17g
+PrimordialIndex                     %(n_s).17g
+Redshift                            %(z_ini).17g
+Fnl                                 %(Fnl).17g
 
 FixedAmplitude                      0
 PhaseFlip                           0
