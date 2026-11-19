@@ -1,4 +1,4 @@
-import numpy as np
+import numpy as np, numbers
 from scipy import special
 
 class ScalarI:
@@ -236,7 +236,7 @@ class HeavySpinCollider:
 
         s  = self.args['spin']
 
-        assert isinstance(s, int), f"The provided spin must be an integer. You provided {type(s)}"
+        assert isinstance(s, numbers.Integral), f"The provided spin must be an integer. You provided {type(s)}"
         
         P_s = special.eval_legendre(s, (k1**2 + k3**2 - k2**2)/(2*k1*k3))
         S_1 = k2 / np.power(k1*k3, 1 - s) / np.power(kT, 2*s + 1)
