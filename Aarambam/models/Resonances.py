@@ -31,7 +31,7 @@ class LogResonance(ShapeTemplate):
 class LinearResonance(ShapeTemplate):
     """
     Linear oscillations in the bispectrum, i.e. oscillations in k.
-    See https://arxiv.org/pdf/1905.05697, Equation (12)
+    See https://arxiv.org/pdf/1905.05697, Equation (15)
     
     This object must be used with the `utils.Decomposer` class. That class instance
     should be provided with the parameters necessary to compute this model (mass, spin, etc.)
@@ -86,7 +86,7 @@ class K2cosResonance(ShapeTemplate):
 class KsinResonance(ShapeTemplate):
 
     """
-    A different oscillatory bispectra from Adshead+ 2012, Eq(16) in https://arxiv.org/pdf/1905.05697.
+    A different oscillatory bispectra from Adshead+ 2012, Eq(17) in https://arxiv.org/pdf/1905.05697.
     A complement to the :math:`K^2\\cos` model provided in `Aarambam`.
     
     This object must be used with the `utils.Decomposer` class. That class instance
