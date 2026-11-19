@@ -374,10 +374,8 @@ class Basis:
         badinds = np.where(badmask)[0]
         print("Zeroing out mode inds", badinds, "\n")
 
-        #Try to get a SLURM env variable, else default to os.cpu_count()
+        #Number of joblib workers for the condition-number scan: the SLURM allocation, else os.cpu_count()
         cpus_allocated = int(os.environ.get("SLURM_CPUS_ON_NODE", os.cpu_count()))
-        os.environ["MKL_NUM_THREADS"] = str(cpus_allocated)
-        os.environ["OMP_NUM_THREADS"] = str(cpus_allocated)
 
         for bi in badinds:
             QQ_temp[bi, :] = 0 #Lie to algorithm and say this mode is uncorrelated with everything else
