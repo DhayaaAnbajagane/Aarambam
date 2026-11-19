@@ -1,6 +1,6 @@
 #include <drfftw_mpi.h>
-#include <time.h>
 #include <stdio.h>
+#include <time.h>
 
 #define  PI          3.14159265358979323846 
 #define  GRAVITY     6.672e-8
@@ -73,24 +73,8 @@ extern char     GlassFile[500];
 extern char     FileWithInputSpectrum[500];
 extern char     FileWithInputTransfer[500];
 extern char     FileWithAlphaCoeff[500];
-extern char     FileWithBetaCoeff[500];
 extern char     FileWithX0Coeff[500];
-
-/* Binned PNG kernel table.
- * The parameter file gives explicit file paths rather than a prefix.
- * BinnedPNGFilter: 1=heaviside/top-hat, 2=linear, 3=cubic.
- * BinnedPNGCoordinate: 1=k, 2=log(k).
- * The loaded kernel table is always multiplied by the config Fnl.
- */
-extern char     FileWithBinnedK1Edges[500];
-extern char     FileWithBinnedK2Edges[500];
-extern char     FileWithBinnedK3Edges[500];
-extern char     FileWithBinnedKernelValues[500];
-extern int      BinnedPNGFilter;
-extern int      BinnedPNGOutputFilter;
-extern int      BinnedPNGCoordinate;
-extern int      BinnedPNGUseInternalSymmetry;
-extern int      BinnedPNGCacheBlockSize;
+extern double   A_res, w_res, phi_res;   /* oscillating primordial P(k), WhichSpectrum 1/2 */
 
 extern int      GlassTileFac; 
 

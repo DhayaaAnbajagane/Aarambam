@@ -22,7 +22,6 @@ char GlassFile[500];
 char FileWithInputSpectrum[500];
 char FileWithInputTransfer[500]; 
 char FileWithAlphaCoeff[500];
-char FileWithBetaCoeff[500];
 char FileWithX0Coeff[500];
 double A_res, w_res, phi_res;
 

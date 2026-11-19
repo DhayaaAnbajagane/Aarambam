@@ -10,6 +10,7 @@
 #include <gsl/gsl_poly.h>
 #include <gsl/gsl_spline.h>
 #include "allvars.h"
+#include "binned_vars.h"
 #include "proto.h"
 #include <signal.h>
 #include <assert.h>

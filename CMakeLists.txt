@@ -93,6 +93,8 @@ endif()
 # --- 2LPT executables: src/lpt/common (shared by all) + one directory per method ---
 set(LPT_DIR ${CMAKE_CURRENT_SOURCE_DIR}/src/lpt)
 set(LPT_COMMON_SRC
+  ${LPT_DIR}/common/allvars.c
+  ${LPT_DIR}/common/read_param.c
   ${LPT_DIR}/common/save.c
   ${LPT_DIR}/common/read_glass.c
   ${LPT_DIR}/common/nrsrc/nrutil.c
@@ -108,11 +110,16 @@ set(LPT_DEFINITIONS
   # PRODUCEGAS=1   # uncomment if you want this default ON
   # ONLY_ZA=1      # uncomment if you want this default ON
 )
+set(LPT_INCLUDE_DIRS ${LPT_DIR}/common ${LPT_DIR}/common/nrsrc ${GSL_INCLUDE_DIR} ${FFTW2_INCLUDE_DIR})
+
+# Code shared by all methods, compiled once
+add_library(lptcore OBJECT ${LPT_COMMON_SRC})
+target_include_directories(lptcore PRIVATE ${LPT_INCLUDE_DIRS})
+target_compile_definitions(lptcore PRIVATE ${LPT_DEFINITIONS})
 
 function(aarambam_lpt_executable name method_dir)
-  add_executable(${name} ${ARGN} ${LPT_COMMON_SRC})
-  target_include_directories(${name} PRIVATE
-    ${method_dir} ${LPT_DIR}/common ${LPT_DIR}/common/nrsrc ${GSL_INCLUDE_DIR} ${FFTW2_INCLUDE_DIR})
+  add_executable(${name} ${ARGN} $<TARGET_OBJECTS:lptcore>)
+  target_include_directories(${name} PRIVATE ${method_dir} ${LPT_INCLUDE_DIRS})
   target_compile_definitions(${name} PRIVATE ${LPT_DEFINITIONS})
   target_link_directories(${name} PRIVATE ${OPENMPI_LIB_DIR} ${GSL_LIB_DIR} ${FFTW2_LIB_DIR})
   target_link_libraries(${name} PRIVATE m mpi drfftw_mpi dfftw_mpi drfftw dfftw gsl gslcblas)
@@ -122,11 +129,11 @@ function(aarambam_lpt_executable name method_dir)
 endfunction()
 
 aarambam_lpt_executable(2LPTBasis ${LPT_DIR}/basis
-  ${LPT_DIR}/basis/main.c ${LPT_DIR}/basis/power.c ${LPT_DIR}/basis/allvars.c ${LPT_DIR}/basis/read_param.c)
+  ${LPT_DIR}/basis/main.c ${LPT_DIR}/basis/power.c ${LPT_DIR}/basis/params_basis.c)
 aarambam_lpt_executable(2LPTResBasis ${LPT_DIR}/resbasis
-  ${LPT_DIR}/resbasis/main.c ${LPT_DIR}/resbasis/power.c ${LPT_DIR}/resbasis/allvars.c ${LPT_DIR}/resbasis/read_param.c)
+  ${LPT_DIR}/resbasis/main.c ${LPT_DIR}/resbasis/power.c ${LPT_DIR}/resbasis/params_resbasis.c)
 aarambam_lpt_executable(2LPTBinned ${LPT_DIR}/binned
-  ${LPT_DIR}/binned/main.c ${LPT_DIR}/binned/power.c ${LPT_DIR}/binned/allvars.c ${LPT_DIR}/binned/read_param.c)
+  ${LPT_DIR}/binned/main.c ${LPT_DIR}/binned/power.c ${LPT_DIR}/binned/params_binned.c)
 
 # ─── CMB-BEST Python Extension ──────────────────────────────────────────────
 
