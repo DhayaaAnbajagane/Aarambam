@@ -83,7 +83,7 @@ phi_res             %(Pk_phi_res)f
 DEFAULT_RESBASIS_CONFIG = DEFAULT_RESBASIS_CONFIG.replace("0 #Fixed to 0 because we always want to use only the Transfer Function", r"%(Pk_mode)d")
 
 DEFAULT_RESBASIS_INPUTS = DEFAULT_BASIS_INPUTS.copy()
-DEFAULT_RESBASIS_INPUTS.update(dict(Pk_A_res = 0.9, Pk_w_res = 2, Pk_phi_res = 0.0))
+DEFAULT_RESBASIS_INPUTS.update(dict(Pk_A_res = 0.9, Pk_w_res = 2, Pk_phi_res = 0.0, Pk_mode = 1))
 
 
 
