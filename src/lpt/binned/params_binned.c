@@ -88,5 +88,11 @@ int lpt_method_validate(const char *fname)
       errorFlag = 1;
     }
 
+  if(WhichSpectrum != 0)
+    {
+      fprintf(stdout, "Error. WhichSpectrum must be 0 for the binned method in parameter file '%s'.\n", fname);
+      errorFlag = 1;
+    }
+
   return errorFlag;
 }

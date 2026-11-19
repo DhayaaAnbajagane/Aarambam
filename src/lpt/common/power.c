@@ -11,13 +11,6 @@ static double nu;
 static double Norm; 
 static double klower;
 
-static int NPowerTable;
-
-static struct pow_table
-{
-  double logk, logD;
-}
- *PowerTable;
 
  
 /* added for non-gaussian, by M.Manera  */
@@ -241,6 +234,9 @@ double PowerSpec(double k)
 {
   double power, alpha, Tf;
 
+  /* WhichSpectrum: 0 = power law k^ns times the tabulated transfer function;
+   * 1/2 = the same times (1 + A_res cos(w_res k + phi_res)) / (1 + A_res cos(w_res ln k + phi_res)).
+   * Cases 1/2 keep the operation order of the former ResBasis code. */
   switch (WhichSpectrum)
     {
     case 0:
@@ -248,19 +244,19 @@ double PowerSpec(double k)
       break;
 
     case 1:
-      power = PowerSpec_EH(k);
-      power *= pow(k, PrimordialIndex - 1.0);
+      power = Norm * exp ( PrimordialIndex * log (k) ) * (1 + A_res * cos(w_res * k + phi_res));
+      power *= TransferFunc(k) * TransferFunc(k);
       break;
 
     case 2:
-      power = PowerSpec_Tabulated(k);
-      power *= pow(k, PrimordialIndex - 1.0);
+      power = Norm * exp ( PrimordialIndex * log (k) ) * (1 + A_res * cos(w_res * log(k) + phi_res));
+      power *= TransferFunc(k) * TransferFunc(k);
       break;
 
     default:
-      power = PowerSpec_Efstathiou(k);
-      power *= pow(k, PrimordialIndex - 1.0);
-      break;
+      printf("WhichSpectrum = %d is not supported (0 = no oscillation, 1 = linear-k, 2 = log-k oscillation)\n", WhichSpectrum);
+      FatalError(1112);
+      power = 0;
     }
 
 
@@ -303,91 +299,6 @@ double PowerSpec_DM_2ndSpecies(double k)
 }
 
 
-
-void read_power_table(void)
-{
-  FILE *fd;
-  char buf[500];
-  double k, p;
-
-
-  snprintf(buf, sizeof(buf), "%s", FileWithInputSpectrum);
-
-  if(!(fd = fopen(buf, "r")))
-    {
-      printf("can't read input spectrum in file '%s' on task %d\n", buf, ThisTask);
-      FatalError(17);
-    }
-
-  NPowerTable = 0;
-  do
-    {
-      if(fscanf(fd, " %lg %lg ", &k, &p) == 2)
-	NPowerTable++;
-      else
-	break;
-    }
-  while(1);
-
-  fclose(fd);
-
-  PowerTable = malloc(NPowerTable * sizeof(struct pow_table));
-
-  snprintf(buf, sizeof(buf), "%s", FileWithInputSpectrum);
-
-  if(!(fd = fopen(buf, "r")))
-    {
-      printf("can't read input spectrum in file '%s' on task %d\n", buf, ThisTask);
-      FatalError(18);
-    }
-
-  NPowerTable = 0;
-  do
-    {
-      if(fscanf(fd, " %lg %lg ", &k, &p) == 2)
-	{
-	  PowerTable[NPowerTable].logk = k;
-	  PowerTable[NPowerTable].logD = p;
-	  NPowerTable++;
-	}
-      else
-	break;
-    }
-  while(1);
-
-  fclose(fd);
-
-  qsort(PowerTable, NPowerTable, sizeof(struct pow_table), compare_logk);
-
-  klower = pow(10.0, PowerTable[0].logk) * 1.0000001;
-
-  if(PowerTable[0].logk >= -4.6 ) 
-     {
-      printf("\n WARNING: klower is %f, may be too large to normalize power  \n",klower);
-      FatalError(1111);  
-     }
-  if(PowerTable[NPowerTable - 1].logk <= log10(500./8.) ) 
-     {
-      printf("\n WARNING: kmax is may be too small to normalize power  \n");
-      printf("\n Values outside the input range will be taken to be zero  \n");
-      // FatalError(1111);  
-     }
-
-
-
-}
-
-int compare_logk(const void *a, const void *b)
-{
-  if(((struct pow_table *) a)->logk < (((struct pow_table *) b)->logk))
-    return -1;
-
-  if(((struct pow_table *) a)->logk > (((struct pow_table *) b)->logk))
-    return +1;
-
-  return 0;
-}
-
 void initialize_powerspectrum(void)
 {
   double res;
@@ -402,8 +313,6 @@ void initialize_powerspectrum(void)
   R8 = 8 * (3.085678e24 / UnitLength_in_cm);	/* 8 Mpc/h */
 
 
-  if(WhichSpectrum == 2)
-    read_power_table();
 
 #ifdef DIFFERENT_TRANSFER_FUNC
   Type = 1;
@@ -423,82 +332,10 @@ void initialize_powerspectrum(void)
   D0 = GrowthFactor(1.e-8, 1.0) * 1.e-8; /* Linnear growth factor at redshift z=0.0 normalized to D = a during matter domination */
   Dplus = GrowthFactor(InitTime, 1.0);
 
- switch (WhichSpectrum)
-    {
-    case 0:
-      Anorm = Norm;
-      break;  /* do not use power spectrum, only  transfer function file which must be set */
-
-    case 1:
-      // Anorm = Norm; /* --- not used in this version--*/ 
-      break;
-
-    case 2:
- 
-      // printf("\n klower, Pklower, Anorm, Primordial Index %f %f %f %f\n", klower,PowerSpec(klower),Anorm,PrimordialIndex);
-
-      // Anorm = PowerSpec(klower) * exp( PrimordialIndex * log(klower)) ;  /* --- not used in this version--- */
-      break;
-
-    default:
-      // Anorm = Norm;  /*--- not used in this version ----*/
-      break;
-    }
+  Anorm = Norm;
 
 }
 
-double PowerSpec_Tabulated(double k)
-{
-  double logk, logD, P, kold, u, dlogk, Delta2;
-  int binlow, binhigh, binmid;
-
-  kold = k;
-
-  k *= (InputSpectrum_UnitLength_in_cm / UnitLength_in_cm);	/* convert to h/Mpc */
-
-  logk = log10(k);
-
-  if(logk < PowerTable[0].logk || logk > PowerTable[NPowerTable - 1].logk)
-    return 0;
-
-  binlow = 0;
-  binhigh = NPowerTable - 1;
-
-  while(binhigh - binlow > 1)
-    {
-      binmid = (binhigh + binlow) / 2;
-      if(logk < PowerTable[binmid].logk)
-	binhigh = binmid;
-      else
-	binlow = binmid;
-    }
-
-  dlogk = PowerTable[binhigh].logk - PowerTable[binlow].logk;
-
-  if(dlogk == 0)
-    FatalError(777);
-
-  u = (logk - PowerTable[binlow].logk) / dlogk;
-
-  logD = (1 - u) * PowerTable[binlow].logD + u * PowerTable[binhigh].logD;
-
-  Delta2 = pow(10.0, logD);
-
-  P = Norm * Delta2 / (4 * M_PI * kold * kold * kold); 
- 
- // Norm should be normalized this way if Transfer Allowef rom power spectrum 
- // --currently deprecated-- so I can recover more standard convention
- // P = Norm * Delta2 / (kold * kold * kold);  //* Norm has to flollow a convention now it is externalized and used i main.c 
-                                               //* P = Norm k * T^2, where Norm will be fitted
-                                               //* therefore absorving constants. kold is to go from Delta2=4pi k^3 P(k)  to P(k)
-                                               //*
-  return P;
-}
-
-double PowerSpec_Efstathiou(double k)
-{
-  return Norm * k / pow(1 + pow(AA * k + pow(BB * k, 1.5) + CC * CC * k * k, nu), 2 / nu);
-}
 
 
 double tk_Efstathiou(double k)
@@ -506,12 +343,6 @@ double tk_Efstathiou(double k)
   return 1.0; // (double) 1.0 / pow(1 + pow(AA * k + pow(BB * k, 1.5) + CC * CC * k * k, nu), 2 / nu);
 }
 
-
-
-double PowerSpec_EH(double k)	/* Eisenstein & Hu */
-{
-  return Norm * k * pow(tk_eh(k), 2);
-}
 
 
 

@@ -95,6 +95,7 @@ set(LPT_DIR ${CMAKE_CURRENT_SOURCE_DIR}/src/lpt)
 set(LPT_COMMON_SRC
   ${LPT_DIR}/common/allvars.c
   ${LPT_DIR}/common/read_param.c
+  ${LPT_DIR}/common/power.c
   ${LPT_DIR}/common/save.c
   ${LPT_DIR}/common/read_glass.c
   ${LPT_DIR}/common/nrsrc/nrutil.c
@@ -128,12 +129,11 @@ function(aarambam_lpt_executable name method_dir)
   install(TARGETS ${name} RUNTIME DESTINATION Aarambam/bin)
 endfunction()
 
-aarambam_lpt_executable(2LPTBasis ${LPT_DIR}/basis
-  ${LPT_DIR}/basis/main.c ${LPT_DIR}/basis/power.c ${LPT_DIR}/basis/params_basis.c)
-aarambam_lpt_executable(2LPTResBasis ${LPT_DIR}/resbasis
-  ${LPT_DIR}/resbasis/main.c ${LPT_DIR}/resbasis/power.c ${LPT_DIR}/resbasis/params_resbasis.c)
+# Modal (Legendre basis) method; the former ResBasis variant is this executable with WhichSpectrum 1/2
+aarambam_lpt_executable(2LPTBasis ${LPT_DIR}/modal
+  ${LPT_DIR}/modal/main_modal.c ${LPT_DIR}/modal/params_modal.c)
 aarambam_lpt_executable(2LPTBinned ${LPT_DIR}/binned
-  ${LPT_DIR}/binned/main.c ${LPT_DIR}/binned/power.c ${LPT_DIR}/binned/params_binned.c)
+  ${LPT_DIR}/binned/main.c ${LPT_DIR}/binned/params_binned.c)
 
 # ─── CMB-BEST Python Extension ──────────────────────────────────────────────
 

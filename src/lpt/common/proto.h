@@ -16,7 +16,6 @@ double fnl(double x);
 int find_files(char *fname);
 
 void   assemble_grid(void);
-void   read_power_table(void);
 double periodic_wrap(double x);
 
 void read_transfer_table(void);
@@ -24,9 +23,6 @@ void write_phi(fftw_real *pot, int isNonGaus);
 void write_phi_single_task(int task, fftw_real *pot, int isNonGaus, int *Local_x_start_table, int *Local_nx_table);
 
 double PowerSpec(double kmag);
-double PowerSpec_Efstathiou(double k);
-double PowerSpec_EH(double k);
-double PowerSpec_Tabulated(double k);
 double PowerSpec_DM_2ndSpecies(double k);
 
 double TransferFunc(double kmag);
@@ -46,7 +42,6 @@ double TopHatSigma2(double R);
 double F_Omega(double a);
 
 void   combine_particle_data(void);
-int    compare_logk(const void *a, const void *b);
 int    compare_transfer_logk(const void *a,const void *b);
 
 void  write_particle_data(void);

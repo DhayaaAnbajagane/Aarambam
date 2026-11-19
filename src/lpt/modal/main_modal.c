@@ -131,6 +131,9 @@ void print_setup(void) {
   printf("        Omega = %.4f         OmegaLambda = %.4f    OmegaBaryon = %.2e\n", Omega,  OmegaLambda, OmegaBaryon);
   printf("       sigma8 = %.4f     PrimoridalIndex = %.4f       Redshift = %.2e\n", Sigma8, PrimordialIndex, Redshift);
   printf("   HubbleParam = %.4f  OmegaDM_2ndSpecies = %.2e          fNL = %+.2e\n\n", HubbleParam, OmegaDM_2ndSpecies, Fnl); 
+  if(WhichSpectrum != 0)
+    printf("   P(k) oscillation (%s k):  A_res = %.4f    w_res = %.4f      phi_res = %.4f\n\n",
+           (WhichSpectrum == 1) ? "linear" : "log", A_res, w_res, phi_res);
   printf("   FixedAmplitude = %d    PhaseFlip = % d   SphereMode = %d    Seed = %d\n", FixedAmplitude, PhaseFlip, SphereMode, Seed);   
 
   for (int i = 0; i < 79; i++)
@@ -454,6 +457,21 @@ void displacement_fields(void) {
                     }
 
                   phig = Anorm * exp( PrimordialIndex * log(kmag) );   /* initial normalized power */
+                  switch (WhichSpectrum)    /* oscillating primordial P(k), see PowerSpec() in power.c */
+                    {
+                    case 0:
+                      phig *= 1.0;
+                      break;
+
+                    case 1:
+                      phig *= (1.0 + A_res * cos(w_res * kmag + phi_res));
+                      break;
+
+                    case 2:
+                      phig *= (1.0 + A_res * cos(w_res * log(kmag) + phi_res));
+                      break;
+                    }
+
 // ************** FAVN/DSJ ***************
                   if (!FixedAmplitude)
                     phig *= -log(ampl);
