@@ -73,7 +73,7 @@ void read_transfer_table(void)
 
     if (ThisTask == 0)
     {
-        sprintf(buf, FileWithInputTransfer);
+        snprintf(buf, sizeof(buf), "%s", FileWithInputTransfer);
 
         if (!(fd = fopen(buf, "r")))
         {
@@ -311,7 +311,7 @@ void read_power_table(void)
   double k, p;
 
 
-  sprintf(buf, FileWithInputSpectrum);
+  snprintf(buf, sizeof(buf), "%s", FileWithInputSpectrum);
 
   if(!(fd = fopen(buf, "r")))
     {
@@ -333,7 +333,7 @@ void read_power_table(void)
 
   PowerTable = malloc(NPowerTable * sizeof(struct pow_table));
 
-  sprintf(buf, FileWithInputSpectrum);
+  snprintf(buf, sizeof(buf), "%s", FileWithInputSpectrum);
 
   if(!(fd = fopen(buf, "r")))
     {
@@ -366,7 +366,7 @@ void read_power_table(void)
       printf("\n WARNING: klower is %f, may be too large to normalize power  \n",klower);
       FatalError(1111);  
      }
-  if(PowerTable[NTransferTable].logk <= log10(500./8.) ) 
+  if(PowerTable[NPowerTable - 1].logk <= log10(500./8.) ) 
      {
       printf("\n WARNING: kmax is may be too small to normalize power  \n");
       printf("\n Values outside the input range will be taken to be zero  \n");
