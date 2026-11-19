@@ -268,34 +268,26 @@ class LowSpeedCollider:
     """
 
     def raw_bispectrum(self, k1, k2, k3):
-        
-        k1_sq = k1 * k1   
-        k1_co = np.power(k1, 2 * (self.args['n_s'] - 1) / 3)
-        k1_in = np.power(k1, self.args['n_s'] - 2)
 
-        k2_co = np.power(k2, 2 * (self.args['n_s'] - 1) / 3)
-        k2_in = np.power(k2, self.args['n_s'] - 2)
-
-        k3_li = np.power(k3, (self.args['n_s'] + 2) / 3)
-        k3_co = np.power(k3, 2 * (self.args['n_s'] - 1) / 3)
-        k3_in = np.power(k3, self.args['n_s'] - 2)
-
-        S_1 = k1_sq * k2_in * k3_in * 3/6
-        S_2 = k1_co * k2_co * k3_co * 1/6
-        S_3 = k1_in * k2_co * k3_li * 6/6
-        
         k1 = np.power(k1, (4 - self.args['n_s'])/3)
         k2 = np.power(k2, (4 - self.args['n_s'])/3)
         k3 = np.power(k3, (4 - self.args['n_s'])/3)
-        
-        
+
+        #Equilateral template, written in the rescaled k. This matches the tilt of
+        #the ``Equilateral`` model exactly.
+        S_1 = k1**2/(k2*k3) * 3/6
+        S_2 = 1 * 1/6
+        S_3 = k3/k1 * 6/6
+
         alpha = self.args['alpha']
         S_4   = k1**2/(3*k2*k3) * 1/(1 + alpha*(k1**2/(3*k2*k3))**2) * 3/6
         S     = (-1) * S_1 + (-2) * S_2 + 1 * S_3 + S_4
-        
-        N = 1 + (1/3 * 1/(1 + alpha/9) * 3/6)
+
+        #Value of the symmetrised template at k1 = k2 = k3: 1 from the equilateral part
+        #plus 3 x (1/3) / (1 + alpha/9) from the three permutations of the collider part
+        N = 1 + 1/(1 + alpha/9)
         S = S/N
-        
+
         return S/(k1 * k2 * k3)**2
     
     
