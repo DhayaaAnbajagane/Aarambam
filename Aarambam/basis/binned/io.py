@@ -106,6 +106,10 @@ def _write_values_text(out, directory):
 
 def _write_hybrid_text(out, directory):
     if out['filter_mode'] != 'hybrid':
+        #Don't leave a hybrid table from an earlier run next to this heaviside one,
+        #since the default config points the C code at the hybrid file
+        stale = os.path.join(directory, f'{PREFIX}_hybrid_values.txt')
+        if os.path.exists(stale): os.remove(stale)
         return
 
     edges             = out['edges']
