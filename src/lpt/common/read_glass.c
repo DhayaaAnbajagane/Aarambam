@@ -159,6 +159,25 @@ void read_glass(char *fname)
 
   free(npart_Task);
 
+#ifdef NO64BITID
+  if(TotNumPart > AARAMBAM_MAX_INT_ID)
+    {
+      if(ThisTask == 0)
+        printf("%lld particles do not fit 32-bit particle IDs (limit %lld). Rebuild Aarambam with "
+               "Aarambam_64BIT_IDS=ON to write 64-bit IDs.\n", TotNumPart, (long long) AARAMBAM_MAX_INT_ID);
+      FatalError(1113);
+    }
+#endif
+
+  /* one snapshot file per rank: its position block must fit a 4-byte Gadget block marker */
+  if((long long) sizeof(float) * 3 * NumPart > AARAMBAM_MAX_BLOCK_BYTES)
+    {
+      printf("Task %d: %d particles in one snapshot file exceed the 32-bit Gadget block size (%lld bytes). "
+             "Run with more MPI ranks (one file is written per rank).\n", ThisTask, NumPart,
+             (long long) AARAMBAM_MAX_BLOCK_BYTES);
+      FatalError(1115);
+    }
+
 
   if(NumPart)
     {

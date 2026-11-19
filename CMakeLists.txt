@@ -106,12 +106,24 @@ set(LPT_COMMON_SRC
 )
 
 # Preprocessor options (OPT / OPTIONS in the original 2LPTic Makefile)
+# Particle IDs: 32-bit by default (the executables stop if TotNumPart > 2^31-1). Set Aarambam_64BIT_IDS=ON
+# (environment variable or -D) to write 8-byte IDs; the snapshot readers then need to expect 64-bit IDs.
+if(DEFINED ENV{Aarambam_64BIT_IDS})
+  set(_AARAMBAM_64BIT_IDS_DEFAULT "$ENV{Aarambam_64BIT_IDS}")
+else()
+  set(_AARAMBAM_64BIT_IDS_DEFAULT OFF)
+endif()
+option(Aarambam_64BIT_IDS "Write 64-bit particle IDs in the snapshots" ${_AARAMBAM_64BIT_IDS_DEFAULT})
+message(STATUS "Aarambam: 64-bit particle IDs: ${Aarambam_64BIT_IDS}")
+
 set(LPT_DEFINITIONS
-  NO64BITID=1
   CORRECT_CIC=1
   # PRODUCEGAS=1   # uncomment if you want this default ON
   # ONLY_ZA=1      # uncomment if you want this default ON
 )
+if(NOT Aarambam_64BIT_IDS)
+  list(APPEND LPT_DEFINITIONS NO64BITID=1)
+endif()
 set(LPT_INCLUDE_DIRS ${LPT_DIR}/common ${LPT_DIR}/common/nrsrc ${GSL_INCLUDE_DIR} ${FFTW2_INCLUDE_DIR})
 
 # Code shared by all methods, compiled once

@@ -1,5 +1,6 @@
 #include <math.h>
 #include <stdint.h>
+#include <stddef.h>
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -62,7 +63,7 @@ void displacement_fields(void) {
 
 
 
-  int i, j, k, ii;
+  ptrdiff_t i, j, k, ii;      /* 64-bit grid indices, as in the shared core */
 
 
   int ksum;
@@ -90,7 +91,7 @@ void displacement_fields(void) {
 
   unsigned int bytes = 0;
 
-  int coord;
+  uint64_t coord;
 
 
 

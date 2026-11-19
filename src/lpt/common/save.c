@@ -1,3 +1,4 @@
+#include <string.h>
 #include <math.h>
 #include <stdlib.h>
 
@@ -17,96 +18,110 @@
 #define SAVE_CHUNK_BYTES (1LL << 30)
 #endif
 
+/* potential dump file name of the slab (start_x, nx) */
+static void phi_name(char *buf, size_t n, int isNonGaus, int start_x, int nx)
+{
+  const char *pname = (isNonGaus == 0) ? "Gauss" : "Nongauss";
+
+  if(NTaskWithN > 1)
+    snprintf(buf, n, "%s/%s_potential_%d_StartX_%04d_NumX_%d", OutputDir, pname, Seed, start_x, nx);
+  else
+    snprintf(buf, n, "%s/%s_potential_%d", OutputDir, pname, Seed);
+}
+
+/* One slab file: header (int total_size, int Nmesh, double Box), then per cell a 4-byte slab index and the
+ * value (the format read by Aarambam.postprocess.collate_potential), written one row (Nmesh cells) per fwrite. */
+static void phi_write_slab(const char *name, int total_size, const fftw_real *buffer, int nx)
+{
+  FILE *write_ptr;
+  size_t i, j, k;
+  unsigned char *row = malloc((size_t) Nmesh * (sizeof(int) + sizeof(fftw_real)));
+
+  if(!row)
+    {
+      printf("Task %d: failed to allocate the dump row buffer\n", ThisTask);
+      FatalError(12346);
+    }
+  if(!(write_ptr = fopen(name, "w")))
+    {
+      printf("Error. Can't write in file '%s'\n", name);
+      FatalError(10);
+    }
+  my_fwrite(&total_size, sizeof(total_size), 1, write_ptr);
+  my_fwrite(&Nmesh, sizeof(Nmesh), 1, write_ptr);
+  my_fwrite(&Box, sizeof(Box), 1, write_ptr);
+  for(i = 0; i < (size_t) nx; i++)
+    for(j = 0; j < (size_t) Nmesh; j++)
+      {
+        unsigned char *q = row;
+        for(k = 0; k < (size_t) Nmesh; k++)
+          {
+            size_t coord = (i * Nmesh + j) * (2 * (Nmesh / 2 + 1)) + k;
+            int coord_out = (int) coord;     /* the file format stores a 4-byte slab index */
+            memcpy(q, &coord_out, sizeof(int));
+            memcpy(q + sizeof(int), &buffer[coord], sizeof(fftw_real));
+            q += sizeof(int) + sizeof(fftw_real);
+          }
+        my_fwrite(row, sizeof(int) + sizeof(fftw_real), (size_t) Nmesh, write_ptr);
+      }
+  fclose(write_ptr);
+  free(row);
+}
+
+/* Dump the real-space potential (one file per slab when NTaskWithN > 1). Each rank writes its own slab file
+ * in parallel, so no slab is sent through MPI (the former task-0 writer sent each slab as one message with
+ * an int count). The header keeps task 0's TotalSizePlusAdditional, broadcast, so the file bytes are those of
+ * the former writer. A single-file dump (NTaskWithN <= 1) is still gathered and written by task 0. */
 void write_phi(fftw_real *pot, int isNonGaus)
 {
-    char buf_will[1100];
-    FILE *write_ptr;
-    int total_size = TotalSizePlusAdditional;
-    int i, j, k;
+  char buf_will[1100];
+  int total_size = TotalSizePlusAdditional;   /* header field kept for format compatibility */
+  int local_pot_size = Local_nx * Nmesh * (2 * (Nmesh / 2 + 1));
 
-    // Local buffer size for the potential array
-    int local_pot_size = Local_nx * Nmesh * (2 * (Nmesh / 2 + 1));
-
-    if (ThisTask != 0)
+  MPI_Bcast(&total_size, 1, MPI_INT, 0, MPI_COMM_WORLD);
+  if(NTaskWithN > 1)
     {
-        // Send metadata and local buffer to Task 0
-        MPI_Send(&Local_x_start, 1, MPI_INT, 0, 0, MPI_COMM_WORLD);
-        MPI_Send(&Local_nx,      1, MPI_INT, 0, 1, MPI_COMM_WORLD);
-        MPI_Send(&local_pot_size, 1, MPI_INT, 0, 2, MPI_COMM_WORLD);
-        MPI_Send(pot, local_pot_size, MPI_DOUBLE, 0, 3, MPI_COMM_WORLD); // fftw_real assumed to be double
-        return;
+      phi_name(buf_will, sizeof(buf_will), isNonGaus, Local_x_start, Local_nx);
+      phi_write_slab(buf_will, total_size, pot, Local_nx);
+      return;
     }
 
-    // === Task 0 writes for each task ===
-    for (int task = 0; task < NTask; task++)
+  if(ThisTask != 0)
     {
-        int start_x, nx, recv_size;
-        fftw_real *buffer = NULL;
+      MPI_Send(&Local_x_start, 1, MPI_INT, 0, 0, MPI_COMM_WORLD);
+      MPI_Send(&Local_nx, 1, MPI_INT, 0, 1, MPI_COMM_WORLD);
+      MPI_Send(&local_pot_size, 1, MPI_INT, 0, 2, MPI_COMM_WORLD);
+      MPI_Send(pot, local_pot_size, MPI_DOUBLE, 0, 3, MPI_COMM_WORLD);   /* fftw_real assumed to be double */
+      return;
+    }
+  for(int task = 0; task < NTask; task++)
+    {
+      int start_x, nx, recv_size;
+      fftw_real *buffer = NULL;
 
-        if (task == 0)
+      if(task == 0)
         {
-            start_x = Local_x_start;
-            nx = Local_nx;
-            recv_size = local_pot_size;
-            buffer = pot;
+          start_x = Local_x_start;
+          nx = Local_nx;
+          buffer = pot;
         }
-        else
+      else
         {
-            MPI_Recv(&start_x,   1, MPI_INT, task, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-            MPI_Recv(&nx,        1, MPI_INT, task, 1, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-            MPI_Recv(&recv_size, 1, MPI_INT, task, 2, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-
-            buffer = malloc(recv_size * sizeof(fftw_real));
-            if (!buffer)
+          MPI_Recv(&start_x, 1, MPI_INT, task, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+          MPI_Recv(&nx, 1, MPI_INT, task, 1, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+          MPI_Recv(&recv_size, 1, MPI_INT, task, 2, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+          buffer = malloc(recv_size * sizeof(fftw_real));
+          if(!buffer)
             {
-                printf("Task 0: failed to allocate buffer from task %d\n", task);
-                FatalError(12345);
+              printf("Task 0: failed to allocate buffer from task %d\n", task);
+              FatalError(12345);
             }
-
-            MPI_Recv(buffer, recv_size, MPI_DOUBLE, task, 3, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+          MPI_Recv(buffer, recv_size, MPI_DOUBLE, task, 3, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
         }
-
-        // Construct filename based on original logic
-        if (isNonGaus == 0)
-        {
-            if (NTaskWithN > 1)
-                sprintf(buf_will, "%s/Gauss_potential_%d_StartX_%04d_NumX_%d", OutputDir, Seed, start_x, nx);
-            else
-                sprintf(buf_will, "%s/Gauss_potential_%d", OutputDir, Seed);
-        }
-        else
-        {
-            if (NTaskWithN > 1)
-                sprintf(buf_will, "%s/Nongauss_potential_%d_StartX_%04d_NumX_%d", OutputDir, Seed, start_x, nx);
-            else
-                sprintf(buf_will, "%s/Nongauss_potential_%d", OutputDir, Seed);
-        }
-
-        if (!(write_ptr = fopen(buf_will, "w")))
-        {
-            printf("Error. Can't write in file '%s'\n", buf_will);
-            FatalError(10);
-        }
-
-        // Write header
-        my_fwrite(&total_size, sizeof(total_size), 1, write_ptr);
-        my_fwrite(&Nmesh, sizeof(Nmesh), 1, write_ptr);
-        my_fwrite(&Box, sizeof(Box), 1, write_ptr);
-
-        // Write data
-        for (i = 0; i < nx; i++)
-          for (j = 0; j < Nmesh; j++)
-            for (k = 0; k < Nmesh; k++)
-            {
-                int coord = (i * Nmesh + j) * (2 * (Nmesh / 2 + 1)) + k;
-                my_fwrite(&coord, sizeof(int), 1, write_ptr);
-                my_fwrite(&buffer[coord], sizeof(fftw_real), 1, write_ptr);
-            }
-
-        fclose(write_ptr);
-
-        if (task != 0)
-            free(buffer);
+      phi_name(buf_will, sizeof(buf_will), isNonGaus, start_x, nx);
+      phi_write_slab(buf_will, total_size, buffer, nx);
+      if(task != 0)
+        free(buffer);
     }
 }
 

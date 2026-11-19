@@ -1,6 +1,17 @@
 #ifndef AARAMBAM_ALLVARS_H
 #define AARAMBAM_ALLVARS_H
 
+/* Limits set by 32-bit integers in FFTW2 and in the output formats. Overridable with -D (tests use small values). */
+#ifndef AARAMBAM_MAX_SLAB_REALS            /* FFTW2's per-rank rfftwnd_mpi total_size is an int */
+#define AARAMBAM_MAX_SLAB_REALS 2147483647LL
+#endif
+#ifndef AARAMBAM_MAX_INT_ID                /* particle IDs written as 4-byte ints (NO64BITID) */
+#define AARAMBAM_MAX_INT_ID 2147483647LL
+#endif
+#ifndef AARAMBAM_MAX_BLOCK_BYTES           /* Gadget block markers are 4-byte ints */
+#define AARAMBAM_MAX_BLOCK_BYTES 2147483647LL
+#endif
+
 #include <drfftw_mpi.h>
 #include <stdio.h>
 #include <time.h>

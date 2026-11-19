@@ -932,6 +932,14 @@ void initialize_ffts(void)
 
   additional = (Nmesh) * (2 * (Nmesh / 2 + 1));	/* additional plane on the right side */
 
+  if((long long) Local_nx * Nmesh * (2 * (Nmesh / 2 + 1)) + additional > AARAMBAM_MAX_SLAB_REALS)
+    {
+      printf("Task %d: its slab (%d x %d x %d reals plus one plane) exceeds the 32-bit size limit of FFTW2 "
+             "(%lld). Run with more MPI ranks.\n", ThisTask, Local_nx, Nmesh, 2 * (Nmesh / 2 + 1),
+             (long long) AARAMBAM_MAX_SLAB_REALS);
+      FatalError(1114);
+    }
+
   TotalSizePlusAdditional = total_size + additional;
 
   Workspace = (fftw_real *) malloc(sizeof(fftw_real) * total_size);
