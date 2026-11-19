@@ -24,16 +24,19 @@ dependencies = [
 ]
 
 [project.scripts]
-Aarambam-2LPT-Basis    = "Aarambam.LPT.Basis.cli:main"
-Aarambam-2LPT-ResBasis = "Aarambam.LPT.ResBasis.cli:main"
-Aarambam-2LPT-Binned   = "Aarambam.LPT.Binned.cli:main"
-Aarambam-camb2input          = "Aarambam.bin.camb2input:main"
-Aarambam-collate-potential   = "Aarambam.bin.collate_potential:main"
-Aarambam-make-example-config-basis    = "Aarambam.bin.make_example_config_basis:main"
-Aarambam-make-example-config-resbasis = "Aarambam.bin.make_example_config_resbasis:main"
-Aarambam-make-example-config-binned   = "Aarambam.bin.make_example_config_binned:main"
+aarambam = "Aarambam.cli:main"
+# Older names, kept as aliases (ResBasis runs the modal 2LPTBasis executable)
+Aarambam-2LPT-Basis    = "Aarambam.cli:lpt_basis"
+Aarambam-2LPT-ResBasis = "Aarambam.cli:lpt_resbasis"
+Aarambam-2LPT-Binned   = "Aarambam.cli:lpt_binned"
+Aarambam-camb2input          = "Aarambam.cli:camb2input_main"
+Aarambam-collate-potential   = "Aarambam.cli:collate_main"
+Aarambam-make-example-config-basis    = "Aarambam.cli:example_basis"
+Aarambam-make-example-config-resbasis = "Aarambam.cli:example_resbasis"
+Aarambam-make-example-config-binned   = "Aarambam.cli:example_binned"
 
 [tool.scikit-build]
 # helpful verbosity and wheel tweaks
 build.verbose = true
-wheel.expand-macos-universal-tags = true
+# C sources (src/lpt) are outside the package; the Cython sources are not needed at runtime
+wheel.exclude = ["**/*.pyx", "**/*.c", "**/*.h"]
