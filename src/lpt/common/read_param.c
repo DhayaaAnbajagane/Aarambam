@@ -72,57 +72,57 @@ void read_parameterfile(char *fname)
   if((fd = fopen(fname, "r")))
     {
       while(fgets(buf, sizeof(buf), fd))
-	{
-	  if(strlen(buf) == sizeof(buf) - 1 && buf[sizeof(buf) - 2] != '\n')
-	    {
-	      fprintf(stdout, "Error in file %s: line longer than %d characters.\n", fname, MAXLINE - 1);
-	      errorFlag = 1;
-	      break;
-	    }
+        {
+          if(strlen(buf) == sizeof(buf) - 1 && buf[sizeof(buf) - 2] != '\n')
+            {
+              fprintf(stdout, "Error in file %s: line longer than %d characters.\n", fname, MAXLINE - 1);
+              errorFlag = 1;
+              break;
+            }
 
-	  if(sscanf(buf, "%s%s%s", buf1, buf2, buf3) < 2)
-	    continue;
+          if(sscanf(buf, "%s%s%s", buf1, buf2, buf3) < 2)
+            continue;
 
-	  if(buf1[0] == '%')
-	    continue;
+          if(buf1[0] == '%')
+            continue;
 
-	  for(i = 0, j = -1; i < nt; i++)
-	    if(!seen[i] && strcmp(buf1, param_entry(i)->tag) == 0)
-	      {
-		j = i;
-		seen[i] = 1;
-		break;
-	      }
+          for(i = 0, j = -1; i < nt; i++)
+            if(!seen[i] && strcmp(buf1, param_entry(i)->tag) == 0)
+              {
+                j = i;
+                seen[i] = 1;
+                break;
+              }
 
-	  if(j >= 0)
-	    {
-	      const struct lpt_param *p = param_entry(j);
-	      switch (p->type)
-		{
-		case PARAM_DOUBLE:
-		  *((double *) p->addr) = atof(buf2);
-		  break;
-		case PARAM_STRING:
-		  if(strlen(buf2) >= p->size)
-		    {
-		      fprintf(stdout, "Error in file %s: value of '%s' longer than %d characters.\n",
-			      fname, buf1, (int) p->size - 1);
-		      errorFlag = 1;
-		    }
-		  else
-		    strcpy(p->addr, buf2);
-		  break;
-		case PARAM_INT:
-		  *((int *) p->addr) = atoi(buf2);
-		  break;
-		}
-	    }
-	  else
-	    {
-	      fprintf(stdout, "Error in file %s:   Tag '%s' not allowed or multiple defined.\n", fname, buf1);
-	      errorFlag = 1;
-	    }
-	}
+          if(j >= 0)
+            {
+              const struct lpt_param *p = param_entry(j);
+              switch (p->type)
+                {
+                case PARAM_DOUBLE:
+                  *((double *) p->addr) = atof(buf2);
+                  break;
+                case PARAM_STRING:
+                  if(strlen(buf2) >= p->size)
+                    {
+                      fprintf(stdout, "Error in file %s: value of '%s' longer than %d characters.\n",
+                              fname, buf1, (int) p->size - 1);
+                      errorFlag = 1;
+                    }
+                  else
+                    strcpy(p->addr, buf2);
+                  break;
+                case PARAM_INT:
+                  *((int *) p->addr) = atoi(buf2);
+                  break;
+                }
+            }
+          else
+            {
+              fprintf(stdout, "Error in file %s:   Tag '%s' not allowed or multiple defined.\n", fname, buf1);
+              errorFlag = 1;
+            }
+        }
       fclose(fd);
     }
   else
@@ -134,8 +134,8 @@ void read_parameterfile(char *fname)
   for(i = 0; i < nt; i++)
     if(!seen[i] && param_entry(i)->required)
       {
-	fprintf(stdout, "Error. I miss a value for tag '%s' in parameter file '%s'.\n", param_entry(i)->tag, fname);
-	errorFlag = 1;
+        fprintf(stdout, "Error. I miss a value for tag '%s' in parameter file '%s'.\n", param_entry(i)->tag, fname);
+        errorFlag = 1;
       }
   free(seen);
 
@@ -144,7 +144,8 @@ void read_parameterfile(char *fname)
 
   if(ModeTables < 0 || ModeTables > 1)
     {
-      fprintf(stdout, "Error. ModeTables must be 0 (compute per-mode quantities on the fly) or 1 (precompute tables) in parameter file '%s'.\n", fname);
+      fprintf(stdout, "Error. ModeTables must be 0 (compute per-mode quantities on the fly) or 1 (precompute "
+                      "tables) in parameter file '%s'.\n", fname);
       errorFlag = 1;
     }
 
@@ -165,17 +166,17 @@ void broadcast_parameters(void)
     {
       const struct lpt_param *p = param_entry(i);
       switch (p->type)
-	{
-	case PARAM_DOUBLE:
-	  MPI_Bcast(p->addr, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
-	  break;
-	case PARAM_INT:
-	  MPI_Bcast(p->addr, 1, MPI_INT, 0, MPI_COMM_WORLD);
-	  break;
-	case PARAM_STRING:
-	  MPI_Bcast(p->addr, (int) p->size, MPI_CHAR, 0, MPI_COMM_WORLD);
-	  break;
-	}
+        {
+        case PARAM_DOUBLE:
+          MPI_Bcast(p->addr, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+          break;
+        case PARAM_INT:
+          MPI_Bcast(p->addr, 1, MPI_INT, 0, MPI_COMM_WORLD);
+          break;
+        case PARAM_STRING:
+          MPI_Bcast(p->addr, (int) p->size, MPI_CHAR, 0, MPI_COMM_WORLD);
+          break;
+        }
     }
 }
 

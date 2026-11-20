@@ -7,7 +7,7 @@ clock_t previous_time;
 struct io_header_1 header1, header;
 
 int WhichSpectrum;
-int WhichTransfer;  
+int WhichTransfer;
 int SavePotentialField;
 int ModeTables;
 int Local_ny_t, Local_y_start_t;   /* k-space slab (in y) of transposed-order transforms */
@@ -23,7 +23,7 @@ long long IDStart;
 
 char GlassFile[500];
 char FileWithInputSpectrum[500];
-char FileWithInputTransfer[500]; 
+char FileWithInputTransfer[500];
 char FileWithAlphaCoeff[500];
 char FileWithX0Coeff[500];
 double A_res, w_res, phi_res;
@@ -31,7 +31,7 @@ double A_res, w_res, phi_res;
 int GlassTileFac;
 
 double Box;
-int Seed; 
+int Seed;
 int N_modes;
 
 long long TotNumPart;
@@ -49,7 +49,7 @@ int Nglass;
 double InitTime;
 double Redshift;
 double MassTable[6];
-double Fnl; 
+double Fnl;
 // *** FAVN/DSJ ***
 int FixedAmplitude;
 int PhaseFlip;
@@ -81,8 +81,8 @@ double OmegaBaryon, HubbleParam;
 double ShapeGamma;
 double PrimordialIndex;
 double Anorm;
-double Dplus;			/* growth factor at output=InitTime and growth factor for initial potential */
-double D0;    /* matter/DE domination growth factor normalized to the scale factor at early times */  
+double Dplus;                   /* growth factor at output=InitTime and growth factor for initial potential */
+double D0;    /* matter/DE domination growth factor normalized to the scale factor at early times */
 
 #ifdef DIFFERENT_TRANSFER_FUNC
 int Type, MinType, MaxType;

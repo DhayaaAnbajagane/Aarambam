@@ -20,44 +20,49 @@
 
 #include "lpt_core.h"
 
-void print_setup(void) {
+
+void print_setup(void)
+{
   char pstr[79];
 
-  for (int i = 0; i < 79; i++)
+  for(int i = 0; i < 79; i++)
     pstr[i] = '*';
   printf("%s\n", pstr);
 
   char exec[] = "2LPTNGBinned";
 
-
   pstr[0] = '*';
-  for (int i = 1; i < 79/2 - 3; i++)
+  for(int i = 1; i < 79/2 - 3; i++)
     pstr[i] = ' ';
   sprintf(&pstr[79/2 - 4], "%s", exec);
-  for (int i = 79/2 + 4; i < 78; i++)
+  for(int i = 79/2 + 4; i < 78; i++)
     pstr[i] = ' ';
   pstr[78] = '*';
   printf("%s\n", pstr);
-  for (int i = 0; i < 79; i++)
+
+  for(int i = 0; i < 79; i++)
     pstr[i] = '*';
   printf("%s\n", pstr);
-
   printf("\n");
 
   printf("      Box = %.2e   Nmesh = %d   Nsample = %d   Nmax = %d\n", Box, Nmesh, Nsample, Nmax);
   printf("                       Nglass = %d    GlassTileFac = %d\n\n", Nglass, GlassTileFac);
   printf("        Omega = %.4f         OmegaLambda = %.4f    OmegaBaryon = %.2e\n", Omega,  OmegaLambda, OmegaBaryon);
   printf("       sigma8 = %.4f     PrimoridalIndex = %.4f       Redshift = %.2e\n", Sigma8, PrimordialIndex, Redshift);
-  printf("  HubbleParam = %.4f  OmegaDM_2ndSpecies = %.2e          fNL = %+.2e\n\n", HubbleParam, OmegaDM_2ndSpecies, Fnl); 
-  printf("   FixedAmplitude = %d    PhaseFlip = % d   SphereMode = %d    Seed = %d\n", FixedAmplitude, PhaseFlip, SphereMode, Seed);
-  printf("   BinnedPNGFilter(input k1/k2) = %d    BinnedPNGOutputFilter(k3) = %d    BinnedPNGCoordinate = %d\n", BinnedPNGFilter, BinnedPNGOutputFilter, BinnedPNGCoordinate);
-  printf("   BinnedPNGUseInternalSymmetry = %d    BinnedPNGCacheBlockSize = %d\n", BinnedPNGUseInternalSymmetry, BinnedPNGCacheBlockSize);
+  printf("  HubbleParam = %.4f  OmegaDM_2ndSpecies = %.2e          fNL = %+.2e\n\n",
+         HubbleParam, OmegaDM_2ndSpecies, Fnl);
+  printf("   FixedAmplitude = %d    PhaseFlip = % d   SphereMode = %d    Seed = %d\n",
+         FixedAmplitude, PhaseFlip, SphereMode, Seed);
+  printf("   BinnedPNGFilter(input k1/k2) = %d    BinnedPNGOutputFilter(k3) = %d    BinnedPNGCoordinate = %d\n",
+         BinnedPNGFilter, BinnedPNGOutputFilter, BinnedPNGCoordinate);
+  printf("   BinnedPNGUseInternalSymmetry = %d    BinnedPNGCacheBlockSize = %d\n",
+         BinnedPNGUseInternalSymmetry, BinnedPNGCacheBlockSize);
   printf("   BinnedK1Edges = %s\n", FileWithBinnedK1Edges);
   printf("   BinnedK2Edges = %s\n", FileWithBinnedK2Edges);
   printf("   BinnedK3Edges(output) = %s\n", FileWithBinnedK3Edges);
   printf("   BinnedKernelValues = %s\n", FileWithBinnedKernelValues);
 
-  for (int i = 0; i < 79; i++)
+  for(int i = 0; i < 79; i++)
     pstr[i] = '*';
   printf("\n%s\n\n", pstr);
   return;
@@ -106,36 +111,39 @@ void print_setup(void) {
 
 typedef struct
 {
-  int nk[3];
-  int input_filter;       /* k1,k2 basis: top-hat/linear/cubic */
-  int output_filter;      /* k3 output polynomial: top-hat/linear/cubic */
-  int coord_mode;
-  int coeff_count;        /* 1, 2, or 4 output coefficients along k3 */
+  int     nk[3];
+  int     input_filter;      /* k1,k2 basis: top-hat/linear/cubic */
+  int     output_filter;     /* k3 output polynomial: top-hat/linear/cubic */
+  int     coord_mode;
+  int     coeff_count;       /* 1, 2, or 4 output coefficients along k3 */
   double *edges[3];
-  double *Kcoeff;         /* coeff-major: Kcoeff[q*Ncell + ((i*nk2+j)*nk3+l)] */
-  double *node_x[3];      /* coordinate (k or log k) of each node, computed once in bpng_precompute_axes */
-  double *bin_xc[3];      /* centre and width of each bin in that coordinate */
+  double *Kcoeff;            /* coeff-major: Kcoeff[q*Ncell + ((i*nk2+j)*nk3+l)] */
+  double *node_x[3];         /* coordinate (k or log k) of each node, computed once in bpng_precompute_axes */
+  double *bin_xc[3];         /* centre and width of each bin in that coordinate */
   double *bin_dx[3];
 }
 BinnedPNGTable;
 
-static BinnedPNGTable BPNG = {{0,0,0}, BPNG_FILTER_TOPHAT, BPNG_FILTER_TOPHAT,
-                              BPNG_COORD_K, 0, {NULL,NULL,NULL}, NULL,
-                              {NULL,NULL,NULL}, {NULL,NULL,NULL}, {NULL,NULL,NULL}};
+static BinnedPNGTable BPNG = {{0, 0, 0}, BPNG_FILTER_TOPHAT, BPNG_FILTER_TOPHAT,
+                              BPNG_COORD_K, 0, {NULL, NULL, NULL}, NULL,
+                              {NULL, NULL, NULL}, {NULL, NULL, NULL}, {NULL, NULL, NULL}};
 
 /* ModeTables 1: this rank's allowed modes, with |k|, output (k3) bin and position u in that bin, computed once
  * instead of in each of the ~Nk^2/2 accumulations and ~2 Nk filter builds. ~28 bytes per allowed mode. */
 typedef struct
 {
-  long long n;
-  uint64_t *coord;
-  double *kmag, *u;
-  int *ic;
+  long long  n;
+  uint64_t  *coord;
+  double    *kmag, *u;
+  int       *ic;
 }
 BpngModeList;
 
 static BpngModeList BML  = {0, NULL, NULL, NULL, NULL};   /* normal layout: input filter build */
 static BpngModeList BMLT = {0, NULL, NULL, NULL, NULL};   /* transposed layout: NG accumulation */
+
+
+/* ---- kernel table: cell indexing, reading and broadcasting ---- */
 
 static long long bpng_ncell(void)
 {
@@ -149,20 +157,25 @@ static long long bpng_cell_index(int i, int j, int l)
 
 static double bpng_coeff(int q, int i, int j, int l)
 {
-  return BPNG.Kcoeff[((long long)q) * bpng_ncell() + bpng_cell_index(i,j,l)];
+  return BPNG.Kcoeff[((long long) q) * bpng_ncell() + bpng_cell_index(i, j, l)];
 }
 
 static int bpng_parse_doubles(char *line, double *vals, int maxvals)
 {
-  int n = 0;
-  char *p = line;
+  int   n   = 0;
+  char *p   = line;
   char *end = NULL;
+
   while(*p && n < maxvals)
     {
-      while(*p && isspace((unsigned char)*p)) p++;
-      if(*p == 0 || *p == '#') break;
+      while(*p && isspace((unsigned char) *p))
+        p++;
+      if(*p == 0 || *p == '#')
+        break;
+
       vals[n] = strtod(p, &end);
-      if(end == p) break;
+      if(end == p)
+        break;
       n++;
       p = end;
     }
@@ -171,51 +184,57 @@ static int bpng_parse_doubles(char *line, double *vals, int maxvals)
 
 static int bpng_count_edge_file(const char *path)
 {
-  FILE *fd = fopen(path, "r");
-  char line[1024];
+  FILE  *fd = fopen(path, "r");
+  char   line[1024];
   double tmp[4];
-  int n = 0;
+  int    n = 0;
+
   if(!fd)
     {
       printf("Could not open binned edge file '%s' on task %d\n", path, ThisTask);
       FatalError(9101);
     }
+
   while(fgets(line, sizeof(line), fd))
     if(bpng_parse_doubles(line, tmp, 4) >= 1)
       n++;
+
   fclose(fd);
   return n;
 }
 
 static void bpng_read_edge_file_root(const char *path, int axis)
 {
-  FILE *fd = fopen(path, "r");
-  char line[1024];
+  FILE  *fd = fopen(path, "r");
+  char   line[1024];
   double tmp[4];
-  int n = 0;
+  int    n = 0;
+
   if(!fd)
     {
       printf("Could not open binned edge file '%s' on task %d\n", path, ThisTask);
       FatalError(9102);
     }
+
   while(fgets(line, sizeof(line), fd))
     if(bpng_parse_doubles(line, tmp, 4) >= 1)
       BPNG.edges[axis][n++] = tmp[0];
+
   fclose(fd);
 }
 
 static void bpng_read_kernel_coefficients_root(void)
 {
-  char path[1000], line[8192];
-  FILE *fd;
-  double vals[80];
-  long long nc = bpng_ncell();
+  char      path[1000], line[8192];
+  FILE     *fd;
+  double    vals[80];
+  long long nc    = bpng_ncell();
   long long q;
-  int nmin;
+  int       nmin;
   long long nrows = 0;
-  char *seen;
+  char     *seen;
 
-  for(q = 0; q < ((long long)BPNG.coeff_count) * nc; q++)
+  for(q = 0; q < ((long long) BPNG.coeff_count) * nc; q++)
     BPNG.Kcoeff[q] = 0.0;
 
   snprintf(path, sizeof(path), "%s", FileWithBinnedKernelValues);
@@ -241,14 +260,17 @@ static void bpng_read_kernel_coefficients_root(void)
    * appear exactly once. Rows used to be skipped silently, so a table written for a different filter gave
    * all-zero (Gaussian) or misread kernels with a successful exit. */
   seen = (char *) calloc(nc, 1);
-  if(!seen) FatalError(9112);
+  if(!seen)
+    FatalError(9112);
 
   while(fgets(line, sizeof(line), fd))
     {
-      int n = bpng_parse_doubles(line, vals, 80);
-      int i, j, l, c, k_start;
+      int       n = bpng_parse_doubles(line, vals, 80);
+      int       i, j, l, c, k_start;
       long long ind;
-      if(n <= 0) continue;
+
+      if(n <= 0)
+        continue;
 
       if(n != nmin)
         {
@@ -268,7 +290,7 @@ static void bpng_read_kernel_coefficients_root(void)
           FatalError(9114);
         }
 
-      ind = bpng_cell_index(i,j,l);
+      ind = bpng_cell_index(i, j, l);
       if(seen[ind])
         {
           printf("Binned kernel table '%s': cell (%d, %d, %d) appears more than once\n", path, i, j, l);
@@ -279,8 +301,9 @@ static void bpng_read_kernel_coefficients_root(void)
 
       k_start = 6 + BPNG.coeff_count;
       for(c = 0; c < BPNG.coeff_count; c++)
-        BPNG.Kcoeff[((long long)c) * nc + ind] = vals[k_start + c];
+        BPNG.Kcoeff[((long long) c) * nc + ind] = vals[k_start + c];
     }
+
   fclose(fd);
   free(seen);
 
@@ -293,20 +316,21 @@ static void bpng_read_kernel_coefficients_root(void)
 
 static void bpng_read_and_broadcast_table(void)
 {
-  int axis, nedge[3], input_filter, output_filter, coord_mode;
+  int       axis, nedge[3], input_filter, output_filter, coord_mode;
   long long ncoef;
 
   if(ThisTask == 0)
     {
-      input_filter = BinnedPNGFilter;
+      input_filter  = BinnedPNGFilter;
       output_filter = BinnedPNGOutputFilter;
-      coord_mode = BinnedPNGCoordinate;
+      coord_mode    = BinnedPNGCoordinate;
 
       if(input_filter != BPNG_FILTER_TOPHAT &&
          input_filter != BPNG_FILTER_LINEAR &&
          input_filter != BPNG_FILTER_CUBIC)
         {
-          printf("Invalid BinnedPNGFilter=%d. Use 1=top-hat, 2=linear input interpolation, 3=cubic input interpolation.\n", input_filter);
+          printf("Invalid BinnedPNGFilter=%d. Use 1=top-hat, 2=linear input interpolation, "
+                 "3=cubic input interpolation.\n", input_filter);
           FatalError(9109);
         }
 
@@ -314,7 +338,8 @@ static void bpng_read_and_broadcast_table(void)
          output_filter != BPNG_FILTER_LINEAR &&
          output_filter != BPNG_FILTER_CUBIC)
         {
-          printf("Invalid BinnedPNGOutputFilter=%d. Use 1=heaviside, 2=linear k3 output, 3=cubic k3 output.\n", output_filter);
+          printf("Invalid BinnedPNGOutputFilter=%d. Use 1=heaviside, 2=linear k3 output, 3=cubic k3 output.\n",
+                 output_filter);
           FatalError(9111);
         }
 
@@ -324,11 +349,11 @@ static void bpng_read_and_broadcast_table(void)
           FatalError(9110);
         }
 
-      BPNG.input_filter = input_filter;
+      BPNG.input_filter  = input_filter;
       BPNG.output_filter = output_filter;
-      BPNG.coord_mode = coord_mode;
-      BPNG.coeff_count = (output_filter == BPNG_FILTER_CUBIC)  ? 4 :
-                         (output_filter == BPNG_FILTER_LINEAR) ? 2 : 1;
+      BPNG.coord_mode    = coord_mode;
+      BPNG.coeff_count   = (output_filter == BPNG_FILTER_CUBIC)  ? 4 :
+                           (output_filter == BPNG_FILTER_LINEAR) ? 2 : 1;
 
       nedge[0] = bpng_count_edge_file(FileWithBinnedK1Edges);
       nedge[1] = bpng_count_edge_file(FileWithBinnedK2Edges);
@@ -338,77 +363,100 @@ static void bpng_read_and_broadcast_table(void)
         {
           if(nedge[axis] < 2)
             FatalError(9104);
-          BPNG.nk[axis] = nedge[axis] - 1;
+
+          BPNG.nk[axis]    = nedge[axis] - 1;
           BPNG.edges[axis] = malloc(nedge[axis] * sizeof(double));
-          if(!BPNG.edges[axis]) FatalError(9105);
+          if(!BPNG.edges[axis])
+            FatalError(9105);
         }
 
       bpng_read_edge_file_root(FileWithBinnedK1Edges, 0);
       bpng_read_edge_file_root(FileWithBinnedK2Edges, 1);
       bpng_read_edge_file_root(FileWithBinnedK3Edges, 2);
 
-      ncoef = ((long long) BPNG.coeff_count) * bpng_ncell();
+      ncoef       = ((long long) BPNG.coeff_count) * bpng_ncell();
       BPNG.Kcoeff = malloc(ncoef * sizeof(double));
-      if(!BPNG.Kcoeff) FatalError(9106);
+      if(!BPNG.Kcoeff)
+        FatalError(9106);
       bpng_read_kernel_coefficients_root();
 
-      printf("Loaded hybrid binned PNG kernel table: Nk=(%d,%d,%d), input_filter=%d, output_filter=%d, coord=%d, coeff_count=%d\n",
+      printf("Loaded hybrid binned PNG kernel table: Nk=(%d,%d,%d), input_filter=%d, output_filter=%d, "
+             "coord=%d, coeff_count=%d\n",
              BPNG.nk[0], BPNG.nk[1], BPNG.nk[2],
              BPNG.input_filter, BPNG.output_filter, BPNG.coord_mode, BPNG.coeff_count);
     }
 
-  MPI_Bcast(BPNG.nk, 3, MPI_INT, 0, MPI_COMM_WORLD);
-  MPI_Bcast(&BPNG.input_filter, 1, MPI_INT, 0, MPI_COMM_WORLD);
+  MPI_Bcast(BPNG.nk,             3, MPI_INT, 0, MPI_COMM_WORLD);
+  MPI_Bcast(&BPNG.input_filter,  1, MPI_INT, 0, MPI_COMM_WORLD);
   MPI_Bcast(&BPNG.output_filter, 1, MPI_INT, 0, MPI_COMM_WORLD);
-  MPI_Bcast(&BPNG.coord_mode, 1, MPI_INT, 0, MPI_COMM_WORLD);
-  MPI_Bcast(&BPNG.coeff_count, 1, MPI_INT, 0, MPI_COMM_WORLD);
+  MPI_Bcast(&BPNG.coord_mode,    1, MPI_INT, 0, MPI_COMM_WORLD);
+  MPI_Bcast(&BPNG.coeff_count,   1, MPI_INT, 0, MPI_COMM_WORLD);
 
   if(ThisTask != 0)
     {
       for(axis = 0; axis < 3; axis++)
         {
-          nedge[axis] = BPNG.nk[axis] + 1;
+          nedge[axis]      = BPNG.nk[axis] + 1;
           BPNG.edges[axis] = malloc(nedge[axis] * sizeof(double));
-          if(!BPNG.edges[axis]) FatalError(9107);
+          if(!BPNG.edges[axis])
+            FatalError(9107);
         }
-      BPNG.Kcoeff = malloc(((long long)BPNG.coeff_count) * bpng_ncell() * sizeof(double));
-      if(!BPNG.Kcoeff) FatalError(9108);
+
+      BPNG.Kcoeff = malloc(((long long) BPNG.coeff_count) * bpng_ncell() * sizeof(double));
+      if(!BPNG.Kcoeff)
+        FatalError(9108);
     }
 
   for(axis = 0; axis < 3; axis++)
     MPI_Bcast(BPNG.edges[axis], BPNG.nk[axis] + 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
-  MPI_Bcast(BPNG.Kcoeff, ((long long)BPNG.coeff_count) * bpng_ncell(), MPI_DOUBLE, 0, MPI_COMM_WORLD);
+  MPI_Bcast(BPNG.Kcoeff, ((long long) BPNG.coeff_count) * bpng_ncell(), MPI_DOUBLE, 0, MPI_COMM_WORLD);
 }
 
 static void bpng_free_table(void)
 {
   int axis;
+
   for(axis = 0; axis < 3; axis++)
     {
-      if(BPNG.edges[axis]) free(BPNG.edges[axis]);
+      if(BPNG.edges[axis])
+        free(BPNG.edges[axis]);
       BPNG.edges[axis] = NULL;
     }
-  if(BPNG.Kcoeff) free(BPNG.Kcoeff);
+
+  if(BPNG.Kcoeff)
+    free(BPNG.Kcoeff);
   BPNG.Kcoeff = NULL;
+
   for(int axis = 0; axis < 3; axis++)
     {
-      free(BPNG.node_x[axis]); free(BPNG.bin_xc[axis]); free(BPNG.bin_dx[axis]);
+      free(BPNG.node_x[axis]);
+      free(BPNG.bin_xc[axis]);
+      free(BPNG.bin_dx[axis]);
       BPNG.node_x[axis] = BPNG.bin_xc[axis] = BPNG.bin_dx[axis] = NULL;
     }
 }
 
+
+/* ---- bins, coordinates and the input-leg filters ---- */
+
 static int bpng_find_bin(const double *edges, int nbin, double k)
 {
   int lo, hi, mid;
-  if(k < edges[0] || k > edges[nbin]) return -1;
-  if(k == edges[nbin]) return nbin - 1;
+
+  if(k < edges[0] || k > edges[nbin])
+    return -1;
+  if(k == edges[nbin])
+    return nbin - 1;
+
   lo = 0;
   hi = nbin;
   while(hi - lo > 1)
     {
       mid = (hi + lo) / 2;
-      if(k < edges[mid]) hi = mid;
-      else lo = mid;
+      if(k < edges[mid])
+        hi = mid;
+      else
+        lo = mid;
     }
   return lo;
 }
@@ -417,7 +465,8 @@ static double bpng_coord_value(double k)
 {
   if(BPNG.coord_mode == BPNG_COORD_LOG)
     {
-      if(k <= 0.0) return -1.0e300;
+      if(k <= 0.0)
+        return -1.0e300;
       return log(k);
     }
   return k;
@@ -427,6 +476,7 @@ static double bpng_axis_node_k(int axis, int node)
 {
   double lo = BPNG.edges[axis][node];
   double hi = BPNG.edges[axis][node + 1];
+
   if(BPNG.coord_mode == BPNG_COORD_LOG)
     return sqrt(lo * hi);
   return 0.5 * (lo + hi);
@@ -441,17 +491,21 @@ static double bpng_axis_node_x(int axis, int node)
  * per-mode call (same arithmetic as before, so results are bit-identical). */
 static void bpng_precompute_axes(void)
 {
-  int axis, b;
+  int    axis, b;
   double xlo, xhi;
+
   for(axis = 0; axis < 3; axis++)
     {
       BPNG.node_x[axis] = (double *) malloc(sizeof(double) * BPNG.nk[axis]);
       BPNG.bin_xc[axis] = (double *) malloc(sizeof(double) * BPNG.nk[axis]);
       BPNG.bin_dx[axis] = (double *) malloc(sizeof(double) * BPNG.nk[axis]);
-      if(!BPNG.node_x[axis] || !BPNG.bin_xc[axis] || !BPNG.bin_dx[axis]) FatalError(9116);
+      if(!BPNG.node_x[axis] || !BPNG.bin_xc[axis] || !BPNG.bin_dx[axis])
+        FatalError(9116);
+
       for(b = 0; b < BPNG.nk[axis]; b++)
         {
           BPNG.node_x[axis][b] = bpng_coord_value(bpng_axis_node_k(axis, b));
+
           xlo = bpng_coord_value(BPNG.edges[axis][b]);
           xhi = bpng_coord_value(BPNG.edges[axis][b + 1]);
           BPNG.bin_xc[axis][b] = 0.5 * (xlo + xhi);
@@ -463,10 +517,15 @@ static void bpng_precompute_axes(void)
 static double bpng_u_in_bin_axis(int axis, int bin, double k)
 {
   double x, dx;
-  if(bin < 0 || bin >= BPNG.nk[axis]) return 0.0;
-  x = bpng_coord_value(k);
+
+  if(bin < 0 || bin >= BPNG.nk[axis])
+    return 0.0;
+
+  x  = bpng_coord_value(k);
   dx = BPNG.bin_dx[axis][bin];
-  if(dx == 0.0 || !isfinite(dx)) return 0.0;
+  if(dx == 0.0 || !isfinite(dx))
+    return 0.0;
+
   return (x - BPNG.bin_xc[axis][bin]) / dx;
 }
 
@@ -474,17 +533,24 @@ static double bpng_u_in_bin_axis(int axis, int bin, double k)
  * never k = 0 and never the Nyquist planes, where the Gaussian field is zero and i*k is ill-defined. */
 static int bpng_mode_allowed(ptrdiff_t i, ptrdiff_t j, ptrdiff_t k, double kx, double ky, double kz, double kmag)
 {
-  if(kmag == 0.0) return 0;
-  if(i == Nmesh / 2 || j == Nmesh / 2 || k == Nmesh / 2) return 0;   /* Gaussian field is zero there */
+  if(kmag == 0.0)
+    return 0;
+  if(i == Nmesh / 2 || j == Nmesh / 2 || k == Nmesh / 2)     /* Gaussian field is zero there */
+    return 0;
+
   if(SphereMode == 1)
     {
-      if(kmag * Box / (2 * PI) > Nsample / 2) return 0;
+      if(kmag * Box / (2 * PI) > Nsample / 2)
+        return 0;
     }
   else
     {
-      if(fabs(kx) * Box / (2 * PI) > Nsample / 2) return 0;
-      if(fabs(ky) * Box / (2 * PI) > Nsample / 2) return 0;
-      if(fabs(kz) * Box / (2 * PI) > Nsample / 2) return 0;
+      if(fabs(kx) * Box / (2 * PI) > Nsample / 2)
+        return 0;
+      if(fabs(ky) * Box / (2 * PI) > Nsample / 2)
+        return 0;
+      if(fabs(kz) * Box / (2 * PI) > Nsample / 2)
+        return 0;
     }
   return 1;
 }
@@ -493,6 +559,7 @@ static int bpng_search_node_right(int axis, double x)
 {
   int lo, hi, mid;
   int n = BPNG.nk[axis];
+
   lo = 0;
   hi = n;
   while(hi > lo)
@@ -508,14 +575,18 @@ static int bpng_search_node_right(int axis, double x)
 
 static double bpng_linear_input_basis_value(int axis, int node, double kmag)
 {
-  int n = BPNG.nk[axis];
-  int right, i0, i1;
+  int    n = BPNG.nk[axis];
+  int    right, i0, i1;
   double x, x0, x1, t;
 
-  if(n <= 0) return 0.0;
-  if(kmag < BPNG.edges[axis][0] || kmag > BPNG.edges[axis][n]) return 0.0;
-  if(n == 1) return (node == 0) ? 1.0 : 0.0;
-  if(node < 0 || node >= n) return 0.0;
+  if(n <= 0)
+    return 0.0;
+  if(kmag < BPNG.edges[axis][0] || kmag > BPNG.edges[axis][n])
+    return 0.0;
+  if(n == 1)
+    return (node == 0) ? 1.0 : 0.0;
+  if(node < 0 || node >= n)
+    return 0.0;
 
   x = bpng_coord_value(kmag);
   if(x <= bpng_axis_node_x(axis, 0))
@@ -524,33 +595,43 @@ static double bpng_linear_input_basis_value(int axis, int node, double kmag)
     return (node == n - 1) ? 1.0 : 0.0;
 
   right = bpng_search_node_right(axis, x);
-  i0 = right - 1;
-  if(i0 < 0) i0 = 0;
-  if(i0 > n - 2) i0 = n - 2;
+  i0    = right - 1;
+  if(i0 < 0)
+    i0 = 0;
+  if(i0 > n - 2)
+    i0 = n - 2;
   i1 = i0 + 1;
 
   x0 = bpng_axis_node_x(axis, i0);
   x1 = bpng_axis_node_x(axis, i1);
-  if(x1 == x0) return 0.0;
-  t = (x - x0) / (x1 - x0);
-  if(t < 0.0) t = 0.0;
-  if(t > 1.0) t = 1.0;
+  if(x1 == x0)
+    return 0.0;
 
-  if(node == i0) return 1.0 - t;
-  if(node == i1) return t;
+  t = (x - x0) / (x1 - x0);
+  if(t < 0.0)
+    t = 0.0;
+  if(t > 1.0)
+    t = 1.0;
+
+  if(node == i0)
+    return 1.0 - t;
+  if(node == i1)
+    return t;
   return 0.0;
 }
 
 static double bpng_cubic_input_basis_value(int axis, int node, double kmag)
 {
-  int n = BPNG.nk[axis];
-  int right, base, m, q, idx[4];
+  int    n = BPNG.nk[axis];
+  int    right, base, m, q, idx[4];
   double x, xm, xq, den, w;
 
   if(n < 4)
     return bpng_linear_input_basis_value(axis, node, kmag);
-  if(kmag < BPNG.edges[axis][0] || kmag > BPNG.edges[axis][n]) return 0.0;
-  if(node < 0 || node >= n) return 0.0;
+  if(kmag < BPNG.edges[axis][0] || kmag > BPNG.edges[axis][n])
+    return 0.0;
+  if(node < 0 || node >= n)
+    return 0.0;
 
   x = bpng_coord_value(kmag);
   if(x <= bpng_axis_node_x(axis, 0))
@@ -559,23 +640,31 @@ static double bpng_cubic_input_basis_value(int axis, int node, double kmag)
     return (node == n - 1) ? 1.0 : 0.0;
 
   right = bpng_search_node_right(axis, x);
-  base = right - 2;
-  if(base < 0) base = 0;
-  if(base > n - 4) base = n - 4;
+  base  = right - 2;
+  if(base < 0)
+    base = 0;
+  if(base > n - 4)
+    base = n - 4;
   for(m = 0; m < 4; m++)
     idx[m] = base + m;
 
+  /* Lagrange weight of this node over the 4 nodes around x */
   for(m = 0; m < 4; m++)
     {
-      if(node != idx[m]) continue;
+      if(node != idx[m])
+        continue;
+
       xm = bpng_axis_node_x(axis, idx[m]);
-      w = 1.0;
+      w  = 1.0;
       for(q = 0; q < 4; q++)
         {
-          if(q == m) continue;
-          xq = bpng_axis_node_x(axis, idx[q]);
+          if(q == m)
+            continue;
+
+          xq  = bpng_axis_node_x(axis, idx[q]);
           den = xm - xq;
-          if(den == 0.0) return 0.0;
+          if(den == 0.0)
+            return 0.0;
           w *= (x - xq) / den;
         }
       return w;
@@ -586,6 +675,7 @@ static double bpng_cubic_input_basis_value(int axis, int node, double kmag)
 static double bpng_input_basis_value(int axis, int node, double kmag)
 {
   int ib;
+
   if(BPNG.input_filter == BPNG_FILTER_TOPHAT)
     {
       ib = bpng_find_bin(BPNG.edges[axis], BPNG.nk[axis], kmag);
@@ -598,12 +688,16 @@ static double bpng_input_basis_value(int axis, int node, double kmag)
   return 0.0;
 }
 
+
+/* ---- per-mode steps of the convolution: filter, product, output-leg coefficient ---- */
+
+/* dst = psi_node(|k|) src in Fourier space (normal x-slab layout), zero elsewhere. */
 static void bpng_build_input_filtered_field(fftw_complex *dst, fftw_complex *src, int axis, int node)
 {
   PROF_BEGIN(PROF_FIELD)
   ptrdiff_t ii, j, k, i;
-  uint64_t coord;
-  double kx, ky, kz, kmag, filt;
+  uint64_t  coord;
+  double    kx, ky, kz, kmag, filt;
 
   memset(dst, 0, sizeof(fftw_real) * TotalSizePlusAdditional);
 
@@ -612,52 +706,65 @@ static void bpng_build_input_filtered_field(fftw_complex *dst, fftw_complex *src
       for(long long m = 0; m < BML.n; m++)
         {
           filt = bpng_input_basis_value(axis, node, BML.kmag[m]);
-          if(filt == 0.0) continue;
+          if(filt == 0.0)
+            continue;
+
           coord = BML.coord[m];
           dst[coord].re = filt * src[coord].re;
           dst[coord].im = filt * src[coord].im;
         }
     }
   else
-  for(ii = 0; ii < Local_nx; ii++)
     {
-    i = ii + Local_x_start;
-    if(!lpt_axis_in_band(i)) continue;
-    for(j = 0; j < Nmesh; j++)
-      {
-      if(!lpt_axis_in_band(j)) continue;
-      for(k = 0; k <= lpt_kz_end(); k++)
+      for(ii = 0; ii < Local_nx; ii++)
         {
-          coord = (ii * Nmesh + j) * (Nmesh / 2 + 1) + k;
+          i = ii + Local_x_start;
+          if(!lpt_axis_in_band(i))
+            continue;
 
-          kx = (i < Nmesh / 2) ? i * 2 * PI / Box : -(Nmesh - i) * 2 * PI / Box;
-          ky = (j < Nmesh / 2) ? j * 2 * PI / Box : -(Nmesh - j) * 2 * PI / Box;
-          kz = (k < Nmesh / 2) ? k * 2 * PI / Box : -(Nmesh - k) * 2 * PI / Box;
-          kmag = sqrt(kx*kx + ky*ky + kz*kz);
+          for(j = 0; j < Nmesh; j++)
+            {
+              if(!lpt_axis_in_band(j))
+                continue;
 
-          if(!bpng_mode_allowed(i, j, k, kx, ky, kz, kmag)) continue;
-          filt = bpng_input_basis_value(axis, node, kmag);
-          if(filt == 0.0) continue;
+              for(k = 0; k <= lpt_kz_end(); k++)
+                {
+                  coord = (ii * Nmesh + j) * (Nmesh / 2 + 1) + k;
 
-          dst[coord].re = filt * src[coord].re;
-          dst[coord].im = filt * src[coord].im;
+                  kx   = (i < Nmesh / 2) ? i * 2 * PI / Box : -(Nmesh - i) * 2 * PI / Box;
+                  ky   = (j < Nmesh / 2) ? j * 2 * PI / Box : -(Nmesh - j) * 2 * PI / Box;
+                  kz   = (k < Nmesh / 2) ? k * 2 * PI / Box : -(Nmesh - k) * 2 * PI / Box;
+                  kmag = sqrt(kx*kx + ky*ky + kz*kz);
+
+                  if(!bpng_mode_allowed(i, j, k, kx, ky, kz, kmag))
+                    continue;
+                  filt = bpng_input_basis_value(axis, node, kmag);
+                  if(filt == 0.0)
+                    continue;
+
+                  dst[coord].re = filt * src[coord].re;
+                  dst[coord].im = filt * src[coord].im;
+                }
+            }
         }
-      }
     }
   PROF_END(PROF_FIELD)
 }
 
+/* out = a * b on the real-space grid (padding zeroed). */
 static void bpng_multiply_real_fields(fftw_real *out, fftw_real *a, fftw_real *b)
 {
   PROF_BEGIN(PROF_MULT)
   ptrdiff_t i, j, k;
-  uint64_t coord;
+  uint64_t  coord;
+
   memset(out, 0, sizeof(fftw_real) * TotalSizePlusAdditional);
+
   for(i = 0; i < Local_nx; i++)
     for(j = 0; j < Nmesh; j++)
       for(k = 0; k < Nmesh; k++)
         {
-          coord = (i * Nmesh + j) * (2 * (Nmesh / 2 + 1)) + k;
+          coord      = (i * Nmesh + j) * (2 * (Nmesh / 2 + 1)) + k;
           out[coord] = a[coord] * b[coord];
         }
   PROF_END(PROF_MULT)
@@ -673,11 +780,10 @@ static double bpng_output_k3_coefficient_u(int ia, int ib, int ic, double u)
     return coef;
 
   coef += bpng_coeff(1, ia, ib, ic) * u;
-
   if(BPNG.coeff_count <= 2)
     return coef;
 
-  u2 = u * u;
+  u2    = u * u;
   coef += bpng_coeff(2, ia, ib, ic) * u2
         + bpng_coeff(3, ia, ib, ic) * u2 * u;
   return coef;
@@ -686,9 +792,12 @@ static double bpng_output_k3_coefficient_u(int ia, int ib, int ic, double u)
 static int bpng_internal_edges_are_identical(void)
 {
   int a;
-  if(BPNG.nk[0] != BPNG.nk[1]) return 0;
+
+  if(BPNG.nk[0] != BPNG.nk[1])
+    return 0;
   for(a = 0; a <= BPNG.nk[0]; a++)
-    if(BPNG.edges[0][a] != BPNG.edges[1][a]) return 0;
+    if(BPNG.edges[0][a] != BPNG.edges[1][a])
+      return 0;
   return 1;
 }
 
@@ -697,6 +806,7 @@ static int bpng_internal_edges_are_identical(void)
 static double bpng_output_k3_pair_coefficient_u(int ia, int ib, int ic, double u, int use_symmetry)
 {
   double coef;
+
   coef = bpng_output_k3_coefficient_u(ia, ib, ic, u);
   if(use_symmetry && ia != ib)
     coef += bpng_output_k3_coefficient_u(ib, ia, ic, u);
@@ -704,36 +814,44 @@ static double bpng_output_k3_pair_coefficient_u(int ia, int ib, int ic, double u
 }
 
 
+/* ---- ModeTables 1: per-rank lists of the allowed modes ---- */
+
 static void bpng_build_mode_list_layout(BpngModeList *L, int transposed)
 {
   ptrdiff_t ii, j, k, i, n0 = transposed ? Local_ny_t : Local_nx;
-  double kx, ky, kz, kmag;
+  double    kx, ky, kz, kmag;
   long long pass, n = 0, ntot = 0;
 
-  for(pass = 0; pass < 2; pass++)
+  for(pass = 0; pass < 2; pass++)          /* pass 0 counts, pass 1 fills */
     {
       if(pass == 1)
         {
-          L->n = n;
+          L->n     = n;
           L->coord = (uint64_t *) malloc(sizeof(uint64_t) * (n > 0 ? n : 1));
-          L->kmag  = (double *) malloc(sizeof(double) * (n > 0 ? n : 1));
-          L->u     = (double *) malloc(sizeof(double) * (n > 0 ? n : 1));
-          L->ic    = (int *) malloc(sizeof(int) * (n > 0 ? n : 1));
-          if(!L->coord || !L->kmag || !L->u || !L->ic) FatalError(9117);
+          L->kmag  = (double *)   malloc(sizeof(double)   * (n > 0 ? n : 1));
+          L->u     = (double *)   malloc(sizeof(double)   * (n > 0 ? n : 1));
+          L->ic    = (int *)      malloc(sizeof(int)      * (n > 0 ? n : 1));
+          if(!L->coord || !L->kmag || !L->u || !L->ic)
+            FatalError(9117);
           n = 0;
         }
+
       for(ii = 0; ii < n0; ii++)
         for(j = 0; j < Nmesh; j++)
           for(k = 0; k <= Nmesh / 2; k++)
             {
               /* normal: ii = local x, j = y; transposed: ii = local y, j = x */
               ptrdiff_t ix = transposed ? j : ii + Local_x_start, iy = transposed ? ii + Local_y_start_t : j;
-              i = ix;
-              kx = (i < Nmesh / 2) ? i * 2 * PI / Box : -(Nmesh - i) * 2 * PI / Box;
-              ky = (iy < Nmesh / 2) ? iy * 2 * PI / Box : -(Nmesh - iy) * 2 * PI / Box;
-              kz = (k < Nmesh / 2) ? k * 2 * PI / Box : -(Nmesh - k) * 2 * PI / Box;
+
+              i    = ix;
+              kx   = (i < Nmesh / 2) ? i * 2 * PI / Box : -(Nmesh - i) * 2 * PI / Box;
+              ky   = (iy < Nmesh / 2) ? iy * 2 * PI / Box : -(Nmesh - iy) * 2 * PI / Box;
+              kz   = (k < Nmesh / 2) ? k * 2 * PI / Box : -(Nmesh - k) * 2 * PI / Box;
               kmag = sqrt(kx*kx + ky*ky + kz*kz);
-              if(!bpng_mode_allowed(ix, iy, k, kx, ky, kz, kmag)) continue;
+
+              if(!bpng_mode_allowed(ix, iy, k, kx, ky, kz, kmag))
+                continue;
+
               if(pass == 1)
                 {
                   L->coord[n] = (ii * Nmesh + j) * (Nmesh / 2 + 1) + k;
@@ -744,6 +862,7 @@ static void bpng_build_mode_list_layout(BpngModeList *L, int transposed)
               n++;
             }
     }
+
   MPI_Reduce(&L->n, &ntot, 1, MPI_LONG_LONG, MPI_SUM, 0, MPI_COMM_WORLD);
   if(ThisTask == 0 && transposed)
     printf("  ModeTables 1: %lld allowed modes tabulated twice (%.2f GB over all ranks).\n", ntot,
@@ -759,24 +878,41 @@ static void bpng_build_mode_list(void)
 static void bpng_free_mode_list(void)
 {
   BpngModeList *L[2] = {&BML, &BMLT};
+
   for(int q = 0; q < 2; q++)
     {
-      free(L[q]->coord); free(L[q]->kmag); free(L[q]->u); free(L[q]->ic);
-      L[q]->coord = NULL; L[q]->kmag = L[q]->u = NULL; L[q]->ic = NULL; L[q]->n = 0;
+      free(L[q]->coord);
+      free(L[q]->kmag);
+      free(L[q]->u);
+      free(L[q]->ic);
+
+      L[q]->coord = NULL;
+      L[q]->kmag  = L[q]->u = NULL;
+      L[q]->ic    = NULL;
+      L[q]->n     = 0;
     }
 }
 
+
+/* ---- the NG potential: loops over bin pairs ---- */
+
 static fftw_real **bpng_alloc_real_field_cache(int nfield)
 {
-  int a;
+  int         a;
   fftw_real **cache;
-  if(nfield <= 0) return NULL;
+
+  if(nfield <= 0)
+    return NULL;
+
   cache = (fftw_real **) malloc(nfield * sizeof(fftw_real *));
-  if(!cache) FatalError(9301);
+  if(!cache)
+    FatalError(9301);
+
   for(a = 0; a < nfield; a++)
     {
       cache[a] = (fftw_real *) malloc(sizeof(fftw_real) * TotalSizePlusAdditional);
-      if(!cache[a]) FatalError(9302);
+      if(!cache[a])
+        FatalError(9302);
     }
   return cache;
 }
@@ -784,12 +920,17 @@ static fftw_real **bpng_alloc_real_field_cache(int nfield)
 static void bpng_free_real_field_cache(fftw_real **cache, int nfield)
 {
   int a;
-  if(!cache) return;
+
+  if(!cache)
+    return;
+
   for(a = 0; a < nfield; a++)
-    if(cache[a]) free(cache[a]);
+    if(cache[a])
+      free(cache[a]);
   free(cache);
 }
 
+/* Filtered input field psi_node(k) phi(k), transformed to real space. */
 static void bpng_fill_cached_real_field(fftw_real *field, fftw_complex *src, int axis, int node)
 {
   bpng_build_input_filtered_field((fftw_complex *) field, src, axis, node);
@@ -805,22 +946,27 @@ static void bpng_convolve_and_accumulate_hybrid(
     long double *out_re, long double *out_im,
     int ia, int ib, int use_symmetry);
 
+/* ia <= ib pairs, with the filtered real-space fields of block_size k1 bins (and of the k2 bins they pair with)
+ * kept in memory, so each field is transformed once per block instead of once per pair. */
 static void bpng_compute_non_gaussian_potential_symmetric_blocked(
     fftw_complex *cpot, long double *cpot_NG_re, long double *cpot_NG_im,
     fftw_complex *c_tmp, fftw_real *p_tmp, int block_size)
 {
-  int n, a0, b0, ia, ib, na, nb, la, lb, start_b;
-  int timed_chars = 0;
+  int         n, a0, b0, ia, ib, na, nb, la, lb, start_b;
+  int         timed_chars = 0;
   fftw_real **acache, **bcache;
 
   n = BPNG.nk[0];
-  if(block_size <= 0) block_size = 1;
-  if(block_size > n) block_size = n;
+  if(block_size <= 0)
+    block_size = 1;
+  if(block_size > n)
+    block_size = n;
 
   for(a0 = 0; a0 < n; a0 += block_size)
     {
       na = block_size;
-      if(a0 + na > n) na = n - a0;
+      if(a0 + na > n)
+        na = n - a0;
 
       if(ThisTask == 0)
         {
@@ -835,7 +981,8 @@ static void bpng_compute_non_gaussian_potential_symmetric_blocked(
       for(b0 = a0; b0 < n; b0 += block_size)
         {
           nb = block_size;
-          if(b0 + nb > n) nb = n - b0;
+          if(b0 + nb > n)
+            nb = n - b0;
 
           if(b0 == a0)
             bcache = acache;
@@ -848,8 +995,9 @@ static void bpng_compute_non_gaussian_potential_symmetric_blocked(
 
           for(la = 0; la < na; la++)
             {
-              ia = a0 + la;
+              ia      = a0 + la;
               start_b = (b0 == a0) ? la : 0;
+
               for(lb = start_b; lb < nb; lb++)
                 {
                   ib = b0 + lb;
@@ -865,66 +1013,85 @@ static void bpng_compute_non_gaussian_potential_symmetric_blocked(
         }
 
       bpng_free_real_field_cache(acache, na);
-      if(ThisTask == 0) print_timed_done_aligned(timed_chars);
+      if(ThisTask == 0)
+        print_timed_done_aligned(timed_chars);
     }
 }
 
-/* conv is a transposed-order forward FFT; out_re/out_im are accumulated in the same transposed layout. */
-static void bpng_accumulate_hybrid_convolution(fftw_complex *conv, long double *out_re, long double *out_im, int ia, int ib, int use_symmetry)
+/* out += Fnl K_ab(k3) conv(k3). conv is a transposed-order forward FFT; out_re/out_im are accumulated in the
+ * same transposed layout. */
+static void bpng_accumulate_hybrid_convolution(fftw_complex *conv, long double *out_re, long double *out_im,
+                                               int ia, int ib, int use_symmetry)
 {
   PROF_BEGIN(PROF_ACCUM)
   ptrdiff_t jj, j, k, i;
-  uint64_t coord;
-  double kx, ky, kz, kmag, coef;
-  int ic;
+  uint64_t  coord;
+  double    kx, ky, kz, kmag, coef;
+  int       ic;
 
   if(ModeTables)
     {
       for(long long m = 0; m < BMLT.n; m++)
         {
           ic = BMLT.ic[m];
-          if(ic < 0) continue;
+          if(ic < 0)
+            continue;
+
           coef = bpng_output_k3_pair_coefficient_u(ia, ib, ic, BMLT.u[m], use_symmetry);
-          if(coef == 0.0 || !isfinite(coef)) continue;
+          if(coef == 0.0 || !isfinite(coef))
+            continue;
+
           coord = BMLT.coord[m];
           out_re[coord] += (long double) (Fnl * coef * conv[coord].re);
           out_im[coord] += (long double) (Fnl * coef * conv[coord].im);
         }
     }
   else
-  for(jj = 0; jj < Local_ny_t; jj++)          /* transposed layout: [y (local)][x][z] */
     {
-    j = jj + Local_y_start_t;
-    if(!lpt_axis_in_band(j)) continue;
-    for(i = 0; i < Nmesh; i++)
-      {
-      if(!lpt_axis_in_band(i)) continue;
-      for(k = 0; k <= lpt_kz_end(); k++)
+      for(jj = 0; jj < Local_ny_t; jj++)          /* transposed layout: [y (local)][x][z] */
         {
-          coord = (jj * Nmesh + i) * (Nmesh / 2 + 1) + k;
+          j = jj + Local_y_start_t;
+          if(!lpt_axis_in_band(j))
+            continue;
 
-          kx = (i < Nmesh / 2) ? i * 2 * PI / Box : -(Nmesh - i) * 2 * PI / Box;
-          ky = (j < Nmesh / 2) ? j * 2 * PI / Box : -(Nmesh - j) * 2 * PI / Box;
-          kz = (k < Nmesh / 2) ? k * 2 * PI / Box : -(Nmesh - k) * 2 * PI / Box;
-          kmag = sqrt(kx*kx + ky*ky + kz*kz);
+          for(i = 0; i < Nmesh; i++)
+            {
+              if(!lpt_axis_in_band(i))
+                continue;
 
-          if(!bpng_mode_allowed(i, j, k, kx, ky, kz, kmag)) continue;
-          ic = bpng_find_bin(BPNG.edges[2], BPNG.nk[2], kmag);
-          if(ic < 0) continue;
+              for(k = 0; k <= lpt_kz_end(); k++)
+                {
+                  coord = (jj * Nmesh + i) * (Nmesh / 2 + 1) + k;
 
-          /* u once per mode: the symmetric pair uses it twice */
-          coef = bpng_output_k3_pair_coefficient_u(ia, ib, ic, (BPNG.coeff_count <= 1) ? 0.0 : bpng_u_in_bin_axis(2, ic, kmag),
-                                                   use_symmetry);
-          if(coef == 0.0 || !isfinite(coef)) continue;
+                  kx   = (i < Nmesh / 2) ? i * 2 * PI / Box : -(Nmesh - i) * 2 * PI / Box;
+                  ky   = (j < Nmesh / 2) ? j * 2 * PI / Box : -(Nmesh - j) * 2 * PI / Box;
+                  kz   = (k < Nmesh / 2) ? k * 2 * PI / Box : -(Nmesh - k) * 2 * PI / Box;
+                  kmag = sqrt(kx*kx + ky*ky + kz*kz);
 
-          out_re[coord] += (long double) (Fnl * coef * conv[coord].re);
-          out_im[coord] += (long double) (Fnl * coef * conv[coord].im);
+                  if(!bpng_mode_allowed(i, j, k, kx, ky, kz, kmag))
+                    continue;
+                  ic = bpng_find_bin(BPNG.edges[2], BPNG.nk[2], kmag);
+                  if(ic < 0)
+                    continue;
+
+                  /* u once per mode: the symmetric pair uses it twice */
+                  coef = bpng_output_k3_pair_coefficient_u(ia, ib, ic,
+                                                           (BPNG.coeff_count <= 1) ? 0.0
+                                                                                   : bpng_u_in_bin_axis(2, ic, kmag),
+                                                           use_symmetry);
+                  if(coef == 0.0 || !isfinite(coef))
+                    continue;
+
+                  out_re[coord] += (long double) (Fnl * coef * conv[coord].re);
+                  out_im[coord] += (long double) (Fnl * coef * conv[coord].im);
+                }
+            }
         }
-      }
     }
   PROF_END(PROF_ACCUM)
 }
 
+/* One pair: product of the two real-space fields, forward FFT, output-leg accumulation. */
 static void bpng_convolve_and_accumulate_hybrid(
     fftw_complex *field_a, fftw_real *field_a_real,
     fftw_complex *field_b, fftw_real *field_b_real,
@@ -934,18 +1101,20 @@ static void bpng_convolve_and_accumulate_hybrid(
 {
   bpng_multiply_real_fields(p_tmp, field_a_real, field_b_real);
   lpt_barrier();
+
   lpt_fft_forward_t(p_tmp);
   lpt_barrier();
+
   bpng_accumulate_hybrid_convolution(c_tmp, out_re, out_im, ia, ib, use_symmetry);
 }
 
 static void bpng_compute_non_gaussian_potential(fftw_complex *cpot, long double *cpot_NG_re, long double *cpot_NG_im)
 {
-  int ia, ib, ib_start, use_symmetry, cache_block;
-  int timed_chars = 0;
-  uint64_t bytes = 0;
+  int           ia, ib, ib_start, use_symmetry, cache_block;
+  int           timed_chars = 0;
+  uint64_t      bytes = 0;
   fftw_complex *cf1, *cf2, *c_tmp;
-  fftw_real *f1, *f2, *p_tmp;
+  fftw_real    *f1, *f2, *p_tmp;
 
   if(ThisTask == 0)
     {
@@ -955,22 +1124,27 @@ static void bpng_compute_non_gaussian_potential(fftw_complex *cpot, long double 
 
   bpng_read_and_broadcast_table();
   bpng_precompute_axes();
-  if(ModeTables) bpng_build_mode_list();
+  if(ModeTables)
+    bpng_build_mode_list();
 
   use_symmetry = (BinnedPNGUseInternalSymmetry != 0);
   if(use_symmetry && !bpng_internal_edges_are_identical())
     {
       if(ThisTask == 0)
-        printf("ERROR: BinnedPNGUseInternalSymmetry=1 but k1/k2 edges differ. Disable the flag or regenerate with matched k1/k2 bins.\n");
+        printf("ERROR: BinnedPNGUseInternalSymmetry=1 but k1/k2 edges differ. Disable the flag or regenerate "
+               "with matched k1/k2 bins.\n");
       FatalError(9310);
     }
+
   cache_block = BinnedPNGCacheBlockSize;
-  if(cache_block < 0) cache_block = 0;
+  if(cache_block < 0)
+    cache_block = 0;
 
   c_tmp = (fftw_complex *) malloc(sizeof(fftw_real) * TotalSizePlusAdditional);
   p_tmp = (fftw_real *) c_tmp;
   ASSERT_ALLOC(c_tmp);
 
+  /* blocked path: filtered fields cached in real space */
   if(use_symmetry && cache_block > 0)
     {
       if(ThisTask == 0)
@@ -978,11 +1152,15 @@ static void bpng_compute_non_gaussian_potential(fftw_complex *cpot, long double 
           printf("  Using internal-leg symmetry and block cache size %d.\n", cache_block);
           fflush(stdout);
         }
+
       bpng_compute_non_gaussian_potential_symmetric_blocked(cpot, cpot_NG_re, cpot_NG_im,
                                                             c_tmp, p_tmp, cache_block);
+
       free(c_tmp);
-      if(ModeTables) bpng_free_mode_list();
-  bpng_free_table();
+      if(ModeTables)
+        bpng_free_mode_list();
+      bpng_free_table();
+
       if(ThisTask == 0)
         {
           printf("Finished hybrid binned-kernel non-Gaussian potential.\n");
@@ -991,10 +1169,11 @@ static void bpng_compute_non_gaussian_potential(fftw_complex *cpot, long double 
       return;
     }
 
+  /* unblocked path: two work fields, the k2 field rebuilt for every pair */
   cf1 = (fftw_complex *) malloc(sizeof(fftw_real) * TotalSizePlusAdditional);
   cf2 = (fftw_complex *) malloc(sizeof(fftw_real) * TotalSizePlusAdditional);
-  f1 = (fftw_real *) cf1;
-  f2 = (fftw_real *) cf2;
+  f1  = (fftw_real *) cf1;
+  f2  = (fftw_real *) cf2;
   ASSERT_ALLOC(cf1 && cf2 && c_tmp);
 
   if(ThisTask == 0 && use_symmetry)
@@ -1036,13 +1215,16 @@ static void bpng_compute_non_gaussian_potential(fftw_complex *cpot, long double 
                                                   cpot_NG_re, cpot_NG_im, ia, ib, use_symmetry);
             }
         }
-      if(ThisTask == 0) print_timed_done_aligned(timed_chars);
+
+      if(ThisTask == 0)
+        print_timed_done_aligned(timed_chars);
     }
 
   free(cf1);
   free(cf2);
   free(c_tmp);
-  if(ModeTables) bpng_free_mode_list();
+  if(ModeTables)
+    bpng_free_mode_list();
   bpng_free_table();
 
   if(ThisTask == 0)
@@ -1053,32 +1235,16 @@ static void bpng_compute_non_gaussian_potential(fftw_complex *cpot, long double 
 }
 
 
+void displacement_fields(void)
+{
+  double        Beta;
+  fftw_complex *cpot;           /* Gaussian potential */
+  fftw_complex *cpot_NG;        /* non-Gaussian term, in the FFTW complex layout */
+  long double  *cpot_NG_re;     /* its long-double accumulators */
+  long double  *cpot_NG_im;
+  uint64_t      bytes = 0;
+  uint64_t      coord;
 
-
-void displacement_fields(void) {
-
-  double Beta;
-  fftw_complex *(cpot);  /* For computing nongaussian fnl ic */
-    
-  fftw_complex *(cpot_NG);  /* For computing nongaussian fnl ic */
-    
-  long double *(cpot_NG_re);
-  long double *(cpot_NG_im);
-    
-
-
-
-// ******* FAVN *****
-// ******* FAVN *****
-    
-  uint64_t bytes = 0;
-  uint64_t coord;
-
-
-
-
-
-    
   /* The binned-kernel implementation no longer reads modal AlphaTable or X0Table.
    * It only needs the explicit binned table files configured in the parameter file.
    * Keep Nmax>=Nsample as a sanity check because the input Gaussian modes are
@@ -1088,20 +1254,12 @@ void displacement_fields(void) {
 
   MPI_Bcast(&SavePotentialField, 1, MPI_INT, 0, MPI_COMM_WORLD);
 
-  #ifdef CORRECT_CIC
-
-#endif
-
-
-
-
-
   lpt_setup_gaussian_potential(&cpot, &cpot_NG_re, &cpot_NG_im, &Beta);
- /*** For non-local models it is important to keep all factors of SQRT(-1) as done below ***/
- /*** No sign flip is applied to the NG term: it is added to the Gaussian potential as is ***/
- /*** (2LPTPNG noted a minus here to convert from Bardeen to gravitational potential)   ***/
 
- 
+  /*** For non-local models it is important to keep all factors of SQRT(-1) as done below ***/
+  /*** No sign flip is applied to the NG term: it is added to the Gaussian potential as is ***/
+  /*** (2LPTPNG noted a minus here to convert from Bardeen to gravitational potential)   ***/
+
   /**** BINNED PRIMORDIAL POTENTIAL **************/
 
   cpot_NG = (fftw_complex *) malloc(sizeof(fftw_real) * TotalSizePlusAdditional);

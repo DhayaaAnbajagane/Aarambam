@@ -34,14 +34,14 @@ const int lpt_method_nparams = sizeof(lpt_method_params) / sizeof(lpt_method_par
 void lpt_method_param_defaults(void)
 {
   /* Invalid defaults: these binned-PNG controls are required in the parameter file. */
-  BinnedPNGFilter = 0;
-  BinnedPNGOutputFilter = 0;
-  BinnedPNGCoordinate = 0;
-  BinnedPNGUseInternalSymmetry = 0;
-  BinnedPNGCacheBlockSize = 0;
-  FileWithBinnedK1Edges[0] = 0;
-  FileWithBinnedK2Edges[0] = 0;
-  FileWithBinnedK3Edges[0] = 0;
+  BinnedPNGFilter               = 0;
+  BinnedPNGOutputFilter         = 0;
+  BinnedPNGCoordinate           = 0;
+  BinnedPNGUseInternalSymmetry  = 0;
+  BinnedPNGCacheBlockSize       = 0;
+  FileWithBinnedK1Edges[0]      = 0;
+  FileWithBinnedK2Edges[0]      = 0;
+  FileWithBinnedK3Edges[0]      = 0;
   FileWithBinnedKernelValues[0] = 0;
 }
 
@@ -51,13 +51,15 @@ int lpt_method_validate(const char *fname)
 
   if(BinnedPNGFilter < 1 || BinnedPNGFilter > 3)
     {
-      fprintf(stdout, "Error. BinnedPNGFilter must be 1=heaviside, 2=linear, or 3=cubic in parameter file '%s'.\n", fname);
+      fprintf(stdout, "Error. BinnedPNGFilter must be 1=heaviside, 2=linear, or 3=cubic "
+                      "in parameter file '%s'.\n", fname);
       errorFlag = 1;
     }
 
   if(BinnedPNGOutputFilter < 1 || BinnedPNGOutputFilter > 3)
     {
-      fprintf(stdout, "Error. BinnedPNGOutputFilter must be 1=heaviside, 2=linear, or 3=cubic in parameter file '%s'.\n", fname);
+      fprintf(stdout, "Error. BinnedPNGOutputFilter must be 1=heaviside, 2=linear, or 3=cubic "
+                      "in parameter file '%s'.\n", fname);
       errorFlag = 1;
     }
 
@@ -84,7 +86,9 @@ int lpt_method_validate(const char *fname)
      FileWithBinnedK3Edges[0] == 0 ||
      FileWithBinnedKernelValues[0] == 0)
     {
-      fprintf(stdout, "Error. Missing one or more required binned table file tags: FileWithBinnedK1Edges, FileWithBinnedK2Edges, FileWithBinnedK3Edges, FileWithBinnedKernelValues in parameter file '%s'.\n", fname);
+      fprintf(stdout, "Error. Missing one or more required binned table file tags: FileWithBinnedK1Edges, "
+                      "FileWithBinnedK2Edges, FileWithBinnedK3Edges, FileWithBinnedKernelValues in parameter file "
+                      "'%s'.\n", fname);
       errorFlag = 1;
     }
 

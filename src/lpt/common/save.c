@@ -132,56 +132,65 @@ void write_particle_data(void)
   /* Task 0 writes every file (one per task), so NumFilesWrittenInParallel is not used. It used to abort
      here, after all the work, whenever NTask < NumFilesWrittenInParallel. */
 
-  for (int task = 0; task < NTask; task++) {
-  if (ThisTask == 0) {
-    if (task == 0) {
-      // Task 0 writes its own data
-      save_local_data(0);
-    } else {
-      // Receive from other task and write on their behalf
-      MPI_Status status;
-      int numpart;
-      MPI_Recv(&numpart, 1, MPI_INT, task, 0, MPI_COMM_WORLD, &status);
-
-      struct part_data *recvbuf = malloc(numpart * sizeof(struct part_data));
-      if(!recvbuf)
+  for(int task = 0; task < NTask; task++)
+    {
+      if(ThisTask == 0)
         {
-          printf("Task 0: failed to allocate the particle buffer of task %d\n", task);
-          FatalError(24132);
+          if(task == 0)
+            {
+              // Task 0 writes its own data
+              save_local_data(0);
+            }
+          else
+            {
+              // Receive from other task and write on their behalf
+              MPI_Status status;
+              int        numpart;
+
+              MPI_Recv(&numpart, 1, MPI_INT, task, 0, MPI_COMM_WORLD, &status);
+
+              struct part_data *recvbuf = malloc(numpart * sizeof(struct part_data));
+              if(!recvbuf)
+                {
+                  printf("Task 0: failed to allocate the particle buffer of task %d\n", task);
+                  FatalError(24132);
+                }
+
+              for(long long off = 0, nb = (long long) numpart * sizeof(struct part_data); off < nb;
+                  off += SAVE_CHUNK_BYTES)
+                MPI_Recv((char *) recvbuf + off, (int) (nb - off < SAVE_CHUNK_BYTES ? nb - off : SAVE_CHUNK_BYTES),
+                         MPI_BYTE, task, 1, MPI_COMM_WORLD, &status);
+
+              // Temporarily replace P and NumPart
+              struct part_data *P_old       = P;
+              int               NumPart_old = NumPart;
+
+              P       = recvbuf;
+              NumPart = numpart;
+
+              save_local_data(task);  // Write to FileBase.task
+
+              free(P);
+              P       = P_old;
+              NumPart = NumPart_old;
+            }
         }
-      for(long long off = 0, nb = (long long) numpart * sizeof(struct part_data); off < nb; off += SAVE_CHUNK_BYTES)
-        MPI_Recv((char *) recvbuf + off, (int) (nb - off < SAVE_CHUNK_BYTES ? nb - off : SAVE_CHUNK_BYTES), MPI_BYTE,
-                 task, 1, MPI_COMM_WORLD, &status);
+      else
+        {
+          if(ThisTask == task)
+            {
+              MPI_Send(&NumPart, 1, MPI_INT, 0, 0, MPI_COMM_WORLD);
 
-      // Temporarily replace P and NumPart
-      struct part_data *P_old = P;
-      int NumPart_old = NumPart;
+              for(long long off = 0, nb = (long long) NumPart * sizeof(struct part_data); off < nb;
+                  off += SAVE_CHUNK_BYTES)
+                MPI_Send((char *) P + off, (int) (nb - off < SAVE_CHUNK_BYTES ? nb - off : SAVE_CHUNK_BYTES),
+                         MPI_BYTE, 0, 1, MPI_COMM_WORLD);
+            }
+        }
 
-      P = recvbuf;
-      NumPart = numpart;
-
-      save_local_data(task);  // Write to FileBase.task
-
-      free(P);
-      P = P_old;
-      NumPart = NumPart_old;
+      MPI_Barrier(MPI_COMM_WORLD);  // Synchronize
     }
-  } else {
-    if (ThisTask == task) {
-      MPI_Send(&NumPart, 1, MPI_INT, 0, 0, MPI_COMM_WORLD);
-      for(long long off = 0, nb = (long long) NumPart * sizeof(struct part_data); off < nb; off += SAVE_CHUNK_BYTES)
-        MPI_Send((char *) P + off, (int) (nb - off < SAVE_CHUNK_BYTES ? nb - off : SAVE_CHUNK_BYTES), MPI_BYTE, 0, 1,
-                 MPI_COMM_WORLD);
-    }
-  }
-
-  MPI_Barrier(MPI_COMM_WORLD);  // Synchronize
 }
-
-
-}
-
-
 
 
 void save_local_data(int task)
@@ -226,7 +235,8 @@ void save_local_data(int task)
 
 
 #ifdef MULTICOMPONENTGLASSFILE
-  qsort(P, NumPart, sizeof(struct part_data), compare_type);  /* sort particles by type, because that's how they should be stored in a gadget binary file */
+  /* sort particles by type, because that's how they should be stored in a gadget binary file */
+  qsort(P, NumPart, sizeof(struct part_data), compare_type);
 
   for(i = 0; i < 3; i++)
     header.npartTotal[i] = header1.npartTotal[i + 1] * GlassTileFac * GlassTileFac * GlassTileFac;
@@ -241,7 +251,7 @@ void save_local_data(int task)
   if(header.npartTotal[1])
     header.mass[1] =
       (Omega - OmegaBaryon - OmegaDM_2ndSpecies) * 3 * Hubble * Hubble / (8 * PI * G) * pow(Box,
-											    3) /
+                                                                                            3) /
       (header.npartTotal[1]);
 
   if(header.npartTotal[2])
@@ -320,20 +330,20 @@ void save_local_data(int task)
   for(i = 0, pc = 0; i < NumPart; i++)
     {
       for(k = 0; k < 3; k++)
-	{
-	  block[3 * pc + k] = P[i].Pos[k];
+        {
+          block[3 * pc + k] = P[i].Pos[k];
 #ifdef  PRODUCEGAS
-	  block[3 * pc + k] = periodic_wrap(P[i].Pos[k] + shift_gas);
+          block[3 * pc + k] = periodic_wrap(P[i].Pos[k] + shift_gas);
 #endif
-	}
+        }
 
       pc++;
 
       if(pc == blockmaxlen)
-	{
-	  my_fwrite(block, sizeof(float), 3 * pc, fd);
-	  pc = 0;
-	}
+        {
+          my_fwrite(block, sizeof(float), 3 * pc, fd);
+          pc = 0;
+        }
     }
   if(pc > 0)
     my_fwrite(block, sizeof(float), 3 * pc, fd);
@@ -341,23 +351,22 @@ void save_local_data(int task)
   for(i = 0, pc = 0; i < NumPart; i++)
     {
       for(k = 0; k < 3; k++)
-	{
-	  block[3 * pc + k] = periodic_wrap(P[i].Pos[k] + shift_dm);
-	}
+        {
+          block[3 * pc + k] = periodic_wrap(P[i].Pos[k] + shift_dm);
+        }
 
       pc++;
 
       if(pc == blockmaxlen)
-	{
-	  my_fwrite(block, sizeof(float), 3 * pc, fd);
-	  pc = 0;
-	}
+        {
+          my_fwrite(block, sizeof(float), 3 * pc, fd);
+          pc = 0;
+        }
     }
   if(pc > 0)
     my_fwrite(block, sizeof(float), 3 * pc, fd);
 #endif
   my_fwrite(&dummy, sizeof(dummy), 1, fd);
-
 
 
   /* write velocities */
@@ -369,25 +378,25 @@ void save_local_data(int task)
   for(i = 0, pc = 0; i < NumPart; i++)
     {
       for(k = 0; k < 3; k++)
-	block[3 * pc + k] = P[i].Vel[k];
+        block[3 * pc + k] = P[i].Vel[k];
 
 #ifdef MULTICOMPONENTGLASSFILE
       if(WDM_On == 1 && WDM_Vtherm_On == 1 && P[i].Type == 1)
-	add_WDM_thermal_speeds(&block[3 * pc]);
+        add_WDM_thermal_speeds(&block[3 * pc]);
 #else
 #ifndef PRODUCEGAS
       if(WDM_On == 1 && WDM_Vtherm_On == 1)
-	add_WDM_thermal_speeds(&block[3 * pc]);
+        add_WDM_thermal_speeds(&block[3 * pc]);
 #endif
 #endif
 
       pc++;
 
       if(pc == blockmaxlen)
-	{
-	  my_fwrite(block, sizeof(float), 3 * pc, fd);
-	  pc = 0;
-	}
+        {
+          my_fwrite(block, sizeof(float), 3 * pc, fd);
+          pc = 0;
+        }
     }
   if(pc > 0)
     my_fwrite(block, sizeof(float), 3 * pc, fd);
@@ -395,18 +404,18 @@ void save_local_data(int task)
   for(i = 0, pc = 0; i < NumPart; i++)
     {
       for(k = 0; k < 3; k++)
-	block[3 * pc + k] = P[i].Vel[k];
+        block[3 * pc + k] = P[i].Vel[k];
 
       if(WDM_On == 1 && WDM_Vtherm_On == 1)
-	add_WDM_thermal_speeds(&block[3 * pc]);
+        add_WDM_thermal_speeds(&block[3 * pc]);
 
       pc++;
 
       if(pc == blockmaxlen)
-	{
-	  my_fwrite(block, sizeof(float), 3 * pc, fd);
-	  pc = 0;
-	}
+        {
+          my_fwrite(block, sizeof(float), 3 * pc, fd);
+          pc = 0;
+        }
     }
   if(pc > 0)
     my_fwrite(block, sizeof(float), 3 * pc, fd);
@@ -435,14 +444,14 @@ void save_local_data(int task)
       pc++;
 
       if(pc == maxlongidlen)
-	{
+        {
 #ifdef NO64BITID
-	  my_fwrite(blockid, sizeof(int), pc, fd);
+          my_fwrite(blockid, sizeof(int), pc, fd);
 #else
-	  my_fwrite(blocklongid, sizeof(long long), pc, fd);
+          my_fwrite(blocklongid, sizeof(long long), pc, fd);
 #endif
-	  pc = 0;
-	}
+          pc = 0;
+        }
     }
   if(pc > 0)
     {
@@ -465,14 +474,14 @@ void save_local_data(int task)
       pc++;
 
       if(pc == maxlongidlen)
-	{
+        {
 #ifdef NO64BITID
-	  my_fwrite(blockid, sizeof(int), pc, fd);
+          my_fwrite(blockid, sizeof(int), pc, fd);
 #else
-	  my_fwrite(blocklongid, sizeof(long long), pc, fd);
+          my_fwrite(blocklongid, sizeof(long long), pc, fd);
 #endif
-	  pc = 0;
-	}
+          pc = 0;
+        }
     }
   if(pc > 0)
     {
@@ -487,9 +496,6 @@ void save_local_data(int task)
   my_fwrite(&dummy, sizeof(dummy), 1, fd);
 
 
-
-
-
   /* write zero temperatures if needed */
 #ifdef  PRODUCEGAS
   dummy = sizeof(float) * NumPart;
@@ -501,10 +507,10 @@ void save_local_data(int task)
       pc++;
 
       if(pc == blockmaxlen)
-	{
-	  my_fwrite(block, sizeof(float), pc, fd);
-	  pc = 0;
-	}
+        {
+          my_fwrite(block, sizeof(float), pc, fd);
+          pc = 0;
+        }
     }
   if(pc > 0)
     my_fwrite(block, sizeof(float), pc, fd);
@@ -520,23 +526,22 @@ void save_local_data(int task)
       my_fwrite(&dummy, sizeof(dummy), 1, fd);
 
       for(i = 0, pc = 0; i < header.npart[0]; i++)
-	{
-	  block[pc] = 0;
+        {
+          block[pc] = 0;
 
-	  pc++;
+          pc++;
 
-	  if(pc == blockmaxlen)
-	    {
-	      my_fwrite(block, sizeof(float), pc, fd);
-	      pc = 0;
-	    }
-	}
+          if(pc == blockmaxlen)
+            {
+              my_fwrite(block, sizeof(float), pc, fd);
+              pc = 0;
+            }
+        }
       if(pc > 0)
-	my_fwrite(block, sizeof(float), pc, fd);
+        my_fwrite(block, sizeof(float), pc, fd);
       my_fwrite(&dummy, sizeof(dummy), 1, fd);
     }
 #endif
-
 
 
   free(block);

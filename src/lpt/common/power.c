@@ -10,11 +10,10 @@ static double r_tophat;
 
 static double AA, BB, CC;
 static double nu;
-static double Norm; 
+static double Norm;
 static double klower;
 
 
- 
 /* added for non-gaussian, by M.Manera  */
 
 static int NTransferTable;
@@ -46,13 +45,13 @@ double TransferFunc(double k)
 
     default:
       printf(" TranferFunction Efstathiou is a stub (T(k) = 1); use WhichTransfer 2\n");
-      transfer = TransferFunc_Efstathiou(k); 
+      transfer = TransferFunc_Efstathiou(k);
       break;
     }
 
-   /* at the moment no second species implemented 
-    * or WDM implemented for transfer function
-    */
+  /* at the moment no second species implemented
+   * or WDM implemented for transfer function
+   */
 
   return transfer;
 }
@@ -60,91 +59,94 @@ double TransferFunc(double k)
 
 void read_transfer_table(void)
 {
-    FILE *fd;
-    char buf[500];
-    double k, t;
-    double Tlower;
-    int i;
+  FILE  *fd;
+  char   buf[500];
+  double k, t;
+  double Tlower;
+  int    i;
 
-    if (ThisTask == 0)
+  if(ThisTask == 0)
     {
-        snprintf(buf, sizeof(buf), "%s", FileWithInputTransfer);
+      snprintf(buf, sizeof(buf), "%s", FileWithInputTransfer);
 
-        if (!(fd = fopen(buf, "r")))
+      /* first pass: count the rows */
+      if(!(fd = fopen(buf, "r")))
         {
-            printf("can't read input transfer function in file '%s' on task %d\n", buf, ThisTask);
-            FatalError(17);
+          printf("can't read input transfer function in file '%s' on task %d\n", buf, ThisTask);
+          FatalError(17);
         }
 
-        NTransferTable = 0;
-        while (fscanf(fd, " %le %le ", &k, &t) == 2)
-            NTransferTable++;
+      NTransferTable = 0;
+      while(fscanf(fd, " %le %le ", &k, &t) == 2)
+        NTransferTable++;
 
-        fclose(fd);
+      fclose(fd);
 
-        TransferTable = malloc(NTransferTable * sizeof(struct trans_table));
-        if (!TransferTable)
+      TransferTable = malloc(NTransferTable * sizeof(struct trans_table));
+      if(!TransferTable)
         {
-            printf("Memory allocation failed on task %d\n", ThisTask);
-            FatalError(19);
+          printf("Memory allocation failed on task %d\n", ThisTask);
+          FatalError(19);
         }
 
-        if (!(fd = fopen(buf, "r")))
+      /* second pass: read log k, log T */
+      if(!(fd = fopen(buf, "r")))
         {
-            printf("can't read input transfer function in file '%s' on task %d\n", buf, ThisTask);
-            FatalError(18);
+          printf("can't read input transfer function in file '%s' on task %d\n", buf, ThisTask);
+          FatalError(18);
         }
 
-        NTransferTable = 0;
-        while (fscanf(fd, " %le %le ", &k, &t) == 2)
+      NTransferTable = 0;
+      while(fscanf(fd, " %le %le ", &k, &t) == 2)
         {
-            TransferTable[NTransferTable].logk = log10(k);
-            TransferTable[NTransferTable].logT = log10(t);
-            NTransferTable++;
+          TransferTable[NTransferTable].logk = log10(k);
+          TransferTable[NTransferTable].logT = log10(t);
+          NTransferTable++;
         }
 
-        fclose(fd);
+      fclose(fd);
 
-        qsort(TransferTable, NTransferTable, sizeof(struct trans_table), compare_transfer_logk);
+      qsort(TransferTable, NTransferTable, sizeof(struct trans_table), compare_transfer_logk);
 
-        klower = pow(10.0, TransferTable[0].logk);
+      klower = pow(10.0, TransferTable[0].logk);
 
-        if (TransferTable[0].logk >= -4.6)
+      if(TransferTable[0].logk >= -4.6)
         {
-            printf("\n WARNING: klower is %f, may be too large to normalize transfer\n", klower);
-            FatalError(1111);
+          printf("\n WARNING: klower is %f, may be too large to normalize transfer\n", klower);
+          FatalError(1111);
         }
 
-        if (TransferTable[NTransferTable - 1].logk <= log10(500. / 8.))
+      if(TransferTable[NTransferTable - 1].logk <= log10(500. / 8.))
         {
-            printf("\n WARNING: kmax may be too small to normalize transfer\n");
-            printf("\n Values outside the input range will be taken to be zero\n");
+          printf("\n WARNING: kmax may be too small to normalize transfer\n");
+          printf("\n Values outside the input range will be taken to be zero\n");
         }
 
-        Tlower = TransferTable[0].logT;
-        for (i = 0; i < NTransferTable; i++)
-            TransferTable[i].logT -= Tlower;
+      /* normalise T to 1 at the lowest tabulated k */
+      Tlower = TransferTable[0].logT;
+      for(i = 0; i < NTransferTable; i++)
+        TransferTable[i].logT -= Tlower;
     }
 
-    // Broadcast the number of table entries
-    MPI_Bcast(&NTransferTable, 1, MPI_INT, 0, MPI_COMM_WORLD);
+  // Broadcast the number of table entries
+  MPI_Bcast(&NTransferTable, 1, MPI_INT, 0, MPI_COMM_WORLD);
 
-    // Allocate memory for the table on other tasks
-    if (ThisTask != 0)
+  // Allocate memory for the table on other tasks
+  if(ThisTask != 0)
     {
-        TransferTable = malloc(NTransferTable * sizeof(struct trans_table));
-        if (!TransferTable)
+      TransferTable = malloc(NTransferTable * sizeof(struct trans_table));
+      if(!TransferTable)
         {
-            printf("Memory allocation failed on task %d\n", ThisTask);
-            FatalError(19);
+          printf("Memory allocation failed on task %d\n", ThisTask);
+          FatalError(19);
         }
     }
 
-    // Broadcast the full TransferTable
-    MPI_Bcast(TransferTable, NTransferTable * sizeof(struct trans_table), MPI_BYTE, 0, MPI_COMM_WORLD);
+  // Broadcast the full TransferTable
+  MPI_Bcast(TransferTable, NTransferTable * sizeof(struct trans_table), MPI_BYTE, 0, MPI_COMM_WORLD);
 
-    // Broadcast klower (used outside the loop)
-    MPI_Bcast(&klower, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+  // Broadcast klower (used outside the loop)
+  MPI_Bcast(&klower, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
 }
 
 
@@ -160,22 +162,19 @@ int compare_transfer_logk(const void *a, const void *b)
 }
 
 
-
 void initialize_transferfunction(void)
 {
-
-  /* Transfer function is meant to be normalizet to 1 at k=0 
-   * No multiple Tf implemented as in power spectrum multiple species 
-   */ 
-   if(WhichTransfer == 2)
+  /* Transfer function is meant to be normalizet to 1 at k=0
+   * No multiple Tf implemented as in power spectrum multiple species
+   */
+  if(WhichTransfer == 2)
     read_transfer_table();
- 
 }
 
 
 double TransferFunc_Tabulated(double k)
 {
-  double logk, logT, T, u, dlogk; 
+  double logk, logT, T, u, dlogk;
   int binlow, binhigh, binmid;
 
   k *= (InputSpectrum_UnitLength_in_cm / UnitLength_in_cm);     /* convert to h/Mpc */
@@ -227,7 +226,7 @@ double TransferFunc_FromPk(double k)   /* From Normalized Power */
 {
   printf("TranferFunction_FromPk deprecrated\n");
   exit(2);
-  return sqrt( PowerSpec(k) * exp ( -PrimordialIndex * log(k)) / Anorm );    /* assuming ns equal one */  
+  return sqrt( PowerSpec(k) * exp ( -PrimordialIndex * log(k)) / Anorm );    /* assuming ns equal one */
 }
 
 /**** end of additions ***/
@@ -256,7 +255,8 @@ double PowerSpec(double k)
       break;
 
     default:
-      printf("WhichSpectrum = %d is not supported (0 = no oscillation, 1 = linear-k, 2 = log-k oscillation)\n", WhichSpectrum);
+      printf("WhichSpectrum = %d is not supported (0 = no oscillation, 1 = linear-k, 2 = log-k oscillation)\n",
+             WhichSpectrum);
       FatalError(1112);
       power = 0;
     }
@@ -265,10 +265,9 @@ double PowerSpec(double k)
   if(WDM_On == 1)
     {
       /* Eqn. (A9) in Bode, Ostriker & Turok (2001), assuming gX=1.5  */
-      alpha =
-	0.048 * pow((Omega - OmegaBaryon) / 0.4, 0.15) * pow(HubbleParam / 0.65,
-							     1.3) * pow(1.0 / WDM_PartMass_in_kev, 1.15);
-      Tf = pow(1 + pow(alpha * k * (3.085678e24 / UnitLength_in_cm), 2 * 1.2), -5.0 / 1.2);
+      alpha = 0.048 * pow((Omega - OmegaBaryon) / 0.4, 0.15) * pow(HubbleParam / 0.65, 1.3)
+            * pow(1.0 / WDM_PartMass_in_kev, 1.15);
+      Tf    = pow(1 + pow(alpha * k * (3.085678e24 / UnitLength_in_cm), 2 * 1.2), -5.0 / 1.2);
       power *= Tf * Tf;
     }
 
@@ -312,8 +311,7 @@ void initialize_powerspectrum(void)
   CC = 1.7 / ShapeGamma * (3.085678e24 / UnitLength_in_cm);
   nu = 1.13;
 
-  R8 = 8 * (3.085678e24 / UnitLength_in_cm);	/* 8 Mpc/h */
-
+  R8 = 8 * (3.085678e24 / UnitLength_in_cm);    /* 8 Mpc/h */
 
 
 #ifdef DIFFERENT_TRANSFER_FUNC
@@ -331,13 +329,12 @@ void initialize_powerspectrum(void)
   if(ThisTask == 0)
     printf("Normalization adjusted to  Sigma8=%g   (Normfac=%g)\n\n", Sigma8, Norm);
 
-  D0 = GrowthFactor(1.e-8, 1.0) * 1.e-8; /* Linnear growth factor at redshift z=0.0 normalized to D = a during matter domination */
+  /* Linnear growth factor at redshift z=0.0 normalized to D = a during matter domination */
+  D0    = GrowthFactor(1.e-8, 1.0) * 1.e-8;
   Dplus = GrowthFactor(InitTime, 1.0);
 
   Anorm = Norm;
-
 }
-
 
 
 double tk_Efstathiou(double k)
@@ -346,10 +343,7 @@ double tk_Efstathiou(double k)
 }
 
 
-
-
-
-double tk_eh(double k)		/* from Martin White */
+double tk_eh(double k)          /* from Martin White */
 {
   double q, theta, ommh2, a, s, gamma, L0, C0;
   double tmp;
@@ -364,7 +358,7 @@ double tk_eh(double k)		/* from Martin White */
   if(OmegaBaryon == 0)
     ombh2 = 0.04 * HubbleParam * HubbleParam;
 
-  k *= (3.085678e24 / UnitLength_in_cm);	/* convert to h/Mpc */
+  k *= (3.085678e24 / UnitLength_in_cm);        /* convert to h/Mpc */
 
   theta = 2.728 / 2.7;
   ommh2 = omegam * hubble * hubble;
@@ -381,13 +375,12 @@ double tk_eh(double k)		/* from Martin White */
 }
 
 
-
 double TopHatSigma2(double R)
 {
   r_tophat = R;
 
-  return qromb(sigma2_int, 0, 500.0 * 1 / R);	/* note: 500/R is here chosen as 
-						   integration boundary (infinity) */
+  return qromb(sigma2_int, 0, 500.0 * 1 / R);   /* note: 500/R is here chosen as
+                                                   integration boundary (infinity) */
 }
 
 
@@ -480,21 +473,18 @@ void fermi_dirac_init(void)
   for(i = 0; i < LENGTH_FERMI_DIRAC_TABLE; i++)
     fermi_dirac_cumprob[i] /= fermi_dirac_cumprob[LENGTH_FERMI_DIRAC_TABLE - 1];
 
-  WDM_V0 = 0.012 * (1 + Redshift) * pow((Omega - OmegaBaryon) / 0.3, 1.0 / 3) * pow(HubbleParam / 0.65,
-										    2.0 / 3) * pow(1.0 /
-												   WDM_PartMass_in_kev,
-												   4.0 / 3);
+  WDM_V0 = 0.012 * (1 + Redshift) * pow((Omega - OmegaBaryon) / 0.3, 1.0 / 3) * pow(HubbleParam / 0.65, 2.0 / 3)
+         * pow(1.0 / WDM_PartMass_in_kev, 4.0 / 3);
 
   if(ThisTask == 0)
     printf("\nWarm dark matter rms velocity dispersion at starting redshift = %g km/sec\n\n",
-	   3.59714 * WDM_V0);
+           3.59714 * WDM_V0);
 
   WDM_V0 *= 1.0e5 / UnitVelocity_in_cm_per_s;
 
   /* convert from peculiar velocity to gadget's cosmological velocity */
   WDM_V0 *= sqrt(1 + Redshift);
 }
-
 
 
 double get_fermi_dirac_vel(void)
@@ -515,7 +505,6 @@ double get_fermi_dirac_vel(void)
 
   return fermi_dirac_vel[i] * (1 - u) + fermi_dirac_vel[i + 1] * u;
 }
-
 
 
 void add_WDM_thermal_speeds(float *vel)

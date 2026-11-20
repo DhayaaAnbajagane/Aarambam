@@ -16,8 +16,8 @@ const int lpt_method_nparams = sizeof(lpt_method_params) / sizeof(lpt_method_par
 
 void lpt_method_param_defaults(void)
 {
-  A_res = 0;
-  w_res = 0;
+  A_res   = 0;
+  w_res   = 0;
   phi_res = 0;
 }
 
@@ -25,7 +25,8 @@ int lpt_method_validate(const char *fname)
 {
   if(WhichSpectrum < 0 || WhichSpectrum > 2)
     {
-      fprintf(stdout, "Error. WhichSpectrum must be 0 (no oscillation), 1 (linear-k) or 2 (log-k oscillation) in parameter file '%s'.\n", fname);
+      fprintf(stdout, "Error. WhichSpectrum must be 0 (no oscillation), 1 (linear-k) or 2 (log-k oscillation) "
+                      "in parameter file '%s'.\n", fname);
       return 1;
     }
   return 0;

@@ -16,7 +16,7 @@
 #include <stdio.h>
 #include <time.h>
 
-#define  PI          3.14159265358979323846 
+#define  PI          3.14159265358979323846
 #define  GRAVITY     6.672e-8
 #define  HUBBLE      3.2407789e-18   /* in h/sec */
 
@@ -28,13 +28,12 @@ int    read_parameter_file(char *fname);
 
 
 #ifdef T3E
-typedef short int int4byte;	/* Note: int has 8 Bytes on the T3E ! */
-typedef unsigned short int uint4byte;	/* Note: int has 8 Bytes on the T3E ! */
+typedef short int int4byte;     /* Note: int has 8 Bytes on the T3E ! */
+typedef unsigned short int uint4byte;   /* Note: int has 8 Bytes on the T3E ! */
 #else
 typedef int int4byte;
 typedef unsigned int uint4byte;
 #endif
-
 
 
 extern struct io_header_1
@@ -53,14 +52,13 @@ extern struct io_header_1
   double Omega0;           /*!< matter density */
   double OmegaLambda;      /*!< vacuum energy density */
   double HubbleParam;      /*!< little 'h' */
- /*  double Fnl;  out of header   !< nongaussian parametrization */ 
+ /*  double Fnl;  out of header   !< nongaussian parametrization */
   int4byte flag_stellarage;     /*!< flags whether the age of newly formed stars is recorded and saved */
   int4byte flag_metals;         /*!< flags whether metal enrichment is included */
   int4byte hashtabsize;         /*!< gives the size of the hashtable belonging to this snapshot file */
-  char fill[84];		/*!< fills to 256 Bytes */
+  char fill[84];                /*!< fills to 256 Bytes */
 }
 header, header1;
-
 
 
 extern clock_t start_time;
@@ -72,7 +70,7 @@ extern int      WhichSpectrum;
 extern int      WhichTransfer;
 extern int      SavePotentialField;
 extern int      Local_ny_t, Local_y_start_t;   /* k-space y-slab of FFTW_TRANSPOSED_ORDER output */
-extern int      ModeTables;           /* 0: per-mode quantities computed on the fly (least memory); 1: precomputed per-mode tables (faster, more memory) */
+extern int      ModeTables;          /* 0: per-mode quantities on the fly (least memory); 1: precomputed tables (faster) */
 
 extern FILE     *FdTmp, *FdTmpInput;
 
@@ -83,14 +81,14 @@ extern int      SphereMode;
 extern long long IDStart;
 
 
-extern char     GlassFile[500]; 
+extern char     GlassFile[500];
 extern char     FileWithInputSpectrum[500];
 extern char     FileWithInputTransfer[500];
 extern char     FileWithAlphaCoeff[500];
 extern char     FileWithX0Coeff[500];
 extern double   A_res, w_res, phi_res;   /* oscillating primordial P(k), WhichSpectrum 1/2 */
 
-extern int      GlassTileFac; 
+extern int      GlassTileFac;
 
 extern double   Box;
 extern int      Seed;
@@ -106,11 +104,11 @@ extern int      NTaskWithN;
 extern int      *Slab_to_task;
 
 
-extern struct part_data 
+extern struct part_data
 {
   float Pos[3];
   float Vel[3];
-#ifdef  MULTICOMPONENTGLASSFILE                      
+#ifdef  MULTICOMPONENTGLASSFILE
   int   Type;
 #endif
   long long ID;
@@ -156,7 +154,7 @@ extern double ShapeGamma;
 extern double Anorm;
 
 extern double Dplus; /* growth factor where output set by InitTime */
-extern double D0;    /* matter/DE domination growth factor normalized to the scale factor at early times */  
+extern double D0;    /* matter/DE domination growth factor normalized to the scale factor at early times */
 
 #ifdef DIFFERENT_TRANSFER_FUNC
 extern int Type, MinType, MaxType;
