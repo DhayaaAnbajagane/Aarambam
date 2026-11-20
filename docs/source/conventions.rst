@@ -70,15 +70,16 @@ One grid is ``8 Nmesh^3`` bytes summed over ranks: 57 MB at :math:`192^3`, 0.46 
 every size.
 
 Wall times on one 48-core node (Xeon Gold 6248R), with the default kernels (``N_modes = 15``,
-20 binned bins), ``Nmesh = 3/2 Nsample`` and FFTW 3.3.10 built with SIMD (see :doc:`installation`):
+20 binned bins), ``Nmesh = 3/2 Nsample``, FFTW 3.3.10 built with SIMD (see :doc:`installation`) and
+the FFT plans read from a wisdom file (see `FFT plans`_):
 
 =========================  ===============  ==================  ==================
 run                        before (FFTW2)   ``ModeTables 0``    ``ModeTables 1``
 =========================  ===============  ==================  ==================
-Basis  192/128, 8 ranks    14.7 s           7.9 s               3.2 s
-Basis  384/256, 32 ranks   35.1 s           18.5 s              8.3 s
-Binned 192/128, 8 ranks    16.6 s           8.8 s               5.6 s
-Binned 384/256, 32 ranks   43.4 s           23.3 s              16.6 s
+Basis  192/128, 8 ranks    14.7 s           7.3 s               2.8 s
+Basis  384/256, 32 ranks   35.1 s           17.8 s              7.8 s
+Binned 192/128, 8 ranks    16.6 s           7.5 s               4.4 s
+Binned 384/256, 32 ranks   43.4 s           21.4 s              14.5 s
 =========================  ===============  ==================  ==================
 
 ("Before" is the code of version 1.0.0, which used FFTW2. The binned ``ModeTables 1`` column uses the
@@ -89,6 +90,31 @@ sampled modes.
 Building with ``-DAARAMBAM_PROFILE`` in the C flags makes both executables print the time spent in
 FFTs, field building, products, accumulation and barriers (minimum and maximum over ranks) at the
 end of a run.
+
+FFT plans
+~~~~~~~~~
+
+FFTW can measure which FFT algorithm is fastest for a given grid size and number of ranks
+(``FFTW_MEASURE``) and store the result as "wisdom". The ``FFTWWisdomFile`` tag (both
+executables) controls this:
+
+* ``auto`` (the default, also when the tag is absent): the first run with a given ``Nmesh``, number
+  of ranks and CPU model measures its plans, which takes about 2 s at :math:`192^3` and 30 s at
+  :math:`1024^3`, and saves them in ``~/.cache/aarambam/`` (or ``$XDG_CACHE_HOME/aarambam/``),
+  one file per CPU model. Every later run with the same grid and rank count reads them back and
+  starts at once. The ``AARAMBAM_FFTW_WISDOM`` environment variable overrides the location (a file,
+  or ``none``).
+* a path: use that wisdom file instead.
+* ``none``: plan with ``FFTW_ESTIMATE``, no measuring and no file.
+
+Measured plans make each FFT 7% (at :math:`1024^3`) to 27% (at :math:`192^3`) faster. They can
+differ from run to run and between rank counts, so ICs made with them agree with ``none`` (and
+with each other) to rounding (:math:`\sim 10^{-16}`) rather than bit for bit; runs that reuse
+the same wisdom file use the same plans. The log says whether the plans were measured or read.
+
+Building with ``Aarambam_NATIVE=ON`` (see :doc:`installation`) compiles for the build machine's
+CPU (AVX2 / AVX-512 and fused multiply-adds). That gains a few per cent at most, and the
+executables then only run on CPUs with the same instruction sets.
 
 Size limits
 -----------

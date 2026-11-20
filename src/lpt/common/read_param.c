@@ -24,6 +24,7 @@ static const struct lpt_param common_params[] = {
   {"Fnl",                            &Fnl,                           PARAM_DOUBLE, 0, 1},
   {"SavePotentialField",             &SavePotentialField,            PARAM_INT,    0, 1},
   {"ModeTables",                     &ModeTables,                    PARAM_INT,    0, 0},
+  {"FFTWWisdomFile",                 FFTWWisdomFile,                 PARAM_STRING, sizeof(FFTWWisdomFile), 0},
   {"FixedAmplitude",                 &FixedAmplitude,                PARAM_INT,    0, 1},
   {"PhaseFlip",                      &PhaseFlip,                     PARAM_INT,    0, 1},
   {"Nmesh",                          &Nmesh,                         PARAM_INT,    0, 1},
@@ -67,6 +68,7 @@ void read_parameterfile(char *fname)
   char *seen = calloc(nt, 1);
 
   ModeTables = 0;
+  strcpy(FFTWWisdomFile, "auto");
   lpt_method_param_defaults();
 
   if((fd = fopen(fname, "r")))

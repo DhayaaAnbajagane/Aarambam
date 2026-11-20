@@ -18,6 +18,21 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_C_EXTENSIONS ON)           # => gnu99, like GCC default in 2LPTPNG
 add_compile_options(-O3 -Wall -g)
 
+# Optional: compile for the CPU of the build machine (-march=native: AVX2 / AVX-512 and fused multiply-add).
+# A few per cent faster, but the executables then only run on CPUs with the same instruction sets (leave it
+# OFF if login and compute nodes differ), and results change at the rounding level (fused multiply-adds).
+# Aarambam_NATIVE=ON as an environment variable or -D.
+if(DEFINED ENV{Aarambam_NATIVE})
+  set(_AARAMBAM_NATIVE_DEFAULT "$ENV{Aarambam_NATIVE}")
+else()
+  set(_AARAMBAM_NATIVE_DEFAULT OFF)
+endif()
+option(Aarambam_NATIVE "Compile the 2LPT executables for the build machine's CPU (-march=native)" ${_AARAMBAM_NATIVE_DEFAULT})
+message(STATUS "Aarambam: -march=native: ${Aarambam_NATIVE}")
+if(Aarambam_NATIVE)
+  add_compile_options(-march=native)
+endif()
+
 # --- Dependencies of the 2LPT executables ---
 # GSL
 if(DEFINED ENV{Aarambam_GSL_ROOT})

@@ -60,6 +60,16 @@ Snapshots use 32-bit particle IDs by default, which allows at most :math:`2^{31}
 
    export Aarambam_64BIT_IDS=ON    # then pip install as usual
 
+To compile the 2LPT executables for the CPU of the machine you install on (``-march=native``:
+AVX2 / AVX-512 and fused multiply-adds; a few per cent faster), set
+
+.. code-block:: bash
+
+   export Aarambam_NATIVE=ON       # only if the nodes you run on have the same CPU type
+
+The executables then stop with "illegal instruction" on CPUs without those instruction sets (for
+example AVX-512 code on AMD nodes), so leave it off when login and compute nodes differ.
+
 The C sources of the 2LPT executables live in ``src/lpt`` (``common/`` shared by both methods,
 ``modal/`` and ``binned/``). They are compiled into ``Aarambam/bin/2LPTBasis`` and
 ``Aarambam/bin/2LPTBinned`` and are not shipped in the wheel.

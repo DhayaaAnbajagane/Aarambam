@@ -10,6 +10,7 @@ int WhichSpectrum;
 int WhichTransfer;
 int SavePotentialField;
 int ModeTables;
+char FFTWWisdomFile[500];
 int Local_ny_t, Local_y_start_t;   /* k-space slab (in y) of transposed-order transforms */
 
 int SphereMode;

@@ -20,7 +20,7 @@ DT    = np.dtype([('ind', 'i4'), ('pot', 'f8')])
 def write_config(am, method, out, **extra):
     d = dict(getattr(am.utils, f'DEFAULT_{method.upper()}_INPUTS'))
     d.update(Nmesh=N, Nsample=N, Nmax=N, OutputDir=str(out), GlassTileFac=1, NWriteoutProcesses=1,
-             SavePotentialField=1)
+             SavePotentialField=1, FFTWWisdomFile='none')      #FFTW_ESTIMATE plans: bit-exact comparisons below
     if method == 'binned':
         d.update(BinnedPNGCacheBlockSize=4)
     d.update(extra)
@@ -98,6 +98,27 @@ def test_mode_tables_agree(am, lpt_binaries, tmp_path, method):
         np.testing.assert_array_equal(a, b)
     else:
         assert np.abs(a - b).max() <= 1e-12 * np.abs(a).max()
+
+
+def test_fftw_wisdom_file(am, lpt_binaries, tmp_path, monkeypatch):
+    """FFTWWisdomFile 'auto' (here redirected by AARAMBAM_FFTW_WISDOM): the first run measures the FFT plans and
+    saves them, later runs read them back. Runs that read the same file use the same plans (bit-identical); the
+    measuring run (each rank tunes its own local plans) and FFTW_ESTIMATE plans agree with them to rounding."""
+    wisdom = tmp_path / 'plans' / 'wisdom.txt'
+    monkeypatch.setenv('AARAMBAM_FFTW_WISDOM', str(wisdom))
+    pot, logs = {}, {}
+    for name, tag in (('first', 'auto'), ('second', 'auto'), ('third', 'auto'), ('estimate', 'none')):
+        d = tmp_path / name; d.mkdir()
+        r = run(lpt_binaries, 'binned', write_config(am, 'binned', d, FFTWWisdomFile=tag), 2)
+        assert r.returncode == 0, r.stdout[-2000:]
+        pot[name], logs[name] = potential(str(d), 'Nongauss'), r.stdout
+    assert wisdom.exists()
+    assert 'FFT plans measured' in logs['first'] and 'saved to ' + str(wisdom) in logs['first']
+    assert 'FFT plans read from ' + str(wisdom) in logs['second'] and 'FFT plans read from' in logs['third']
+    assert 'FFT plans' not in logs['estimate']
+    np.testing.assert_array_equal(pot['second'], pot['third'])          #same plans from the same file
+    for name in ('first', 'second'):
+        np.testing.assert_allclose(pot[name], pot['estimate'], rtol=0, atol=1e-12 * np.abs(pot['estimate']).max())
 
 
 @pytest.mark.parametrize('method', ['basis', 'binned'])

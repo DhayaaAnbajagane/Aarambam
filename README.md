@@ -158,6 +158,11 @@ computation (`0`, least memory, for very large grids). `'auto'` picks for you fr
 [conventions page](https://aarambam.readthedocs.io/en/latest/conventions.html#speed-and-memory) for the
 memory cost and timings.
 
+FFT plans: by default (`FFTWWisdomFile = 'auto'`) the first run with a given grid size and number of ranks
+measures the fastest FFT plans (a few seconds to ~30 s at $1024^3$) and keeps them in `~/.cache/aarambam/`;
+later runs read them back and start at once. Set `FFTWWisdomFile = 'none'` for un-measured plans (bit-for-bit
+reproducible across rank counts) or to a path to keep the plans elsewhere.
+
 ## Attribution
 
 If you use the legendre-based decomposition code or derivatives of it, please cite both of [Anbajagane & Lee 2025a](https://arxiv.org/abs/2509.02693) and [Anbajagane & Lee 2025b](https://arxiv.org/abs/2509.02695) who introduced and validated the code for a variety of models. If you use the binned bispectrum method, please cite [Anbajagane & Dalal 2026](https://arxiv.org/abs/2607.24939)

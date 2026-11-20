@@ -11,6 +11,8 @@
 #include "lpt_core.h"
 #include <signal.h>
 #include <assert.h>
+#include <sys/stat.h>
+#include <unistd.h>
 
 /* Code shared by the modal (2LPTBasis) and binned (2LPTBinned) executables: program driver, timing,
  * the Gaussian potential, and everything after the method-specific non-Gaussian term (adding it,
@@ -946,16 +948,123 @@ void set_units(void)     /* ... set some units */
   Hubble        = HUBBLE * UnitTime_in_s;
 }
 
+/* ---- FFT plans and their wisdom file ---- */
+
+/* mkdir -p; returns 0 if dir exists (or was created) and is writable */
+static int lpt_make_dir(const char *dir)
+{
+  char  buf[600];
+  char *p;
+
+  snprintf(buf, sizeof(buf), "%s", dir);
+  for(p = buf + 1; *p; p++)
+    if(*p == '/')
+      {
+        *p = 0;
+        mkdir(buf, 0755);
+        *p = '/';
+      }
+  mkdir(buf, 0755);
+  return access(buf, W_OK);
+}
+
+/* Tag of this CPU model (hash of /proc/cpuinfo's "model name"): plans measured on one node type are kept apart
+ * from those of another. */
+static unsigned long lpt_cpu_tag(void)
+{
+  char          line[512];
+  unsigned long h  = 5381;
+  FILE         *fd = fopen("/proc/cpuinfo", "r");
+
+  if(!fd)
+    return 0;
+  while(fgets(line, sizeof(line), fd))
+    if(strncmp(line, "model name", 10) == 0)
+      {
+        for(char *c = line; *c && *c != '\n'; c++)
+          h = h * 33 + (unsigned char) *c;
+        break;
+      }
+  fclose(fd);
+  return h & 0xffffffffUL;
+}
+
+/* Rank 0: the wisdom file to use, from FFTWWisdomFile ("none", "auto" or a path) and, for "auto", the
+ * AARAMBAM_FFTW_WISDOM environment variable (a path or "none") or else $XDG_CACHE_HOME/aarambam or
+ * ~/.cache/aarambam. Returns 0 for none (plan with FFTW_ESTIMATE). */
+static int lpt_wisdom_path(char *path, size_t n)
+{
+  const char *env = getenv("AARAMBAM_FFTW_WISDOM"), *base;
+  char        dir[400], parent[600];
+
+  if(strcmp(FFTWWisdomFile, "none") == 0)
+    return 0;
+  if(strcmp(FFTWWisdomFile, "auto") != 0 || (env && env[0]))
+    {
+      const char *given = (strcmp(FFTWWisdomFile, "auto") != 0) ? FFTWWisdomFile : env;
+      char       *slash;
+
+      if(strcmp(given, "none") == 0)
+        return 0;
+      snprintf(path, n, "%s", given);
+
+      /* create the file's directory if needed (a failure is reported when the plans are saved) */
+      snprintf(parent, sizeof(parent), "%s", path);
+      if((slash = strrchr(parent, '/')) && slash != parent)
+        {
+          *slash = 0;
+          lpt_make_dir(parent);
+        }
+      return 1;
+    }
+
+  if((base = getenv("XDG_CACHE_HOME")) && base[0])
+    snprintf(dir, sizeof(dir), "%s/aarambam", base);
+  else if((base = getenv("HOME")) && base[0])
+    snprintf(dir, sizeof(dir), "%s/.cache/aarambam", base);
+  else
+    return 0;
+
+  snprintf(path, n, "%s/fftw3_wisdom_%08lx.txt", dir, lpt_cpu_tag());
+  if(access(path, R_OK) != 0 && lpt_make_dir(dir) != 0)
+    {
+      printf("\nCannot create the FFT plan directory %s: planning with FFTW_ESTIMATE. Set FFTWWisdomFile or "
+             "AARAMBAM_FFTW_WISDOM to a writable path to keep measured plans.\n", dir);
+      return 0;
+    }
+  return 1;
+}
+
+/* Rank 0: write the accumulated wisdom (merged with the file, in case another run added plans meanwhile) to a
+ * temporary file and rename it over the wisdom file, so concurrent runs never see a half-written file. */
+static void lpt_save_wisdom(const char *path)
+{
+  char tmp[700];
+
+  fftw_import_wisdom_from_filename(path);
+  snprintf(tmp, sizeof(tmp), "%s.tmp.%ld", path, (long) getpid());
+  if(!fftw_export_wisdom_to_filename(tmp) || rename(tmp, path) != 0)
+    {
+      remove(tmp);
+      printf("\nCould not write the FFT plans to %s (they are measured again next time).\n", path);
+    }
+}
+
 /* FFTW3-MPI plans of the in-place Nmesh^3 transforms (slab-decomposed in x), the slab sizes, and the grid size.
- * All plans use FFTW_ESTIMATE: no timing measurements, so planning is instant and repeated runs start at once. */
+ * With a wisdom file (FFTWWisdomFile, default "auto") the plans are measured (FFTW_MEASURE) once per grid size,
+ * rank count and CPU model and kept in the file; later runs read them back and plan instantly. With
+ * FFTWWisdomFile none they are FFTW_ESTIMATE plans (no measuring, no file). */
 void initialize_ffts(void)
 {
   ptrdiff_t alloc_c, alloc_t, n0, s0, n1, s1, t0, ts0, t1, ts1;
   long long total_size;
-  int       i, additional;
+  int       i, additional, use_wisdom = 0, loaded = 0;
   int      *slab_to_task_local;
   size_t    bytes = 0;
   lpt_real *plan_grid;
+  unsigned  flags;
+  char      wisdom_path[600], *wisdom_before = NULL;
+  double    tplan;
   const int nzc = Nmesh / 2 + 1;     /* complex z length of the r2c layout */
 
   lpt_barrier();
@@ -1008,18 +1117,36 @@ void initialize_ffts(void)
 
   TotalSizePlusAdditional = total_size + additional;
 
-  /* plan on a grid from lpt_alloc_grid, so every grid the plans later run on has the planning alignment */
+  /* wisdom file: read on rank 0, the same plans on every rank */
+  if(ThisTask == 0)
+    use_wisdom = lpt_wisdom_path(wisdom_path, sizeof(wisdom_path));
+  MPI_Bcast(&use_wisdom, 1, MPI_INT, 0, MPI_COMM_WORLD);
+  if(use_wisdom)
+    {
+      if(ThisTask == 0)
+        {
+          loaded        = fftw_import_wisdom_from_filename(wisdom_path);
+          wisdom_before = fftw_export_wisdom_to_string();
+        }
+      fftw_mpi_broadcast_wisdom(MPI_COMM_WORLD);
+    }
+  flags = use_wisdom ? FFTW_MEASURE : FFTW_ESTIMATE;
+
+  /* plan on a grid from lpt_alloc_grid, so every grid the plans later run on has the planning alignment
+   * (FFTW_MEASURE overwrites it while timing candidate plans) */
   plan_grid = lpt_alloc_grid();
   ASSERT_ALLOC(plan_grid);
 
+  tplan          = MPI_Wtime();
   Forward_plan   = fftw_mpi_plan_dft_r2c_3d(Nmesh, Nmesh, Nmesh, plan_grid, (fftw_complex *) plan_grid,
-                                            MPI_COMM_WORLD, FFTW_ESTIMATE);
+                                            MPI_COMM_WORLD, flags);
   Forward_plan_t = fftw_mpi_plan_dft_r2c_3d(Nmesh, Nmesh, Nmesh, plan_grid, (fftw_complex *) plan_grid,
-                                            MPI_COMM_WORLD, FFTW_ESTIMATE | FFTW_MPI_TRANSPOSED_OUT);
+                                            MPI_COMM_WORLD, flags | FFTW_MPI_TRANSPOSED_OUT);
   Inverse_plan   = fftw_mpi_plan_dft_c2r_3d(Nmesh, Nmesh, Nmesh, (fftw_complex *) plan_grid, plan_grid,
-                                            MPI_COMM_WORLD, FFTW_ESTIMATE);
+                                            MPI_COMM_WORLD, flags);
   Transpose_plan = fftw_mpi_plan_many_transpose(Nmesh, Nmesh, 2 * nzc, FFTW_MPI_DEFAULT_BLOCK, FFTW_MPI_DEFAULT_BLOCK,
-                                                plan_grid, plan_grid, MPI_COMM_WORLD, FFTW_ESTIMATE);
+                                                plan_grid, plan_grid, MPI_COMM_WORLD, flags);
+  tplan          = MPI_Wtime() - tplan;
   if(!Forward_plan || !Forward_plan_t || !Inverse_plan || !Transpose_plan)
     {
       printf("Task %d: FFTW3 could not create the MPI plans\n", ThisTask);
@@ -1028,6 +1155,27 @@ void initialize_ffts(void)
 
   lpt_plan_alignment = fftw_alignment_of(plan_grid);
   free(plan_grid);
+
+  /* keep newly measured plans */
+  if(use_wisdom)
+    {
+      fftw_mpi_gather_wisdom(MPI_COMM_WORLD);
+      if(ThisTask == 0)
+        {
+          char *wisdom_after = fftw_export_wisdom_to_string();
+          int   measured     = !wisdom_before || !wisdom_after || strcmp(wisdom_before, wisdom_after) != 0;
+
+          if(measured)
+            {
+              lpt_save_wisdom(wisdom_path);
+              printf("\nFFT plans measured in %.1f s and saved to %s\n", tplan, wisdom_path);
+            }
+          else
+            printf("\nFFT plans read from %s%s\n", wisdom_path, loaded ? "" : " (no file)");
+          free(wisdom_before);
+          free(wisdom_after);
+        }
+    }
 }
 
 void free_ffts(void)
