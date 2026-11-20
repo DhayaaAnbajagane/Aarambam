@@ -72,9 +72,9 @@ static inline int modal_mode_in_band(ptrdiff_t i, ptrdiff_t j, ptrdiff_t k, doub
   if(i + j + k == 0)
     return 0;
 
-  kvec[0] = (i < Nmesh / 2) ? i * 2 * PI / Box : -(Nmesh - i) * 2 * PI / Box;
-  kvec[1] = (j < Nmesh / 2) ? j * 2 * PI / Box : -(Nmesh - j) * 2 * PI / Box;
-  kvec[2] = (k < Nmesh / 2) ? k * 2 * PI / Box : -(Nmesh - k) * 2 * PI / Box;
+  kvec[0] = lpt_wavenumber(i);
+  kvec[1] = lpt_wavenumber(j);
+  kvec[2] = lpt_wavenumber(k);
 
   *kmag2 = kvec[0] * kvec[0] + kvec[1] * kvec[1] + kvec[2] * kvec[2];
   *kmag1 = sqrt(*kmag2);

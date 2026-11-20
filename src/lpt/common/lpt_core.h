@@ -16,7 +16,13 @@
     }                                                                                                         \
 }
 
-void lpt_barrier(void);                                   /* MPI_Barrier on MPI_COMM_WORLD, timed as PROF_WAIT */
+/* wavenumber of grid index n along one axis (FFT order: n >= Nmesh/2 are the negative frequencies) */
+static inline double lpt_wavenumber(ptrdiff_t n)
+{
+  return (n < Nmesh / 2) ? n * 2 * PI / Box : -(Nmesh - n) * 2 * PI / Box;
+}
+
+void lpt_barrier(void);                                  /* MPI_Barrier on MPI_COMM_WORLD, timed as PROF_WAIT */
 void lpt_prof_report(void);
 
 void print_timed_done(int n);

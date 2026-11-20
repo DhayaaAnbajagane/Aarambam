@@ -48,9 +48,9 @@ static int NG(bpng_build_input_filtered_field)(NGC *dst, lpt_complex *src, int a
                 {
                   coord = (ii * Nmesh + j) * (Nmesh / 2 + 1) + k;
 
-                  kx   = (i < Nmesh / 2) ? i * 2 * PI / Box : -(Nmesh - i) * 2 * PI / Box;
-                  ky   = (j < Nmesh / 2) ? j * 2 * PI / Box : -(Nmesh - j) * 2 * PI / Box;
-                  kz   = (k < Nmesh / 2) ? k * 2 * PI / Box : -(Nmesh - k) * 2 * PI / Box;
+                  kx   = lpt_wavenumber(i);
+                  ky   = lpt_wavenumber(j);
+                  kz   = lpt_wavenumber(k);
                   kmag = sqrt(kx*kx + ky*ky + kz*kz);
 
                   if(!bpng_mode_allowed(i, j, k, kx, ky, kz, kmag))
@@ -204,9 +204,9 @@ static void NG(bpng_accumulate_hybrid_convolution)(NGC *conv, lpt_complex *out,
                 {
                   coord = lpt_band_coord(jj, i, k);
 
-                  kx   = (i < Nmesh / 2) ? i * 2 * PI / Box : -(Nmesh - i) * 2 * PI / Box;
-                  ky   = (j < Nmesh / 2) ? j * 2 * PI / Box : -(Nmesh - j) * 2 * PI / Box;
-                  kz   = (k < Nmesh / 2) ? k * 2 * PI / Box : -(Nmesh - k) * 2 * PI / Box;
+                  kx   = lpt_wavenumber(i);
+                  ky   = lpt_wavenumber(j);
+                  kz   = lpt_wavenumber(k);
                   kmag = sqrt(kx*kx + ky*ky + kz*kz);
 
                   if(!bpng_mode_allowed(i, j, k, kx, ky, kz, kmag))

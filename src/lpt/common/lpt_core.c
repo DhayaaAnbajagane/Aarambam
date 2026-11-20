@@ -265,20 +265,9 @@ void lpt_setup_gaussian_potential(lpt_complex **cpot_out, double *Beta_out)
                   if(i == 0 && j == 0 && k == 0)
                     continue;
 
-                  if(i < Nmesh / 2)
-                    kvec[0] = i * 2 * PI / Box;
-                  else
-                    kvec[0] = -(Nmesh - i) * 2 * PI / Box;
-
-                  if(j < Nmesh / 2)
-                    kvec[1] = j * 2 * PI / Box;
-                  else
-                    kvec[1] = -(Nmesh - j) * 2 * PI / Box;
-
-                  if(k < Nmesh / 2)
-                    kvec[2] = k * 2 * PI / Box;
-                  else
-                    kvec[2] = -(Nmesh - k) * 2 * PI / Box;
+                  kvec[0] = lpt_wavenumber(i);
+                  kvec[1] = lpt_wavenumber(j);
+                  kvec[2] = lpt_wavenumber(k);
 
                   kmag2 = kvec[0] * kvec[0] + kvec[1] * kvec[1] + kvec[2] * kvec[2];
                   kmag  = sqrt(kmag2);
@@ -357,9 +346,6 @@ void lpt_setup_gaussian_potential(lpt_complex **cpot_out, double *Beta_out)
                             continue;
                           else
                             {
-                              ii = Nmesh - i;
-                              if(ii == Nmesh)
-                                ii = 0;
                               jj = Nmesh - j;
                               if(jj == Nmesh)
                                 jj = 0;
@@ -400,25 +386,75 @@ void lpt_setup_gaussian_potential(lpt_complex **cpot_out, double *Beta_out)
 
 /* ---- NG term added, potentials written, ZA + 2LPT displacements ---- */
 
+/* Copy the first x plane of this rank's real-space field to the left neighbour and receive the right
+ * neighbour's first plane behind the slab (plane Local_nx), skipping ranks without planes. */
+static void lpt_exchange_ghost_plane(lpt_real *field)
+{
+  MPI_Request request;
+  MPI_Status  status;
+  int         sendTask, recvTask;
+  const int   plane = sizeof(lpt_real) * Nmesh * (2 * (Nmesh / 2 + 1));
+
+  recvTask = ThisTask;
+  do
+    {
+      recvTask--;
+      if(recvTask < 0)
+        recvTask = NTask - 1;
+    }
+  while(Local_nx_table[recvTask] == 0);
+
+  sendTask = ThisTask;
+  do
+    {
+      sendTask++;
+      if(sendTask >= NTask)
+        sendTask = 0;
+    }
+  while(Local_nx_table[sendTask] == 0);
+
+  if(Local_nx > 0)
+    {
+      MPI_Isend(&(field[0]), plane, MPI_BYTE, recvTask, 10, MPI_COMM_WORLD, &request);
+      MPI_Recv(&(field[(Local_nx * Nmesh) * (2 * (Nmesh / 2 + 1))]), plane, MPI_BYTE, sendTask, 10,
+               MPI_COMM_WORLD, &status);
+      MPI_Wait(&request, &status);
+    }
+}
+
+/* CIC interpolation of a real-space field (padded rows) at a particle: cell (i, j, k) of the local slab,
+ * upper neighbours (ii, jj, kk), weights f[8] in the order (x, y, z) = 000, 001, 010, ..., 111 */
+static inline double lpt_cic_read(const lpt_real *field, ptrdiff_t i, ptrdiff_t ii, ptrdiff_t j, ptrdiff_t jj,
+                                  ptrdiff_t k, ptrdiff_t kk, const double f[8])
+{
+  const ptrdiff_t nzr = 2 * (Nmesh / 2 + 1);
+
+  return field[(i * Nmesh + j) * nzr + k] * f[0] +
+         field[(i * Nmesh + j) * nzr + kk] * f[1] +
+         field[(i * Nmesh + jj) * nzr + k] * f[2] +
+         field[(i * Nmesh + jj) * nzr + kk] * f[3] +
+         field[(ii * Nmesh + j) * nzr + k] * f[4] +
+         field[(ii * Nmesh + j) * nzr + kk] * f[5] +
+         field[(ii * Nmesh + jj) * nzr + k] * f[6] +
+         field[(ii * Nmesh + jj) * nzr + kk] * f[7];
+}
+
 /* Everything after the non-Gaussian term: cpot (Gaussian, Fourier space) += ng_scale * cpot_NG,
  * potentials written if SavePotentialField, then the ZA and 2LPT displacements and velocities of P[].
  * Frees cpot and cpot_NG. ng_scale is Fnl for the modal method and 1 for the binned one (whose
  * kernel already includes Fnl). */
 void lpt_displacements_from_potential(lpt_complex *cpot, lpt_complex *cpot_NG, double ng_scale, double Beta)
 {
-  MPI_Request   request;
-  MPI_Status    status;
   ptrdiff_t     i, j, k, ii, jj, kk, axes;
   int           n;
   int           timed_chars = 0;
-  int           sendTask, recvTask;
   double        t_of_k, twb;
   lpt_real     *pot;
   double        vel_prefac, vel_prefac2;
   double        kvec[3], kmag, kmag2;
   double        hubble_a;
   double        u, v, w;
-  double        f1, f2, f3, f4, f5, f6, f7, f8;
+  double        f[8];
   double        dis, dis2, maxdisp, max_disp_glob;
   uint64_t      bytes = 0, nmesh3;
   uint64_t      coord;
@@ -478,61 +514,50 @@ void lpt_displacements_from_potential(lpt_complex *cpot, lpt_complex *cpot_NG, d
 
   lpt_barrier();
 
-  if(ThisTask == 0)
-    {
-      timed_chars = printf("Writing potential to disc...");
-      fflush(stdout);
-    }
   if(SavePotentialField == 1)
     {
+      if(ThisTask == 0)
+        {
+          timed_chars = printf("Writing potential to disc...");
+          fflush(stdout);
+        }
       lpt_fft(Inverse_plan, pot);
       write_phi(pot, 1);
       lpt_barrier();
       lpt_fft(Forward_plan, pot);
+
+      for(ii = 0; ii < Local_nx; ii++)
+        for(j = 0; j < Nmesh; j++)
+          for(k = 0; k <= Nmesh / 2 ; k++)
+            {
+              coord = (ii * Nmesh + j) * (Nmesh / 2 + 1) + k;
+
+              cpot[coord].re = cpot[coord].re / rt;
+              cpot[coord].im = cpot[coord].im / rt;
+            }
+
+      if(ThisTask == 0)
+        print_timed_done_aligned(timed_chars);
     }
-
-  for(ii = 0; ii < Local_nx; ii++)
-    for(j = 0; j < Nmesh; j++)
-      for(k = 0; k <= Nmesh / 2 ; k++)
-        {
-          coord = (ii * Nmesh + j) * (Nmesh / 2 + 1) + k;
-
-          cpot[coord].re = cpot[coord].re / rt;
-          cpot[coord].im = cpot[coord].im / rt;
-        }
-
-  if(ThisTask == 0)
-    print_timed_done_aligned(timed_chars);
 
   lpt_barrier();
   if(ThisTask == 0)
     {
-      timed_chars = printf("Computing gradient of non-Gaussian potential...");
+      timed_chars = printf("Computing ZA displacement...");
       fflush(stdout);
     }
 
 
   /*****  Now 2LPT ****/
 
-  for(axes = 0, bytes = 0; axes < 3; axes++)
+  for(axes = 0; axes < 3; axes++)
     {
       cdisp[axes] = (lpt_complex *) lpt_alloc_grid();
       disp[axes]  = (lpt_real *) cdisp[axes];
     }
   ASSERT_ALLOC(cdisp[0] && cdisp[1] && cdisp[2]);
 
-  /* first, clean the array */
-  for(i = 0; i < Local_nx; i++)
-    for(j = 0; j < Nmesh; j++)
-      for(k = 0; k <= Nmesh / 2; k++)
-        for(axes = 0; axes < 3; axes++)
-          {
-            coord = (i * Nmesh + j) * (Nmesh / 2 + 1) + k;
-            cdisp[axes][coord].re = 0;
-            cdisp[axes][coord].im = 0;
-          }
-
-  /* ZA displacement: dis = i k T(k) phi / (D+ Beta) */
+  /* ZA displacement: dis = i k T(k) phi / (D+ Beta), written to every mode of the slab */
   for(ii = 0; ii < Local_nx; ii++)
     for(j = 0; j < Nmesh; j++)
       for(k = 0; k <= Nmesh / 2 ; k++)
@@ -540,20 +565,9 @@ void lpt_displacements_from_potential(lpt_complex *cpot, lpt_complex *cpot_NG, d
           coord = (ii * Nmesh + j) * (Nmesh / 2 + 1) + k;
           i     = ii + Local_x_start;
 
-          if(i < Nmesh / 2)
-            kvec[0] = i * 2 * PI / Box;
-          else
-            kvec[0] = -(Nmesh - i) * 2 * PI / Box;
-
-          if(j < Nmesh / 2)
-            kvec[1] = j * 2 * PI / Box;
-          else
-            kvec[1] = -(Nmesh - j) * 2 * PI / Box;
-
-          if(k < Nmesh / 2)
-            kvec[2] = k * 2 * PI / Box;
-          else
-            kvec[2] = -(Nmesh - k) * 2 * PI / Box;
+          kvec[0] = lpt_wavenumber(i);
+          kvec[1] = lpt_wavenumber(j);
+          kvec[2] = lpt_wavenumber(k);
 
           kmag2 = kvec[0] * kvec[0] + kvec[1] * kvec[1] + kvec[2] * kvec[2];
           kmag  = sqrt(kmag2);
@@ -596,20 +610,9 @@ void lpt_displacements_from_potential(lpt_complex *cpot, lpt_complex *cpot_NG, d
         {
           coord = (i * Nmesh + j) * (Nmesh / 2 + 1) + k;
 
-          if((i + Local_x_start) < Nmesh / 2)
-            kvec[0] = (i + Local_x_start) * 2 * PI / Box;
-          else
-            kvec[0] = -(Nmesh - (i + Local_x_start)) * 2 * PI / Box;
-
-          if(j < Nmesh / 2)
-            kvec[1] = j * 2 * PI / Box;
-          else
-            kvec[1] = -(Nmesh - j) * 2 * PI / Box;
-
-          if(k < Nmesh / 2)
-            kvec[2] = k * 2 * PI / Box;
-          else
-            kvec[2] = -(Nmesh - k) * 2 * PI / Box;
+          kvec[0] = lpt_wavenumber(i + Local_x_start);
+          kvec[1] = lpt_wavenumber(j);
+          kvec[2] = lpt_wavenumber(k);
 
           /* Derivatives of ZA displacement  */
           /* d(dis_i)/d(q_j)  -> sqrt(-1) k_j dis_i */
@@ -667,20 +670,9 @@ void lpt_displacements_from_potential(lpt_complex *cpot, lpt_complex *cpot_NG, d
         {
           coord = (i * Nmesh + j) * (Nmesh / 2 + 1) + k;
 
-          if((i + Local_x_start) < Nmesh / 2)
-            kvec[0] = (i + Local_x_start) * 2 * PI / Box;
-          else
-            kvec[0] = -(Nmesh - (i + Local_x_start)) * 2 * PI / Box;
-
-          if(j < Nmesh / 2)
-            kvec[1] = j * 2 * PI / Box;
-          else
-            kvec[1] = -(Nmesh - j) * 2 * PI / Box;
-
-          if(k < Nmesh / 2)
-            kvec[2] = k * 2 * PI / Box;
-          else
-            kvec[2] = -(Nmesh - k) * 2 * PI / Box;
+          kvec[0] = lpt_wavenumber(i + Local_x_start);
+          kvec[1] = lpt_wavenumber(j);
+          kvec[2] = lpt_wavenumber(k);
 
           kmag2 = kvec[0] * kvec[0] + kvec[1] * kvec[1] + kvec[2] * kvec[2];
 
@@ -731,57 +723,14 @@ void lpt_displacements_from_potential(lpt_complex *cpot, lpt_complex *cpot_NG, d
 
   lpt_barrier();
 
-  /* Now, both cdisp, and cdisp2 have the ZA and 2nd order displacements */
+  /* Now, both cdisp, and cdisp2 have the ZA and 2nd order displacements: to real space, plus the ghost
+   * plane from the right neighbour for the CIC read-out */
   for(axes = 0; axes < 3; axes++)
     {
       lpt_fft(Inverse_plan, disp[axes]);
       lpt_fft(Inverse_plan, disp2[axes]);
-
-      /* now get the plane on the right side from neighbour on the right,
-         and send the left plane */
-      recvTask = ThisTask;
-      do
-        {
-          recvTask--;
-          if(recvTask < 0)
-            recvTask = NTask - 1;
-        }
-      while(Local_nx_table[recvTask] == 0);
-
-      sendTask = ThisTask;
-      do
-        {
-          sendTask++;
-          if(sendTask >= NTask)
-            sendTask = 0;
-        }
-      while(Local_nx_table[sendTask] == 0);
-
-      /* use non-blocking send */
-      if(Local_nx > 0)
-        {
-          /* send ZA disp */
-          MPI_Isend(&(disp[axes][0]),
-                    sizeof(lpt_real) * Nmesh * (2 * (Nmesh / 2 + 1)),
-                    MPI_BYTE, recvTask, 10, MPI_COMM_WORLD, &request);
-
-          MPI_Recv(&(disp[axes][(Local_nx * Nmesh) * (2 * (Nmesh / 2 + 1))]),
-                   sizeof(lpt_real) * Nmesh * (2 * (Nmesh / 2 + 1)),
-                   MPI_BYTE, sendTask, 10, MPI_COMM_WORLD, &status);
-
-          MPI_Wait(&request, &status);
-
-          /* send 2nd order disp */
-          MPI_Isend(&(disp2[axes][0]),
-                    sizeof(lpt_real) * Nmesh * (2 * (Nmesh / 2 + 1)),
-                    MPI_BYTE, recvTask, 10, MPI_COMM_WORLD, &request);
-
-          MPI_Recv(&(disp2[axes][(Local_nx * Nmesh) * (2 * (Nmesh / 2 + 1))]),
-                   sizeof(lpt_real) * Nmesh * (2 * (Nmesh / 2 + 1)),
-                   MPI_BYTE, sendTask, 10, MPI_COMM_WORLD, &status);
-
-          MPI_Wait(&request, &status);
-        }
+      lpt_exchange_ghost_plane(disp[axes]);
+      lpt_exchange_ghost_plane(disp2[axes]);
     }
 
   if(ThisTask == 0)
@@ -828,34 +777,19 @@ void lpt_displacements_from_potential(lpt_complex *cpot, lpt_complex *cpot_NG, d
       if(kk >= Nmesh)
         kk -= Nmesh;
 
-      f1 = (1 - u) * (1 - v) * (1 - w);
-      f2 = (1 - u) * (1 - v) * (w);
-      f3 = (1 - u) * (v) * (1 - w);
-      f4 = (1 - u) * (v) * (w);
-      f5 = (u) * (1 - v) * (1 - w);
-      f6 = (u) * (1 - v) * (w);
-      f7 = (u) * (v) * (1 - w);
-      f8 = (u) * (v) * (w);
+      f[0] = (1 - u) * (1 - v) * (1 - w);
+      f[1] = (1 - u) * (1 - v) * (w);
+      f[2] = (1 - u) * (v) * (1 - w);
+      f[3] = (1 - u) * (v) * (w);
+      f[4] = (u) * (1 - v) * (1 - w);
+      f[5] = (u) * (1 - v) * (w);
+      f[6] = (u) * (v) * (1 - w);
+      f[7] = (u) * (v) * (w);
 
       for(axes = 0; axes < 3; axes++)
         {
-          dis = disp[axes][(i * Nmesh + j) * (2 * (Nmesh / 2 + 1)) + k] * f1 +
-                disp[axes][(i * Nmesh + j) * (2 * (Nmesh / 2 + 1)) + kk] * f2 +
-                disp[axes][(i * Nmesh + jj) * (2 * (Nmesh / 2 + 1)) + k] * f3 +
-                disp[axes][(i * Nmesh + jj) * (2 * (Nmesh / 2 + 1)) + kk] * f4 +
-                disp[axes][(ii * Nmesh + j) * (2 * (Nmesh / 2 + 1)) + k] * f5 +
-                disp[axes][(ii * Nmesh + j) * (2 * (Nmesh / 2 + 1)) + kk] * f6 +
-                disp[axes][(ii * Nmesh + jj) * (2 * (Nmesh / 2 + 1)) + k] * f7 +
-                disp[axes][(ii * Nmesh + jj) * (2 * (Nmesh / 2 + 1)) + kk] * f8;
-
-          dis2 = disp2[axes][(i * Nmesh + j) * (2 * (Nmesh / 2 + 1)) + k] * f1 +
-                 disp2[axes][(i * Nmesh + j) * (2 * (Nmesh / 2 + 1)) + kk] * f2 +
-                 disp2[axes][(i * Nmesh + jj) * (2 * (Nmesh / 2 + 1)) + k] * f3 +
-                 disp2[axes][(i * Nmesh + jj) * (2 * (Nmesh / 2 + 1)) + kk] * f4 +
-                 disp2[axes][(ii * Nmesh + j) * (2 * (Nmesh / 2 + 1)) + k] * f5 +
-                 disp2[axes][(ii * Nmesh + j) * (2 * (Nmesh / 2 + 1)) + kk] * f6 +
-                 disp2[axes][(ii * Nmesh + jj) * (2 * (Nmesh / 2 + 1)) + k] * f7 +
-                 disp2[axes][(ii * Nmesh + jj) * (2 * (Nmesh / 2 + 1)) + kk] * f8;
+          dis  = lpt_cic_read(disp[axes], i, ii, j, jj, k, kk, f);
+          dis2 = lpt_cic_read(disp2[axes], i, ii, j, jj, k, kk, f);
           dis2 /= (float) nmesh3;
 
           P[n].Pos[axes] += dis - 3./7. * dis2;
@@ -874,8 +808,6 @@ void lpt_displacements_from_potential(lpt_complex *cpot, lpt_complex *cpot_NG, d
     free(cdisp[axes]);
   for(axes = 0; axes < 3; axes++)
     free(cdisp2[axes]);
-
-  /* random_generator and seedtable are freed in lpt_setup_gaussian_potential */
 
   MPI_Reduce(&maxdisp, &max_disp_glob, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
 }

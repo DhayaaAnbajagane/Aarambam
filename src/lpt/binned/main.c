@@ -782,9 +782,9 @@ static void bpng_build_mode_list_layout(BpngModeList *L, int transposed)
               ptrdiff_t ix = transposed ? j : ii + Local_x_start, iy = transposed ? Band_y[ii] : j;
 
               i    = ix;
-              kx   = (i < Nmesh / 2) ? i * 2 * PI / Box : -(Nmesh - i) * 2 * PI / Box;
-              ky   = (iy < Nmesh / 2) ? iy * 2 * PI / Box : -(Nmesh - iy) * 2 * PI / Box;
-              kz   = (k < Nmesh / 2) ? k * 2 * PI / Box : -(Nmesh - k) * 2 * PI / Box;
+              kx   = lpt_wavenumber(i);
+              ky   = lpt_wavenumber(iy);
+              kz   = lpt_wavenumber(k);
               kmag = sqrt(kx*kx + ky*ky + kz*kz);
 
               if(!bpng_mode_allowed(ix, iy, k, kx, ky, kz, kmag))
