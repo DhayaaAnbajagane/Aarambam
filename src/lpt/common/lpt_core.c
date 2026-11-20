@@ -222,17 +222,14 @@ int main(int argc, char **argv)
 /* ---- Gaussian potential ---- */
 
 /* Gaussian primordial potential on this rank's slab (the random phases do not depend on the number of
- * ranks). Allocates and returns cpot and the zeroed long-double NG accumulators, and the factor Beta. */
-void lpt_setup_gaussian_potential(lpt_complex **cpot_out, long double **re_out, long double **im_out,
-                                  double *Beta_out)
+ * ranks). Allocates and returns cpot, and the factor Beta. */
+void lpt_setup_gaussian_potential(lpt_complex **cpot_out, double *Beta_out)
 {
   gsl_rng      *random_generator;
   ptrdiff_t     i, j, k, ii, jj;
   int           timed_chars = 0;
   double        phig, Beta;
   lpt_complex  *cpot;              /* Gaussian potential */
-  long double  *cpot_NG_re;        /* long-double accumulators of the NG term */
-  long double  *cpot_NG_im;
   double        fac;
   double        kvec[3], kmag, kmag2;
   double        phase, ampl;
@@ -291,13 +288,6 @@ void lpt_setup_gaussian_potential(lpt_complex **cpot_out, long double **re_out, 
   cpot  = (lpt_complex *) lpt_alloc_grid();
   ASSERT_ALLOC(cpot);
 
-  cpot_NG_re = malloc(sizeof(long double) * TotalSizePlusAdditional);
-  cpot_NG_im = malloc(sizeof(long double) * TotalSizePlusAdditional);
-  ASSERT_ALLOC(cpot_NG_re);
-  ASSERT_ALLOC(cpot_NG_im);
-
-  memset(cpot_NG_re, 0, sizeof(long double) * TotalSizePlusAdditional);
-  memset(cpot_NG_im, 0, sizeof(long double) * TotalSizePlusAdditional);
   memset(cpot, 0, sizeof(lpt_real) * TotalSizePlusAdditional);
 
   /* Ho in units of UnitLength_in_cm and c=1, i.e., internal units so far  */
@@ -460,8 +450,6 @@ void lpt_setup_gaussian_potential(lpt_complex **cpot_out, long double **re_out, 
   free(seedtable);
 
   *cpot_out = cpot;
-  *re_out   = cpot_NG_re;
-  *im_out   = cpot_NG_im;
   *Beta_out = Beta;
 }
 

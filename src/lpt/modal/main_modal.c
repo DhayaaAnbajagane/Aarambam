@@ -307,11 +307,9 @@ void displacement_fields(void)
   int           ksum;
   double        Beta;
   lpt_complex  *cpot;            /* Gaussian potential */
-  lpt_complex  *cpot_NG;         /* non-Gaussian term, in the complex grid layout */
+  lpt_complex  *cpot_NG;         /* non-Gaussian term, accumulated in the transposed k-space layout */
   lpt_complex  *c_tmp;           /* product of two mode fields (Fourier space after the forward FFT) */
   lpt_real     *p_tmp;           /* the same array in real space */
-  long double  *cpot_NG_re;      /* long-double accumulators of the NG term */
-  long double  *cpot_NG_im;
   unsigned int  N, N_i, N_j, N_k;
   double        kmag, kmag2, kmag1;
   long double   fnl_fac;
@@ -436,7 +434,7 @@ void displacement_fields(void)
 
   /**** Gaussian potential ****/
 
-  lpt_setup_gaussian_potential(&cpot, &cpot_NG_re, &cpot_NG_im, &Beta);
+  lpt_setup_gaussian_potential(&cpot, &Beta);
 
   /*** For non-local models it is important to keep all factors of SQRT(-1) as done below ***/
   /*** No sign flip is applied to the NG term: it is added to the Gaussian potential as is ***/
@@ -610,18 +608,20 @@ void displacement_fields(void)
               lpt_barrier();
             }
 
-          memset(p_tmp, 0, sizeof(lpt_real) * TotalSizePlusAdditional);
-          lpt_barrier();
-
           //Multiply terms in realspace [\phi gi] x [\phi gj]
           PROF_BEGIN(PROF_MULT)
           for(i = 0; i < Local_nx; i++)
             for(j = 0; j < Nmesh; j++)
-              for(k = 0; k < Nmesh; k++)
-                {
-                  coord        = (i * Nmesh + j) * (2 * (Nmesh / 2 + 1)) + k;
-                  p_tmp[coord] = gi[coord] * gj[coord];
-                }
+              {
+                for(k = 0; k < Nmesh; k++)
+                  {
+                    coord        = (i * Nmesh + j) * (2 * (Nmesh / 2 + 1)) + k;
+                    p_tmp[coord] = gi[coord] * gj[coord];
+                  }
+
+                for(k = Nmesh; k < 2 * (Nmesh / 2 + 1); k++)      /* row padding (no full-grid clear needed) */
+                  p_tmp[(i * Nmesh + j) * (2 * (Nmesh / 2 + 1)) + k] = 0;
+              }
           PROF_END(PROF_MULT)
           lpt_barrier();
 
@@ -640,8 +640,8 @@ void displacement_fields(void)
 
                   fnl_fac = modal_k3_factor(alpha, N_j, v[0], 0, v[1], v + 2, v + 6, X0Table);
                   coord   = ML.coord[m];
-                  cpot_NG_re[coord] += (long double) (fnl_fac * c_tmp[coord].re);
-                  cpot_NG_im[coord] += (long double) (fnl_fac * c_tmp[coord].im);
+                  cpot_NG[coord].re += (double) (fnl_fac * c_tmp[coord].re);
+                  cpot_NG[coord].im += (double) (fnl_fac * c_tmp[coord].im);
                 }
             }
           else
@@ -666,8 +666,8 @@ void displacement_fields(void)
                           kmag    = modal_legendre_x(kmag1, kmin_ns, kmax_ns);
                           fnl_fac = modal_k3_factor(alpha, N_j, kmag, kmag1, kmag2, NULL, NULL, X0Table);
 
-                          cpot_NG_re[coord] += (long double) (fnl_fac * c_tmp[coord].re);
-                          cpot_NG_im[coord] += (long double) (fnl_fac * c_tmp[coord].im);
+                          cpot_NG[coord].re += (double) (fnl_fac * c_tmp[coord].re);
+                          cpot_NG[coord].im += (double) (fnl_fac * c_tmp[coord].im);
                         }
                     }
                 }
@@ -734,17 +734,19 @@ void displacement_fields(void)
               gj = fields[1];
             }
 
-          memset(p_tmp, 0, sizeof(lpt_real) * TotalSizePlusAdditional);
-          lpt_barrier();
-
           //Multiply terms in realspace [\phi gi] x [\phi gj]
           for(i = 0; i < Local_nx; i++)
             for(j = 0; j < Nmesh; j++)
-              for(k = 0; k < Nmesh; k++)
-                {
-                  coord        = (i * Nmesh + j) * (2 * (Nmesh / 2 + 1)) + k;
-                  p_tmp[coord] = g0[coord] * gj[coord];
-                }
+              {
+                for(k = 0; k < Nmesh; k++)
+                  {
+                    coord        = (i * Nmesh + j) * (2 * (Nmesh / 2 + 1)) + k;
+                    p_tmp[coord] = g0[coord] * gj[coord];
+                  }
+
+                for(k = Nmesh; k < 2 * (Nmesh / 2 + 1); k++)      /* row padding (no full-grid clear needed) */
+                  p_tmp[(i * Nmesh + j) * (2 * (Nmesh / 2 + 1)) + k] = 0;
+              }
           lpt_barrier();
 
           lpt_fft_forward_t(p_tmp);
@@ -781,8 +783,8 @@ void displacement_fields(void)
                       else              //Now add the t_012 piece
                         fnl_fac +=  AlphaTable[0][1][2] * t_012 * pow(kmag1, (4 - PrimordialIndex)/3 * (1 - 3.0));
 
-                      cpot_NG_re[coord] += (long double) (fnl_fac * c_tmp[coord].re);
-                      cpot_NG_im[coord] += (long double) (fnl_fac * c_tmp[coord].im);
+                      cpot_NG[coord].re += (double) (fnl_fac * c_tmp[coord].re);
+                      cpot_NG[coord].im += (double) (fnl_fac * c_tmp[coord].im);
                     }
                 }
             }
@@ -809,17 +811,9 @@ void displacement_fields(void)
 
   /**** Add the NG potential to the Gaussian one, then the displacements ****/
 
-  //Copy the long-double accumulator (transposed k-space layout) into the complex grid, then transpose it
-  //back to the normal x-slab layout used below
-  for(coord = 0; coord < (uint64_t) Local_ny_t * Nmesh * (Nmesh / 2 + 1); coord++)
-    {
-      cpot_NG[coord].re = cpot_NG_re[coord];
-      cpot_NG[coord].im = cpot_NG_im[coord];
-    }
+  //cpot_NG was accumulated in the transposed k-space layout: transpose it back to the normal x-slab layout
   lpt_transposed_to_normal(cpot_NG);
 
-  free(cpot_NG_re);
-  free(cpot_NG_im);
   free(AlphaTable);
   free(X0Table);
 

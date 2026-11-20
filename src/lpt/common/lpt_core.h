@@ -48,8 +48,7 @@ static inline ptrdiff_t lpt_kz_end(void)
 
 void print_timed_done(int n);
 void print_timed_done_aligned(int printed_chars);
-void lpt_setup_gaussian_potential(lpt_complex **cpot_out, long double **re_out, long double **im_out,
-                                  double *Beta_out);
+void lpt_setup_gaussian_potential(lpt_complex **cpot_out, double *Beta_out);
 void lpt_displacements_from_potential(lpt_complex *cpot, lpt_complex *cpot_NG, double ng_scale, double Beta);
 
 /* supplied by each method */

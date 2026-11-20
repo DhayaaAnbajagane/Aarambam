@@ -751,22 +751,25 @@ static void bpng_build_input_filtered_field(lpt_complex *dst, lpt_complex *src, 
   PROF_END(PROF_FIELD)
 }
 
-/* out = a * b on the real-space grid (padding zeroed). */
+/* out = a * b on the real-space grid, row padding zeroed (no full-grid clear needed). */
 static void bpng_multiply_real_fields(lpt_real *out, lpt_real *a, lpt_real *b)
 {
   PROF_BEGIN(PROF_MULT)
   ptrdiff_t i, j, k;
   uint64_t  coord;
 
-  memset(out, 0, sizeof(lpt_real) * TotalSizePlusAdditional);
-
   for(i = 0; i < Local_nx; i++)
     for(j = 0; j < Nmesh; j++)
-      for(k = 0; k < Nmesh; k++)
-        {
-          coord      = (i * Nmesh + j) * (2 * (Nmesh / 2 + 1)) + k;
-          out[coord] = a[coord] * b[coord];
-        }
+      {
+        for(k = 0; k < Nmesh; k++)
+          {
+            coord      = (i * Nmesh + j) * (2 * (Nmesh / 2 + 1)) + k;
+            out[coord] = a[coord] * b[coord];
+          }
+
+        for(k = Nmesh; k < 2 * (Nmesh / 2 + 1); k++)      /* row padding: the only other input of the r2c FFT */
+          out[(i * Nmesh + j) * (2 * (Nmesh / 2 + 1)) + k] = 0;
+      }
   PROF_END(PROF_MULT)
 }
 
@@ -943,13 +946,13 @@ static void bpng_convolve_and_accumulate_hybrid(
     lpt_complex *field_a, lpt_real *field_a_real,
     lpt_complex *field_b, lpt_real *field_b_real,
     lpt_complex *c_tmp, lpt_real *p_tmp,
-    long double *out_re, long double *out_im,
+    lpt_complex *out,
     int ia, int ib, int use_symmetry);
 
 /* ia <= ib pairs, with the filtered real-space fields of block_size k1 bins (and of the k2 bins they pair with)
  * kept in memory, so each field is transformed once per block instead of once per pair. */
 static void bpng_compute_non_gaussian_potential_symmetric_blocked(
-    lpt_complex *cpot, long double *cpot_NG_re, long double *cpot_NG_im,
+    lpt_complex *cpot, lpt_complex *cpot_NG,
     lpt_complex *c_tmp, lpt_real *p_tmp, int block_size)
 {
   int        n, a0, b0, ia, ib, na, nb, la, lb, start_b;
@@ -1004,7 +1007,7 @@ static void bpng_compute_non_gaussian_potential_symmetric_blocked(
                   bpng_convolve_and_accumulate_hybrid((lpt_complex *) acache[la], acache[la],
                                                       (lpt_complex *) bcache[lb], bcache[lb],
                                                       c_tmp, p_tmp,
-                                                      cpot_NG_re, cpot_NG_im, ia, ib, 1);
+                                                      cpot_NG, ia, ib, 1);
                 }
             }
 
@@ -1018,9 +1021,9 @@ static void bpng_compute_non_gaussian_potential_symmetric_blocked(
     }
 }
 
-/* out += Fnl K_ab(k3) conv(k3). conv is a transposed-order forward FFT; out_re/out_im are accumulated in the
- * same transposed layout. */
-static void bpng_accumulate_hybrid_convolution(lpt_complex *conv, long double *out_re, long double *out_im,
+/* out += Fnl K_ab(k3) conv(k3). conv is a transposed-order forward FFT; out is accumulated in the same
+ * transposed layout. */
+static void bpng_accumulate_hybrid_convolution(lpt_complex *conv, lpt_complex *out,
                                                int ia, int ib, int use_symmetry)
 {
   PROF_BEGIN(PROF_ACCUM)
@@ -1042,8 +1045,8 @@ static void bpng_accumulate_hybrid_convolution(lpt_complex *conv, long double *o
             continue;
 
           coord = BMLT.coord[m];
-          out_re[coord] += (long double) (Fnl * coef * conv[coord].re);
-          out_im[coord] += (long double) (Fnl * coef * conv[coord].im);
+          out[coord].re += Fnl * coef * conv[coord].re;
+          out[coord].im += Fnl * coef * conv[coord].im;
         }
     }
   else
@@ -1082,8 +1085,8 @@ static void bpng_accumulate_hybrid_convolution(lpt_complex *conv, long double *o
                   if(coef == 0.0 || !isfinite(coef))
                     continue;
 
-                  out_re[coord] += (long double) (Fnl * coef * conv[coord].re);
-                  out_im[coord] += (long double) (Fnl * coef * conv[coord].im);
+                  out[coord].re += Fnl * coef * conv[coord].re;
+                  out[coord].im += Fnl * coef * conv[coord].im;
                 }
             }
         }
@@ -1096,7 +1099,7 @@ static void bpng_convolve_and_accumulate_hybrid(
     lpt_complex *field_a, lpt_real *field_a_real,
     lpt_complex *field_b, lpt_real *field_b_real,
     lpt_complex *c_tmp, lpt_real *p_tmp,
-    long double *out_re, long double *out_im,
+    lpt_complex *out,
     int ia, int ib, int use_symmetry)
 {
   bpng_multiply_real_fields(p_tmp, field_a_real, field_b_real);
@@ -1105,10 +1108,10 @@ static void bpng_convolve_and_accumulate_hybrid(
   lpt_fft_forward_t(p_tmp);
   lpt_barrier();
 
-  bpng_accumulate_hybrid_convolution(c_tmp, out_re, out_im, ia, ib, use_symmetry);
+  bpng_accumulate_hybrid_convolution(c_tmp, out, ia, ib, use_symmetry);
 }
 
-static void bpng_compute_non_gaussian_potential(lpt_complex *cpot, long double *cpot_NG_re, long double *cpot_NG_im)
+static void bpng_compute_non_gaussian_potential(lpt_complex *cpot, lpt_complex *cpot_NG)
 {
   int           ia, ib, ib_start, use_symmetry, cache_block;
   int           timed_chars = 0;
@@ -1153,7 +1156,7 @@ static void bpng_compute_non_gaussian_potential(lpt_complex *cpot, long double *
           fflush(stdout);
         }
 
-      bpng_compute_non_gaussian_potential_symmetric_blocked(cpot, cpot_NG_re, cpot_NG_im,
+      bpng_compute_non_gaussian_potential_symmetric_blocked(cpot, cpot_NG,
                                                             c_tmp, p_tmp, cache_block);
 
       free(c_tmp);
@@ -1202,7 +1205,7 @@ static void bpng_compute_non_gaussian_potential(lpt_complex *cpot, long double *
             {
               /* Reuse the already transformed field on the diagonal. */
               bpng_convolve_and_accumulate_hybrid(cf1, f1, cf1, f1, c_tmp, p_tmp,
-                                                  cpot_NG_re, cpot_NG_im, ia, ib, use_symmetry);
+                                                  cpot_NG, ia, ib, use_symmetry);
             }
           else
             {
@@ -1212,7 +1215,7 @@ static void bpng_compute_non_gaussian_potential(lpt_complex *cpot, long double *
               lpt_barrier();
 
               bpng_convolve_and_accumulate_hybrid(cf1, f1, cf2, f2, c_tmp, p_tmp,
-                                                  cpot_NG_re, cpot_NG_im, ia, ib, use_symmetry);
+                                                  cpot_NG, ia, ib, use_symmetry);
             }
         }
 
@@ -1239,11 +1242,8 @@ void displacement_fields(void)
 {
   double        Beta;
   lpt_complex  *cpot;           /* Gaussian potential */
-  lpt_complex  *cpot_NG;        /* non-Gaussian term, in the complex grid layout */
-  long double  *cpot_NG_re;     /* its long-double accumulators */
-  long double  *cpot_NG_im;
+  lpt_complex  *cpot_NG;        /* non-Gaussian term, accumulated in the transposed k-space layout */
   uint64_t      bytes = 0;
-  uint64_t      coord;
 
   /* The binned-kernel implementation no longer reads modal AlphaTable or X0Table.
    * It only needs the explicit binned table files configured in the parameter file.
@@ -1254,7 +1254,7 @@ void displacement_fields(void)
 
   MPI_Bcast(&SavePotentialField, 1, MPI_INT, 0, MPI_COMM_WORLD);
 
-  lpt_setup_gaussian_potential(&cpot, &cpot_NG_re, &cpot_NG_im, &Beta);
+  lpt_setup_gaussian_potential(&cpot, &Beta);
 
   /*** For non-local models it is important to keep all factors of SQRT(-1) as done below ***/
   /*** No sign flip is applied to the NG term: it is added to the Gaussian potential as is ***/
@@ -1267,20 +1267,12 @@ void displacement_fields(void)
   memset(cpot_NG, 0, sizeof(lpt_real) * TotalSizePlusAdditional);
 
   lpt_barrier();
-  bpng_compute_non_gaussian_potential(cpot, cpot_NG_re, cpot_NG_im);
+  bpng_compute_non_gaussian_potential(cpot, cpot_NG);
   lpt_barrier();
 
-  /* Move the long-double accumulator (transposed k-space layout, see bpng_accumulate_hybrid_convolution) into
-   * the complex grid, then transpose it back to the normal x-slab layout used below. */
-  for(coord = 0; coord < (uint64_t) Local_ny_t * Nmesh * (Nmesh / 2 + 1); coord++)
-    {
-      cpot_NG[coord].re = (double) cpot_NG_re[coord];
-      cpot_NG[coord].im = (double) cpot_NG_im[coord];
-    }
+  /* cpot_NG was accumulated in the transposed k-space layout (see bpng_accumulate_hybrid_convolution):
+   * transpose it back to the normal x-slab layout used below. */
   lpt_transposed_to_normal(cpot_NG);
-
-  free(cpot_NG_re);
-  free(cpot_NG_im);
 
   lpt_barrier();
 
