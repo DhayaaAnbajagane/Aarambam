@@ -59,6 +59,211 @@ void print_setup(void) {
 }
 
 
+/* |k|^2 and |k| of mode (i, j, k); returns 0 for k = 0 and for modes outside the sampled band (SphereMode). */
+static inline int modal_mode_in_band(ptrdiff_t i, ptrdiff_t j, ptrdiff_t k, double *kmag2, double *kmag1)
+{
+  double kvec[3];
+
+  if(i + j + k == 0)
+    return 0;
+
+  kvec[0] = (i < Nmesh / 2) ? i * 2 * PI / Box : -(Nmesh - i) * 2 * PI / Box;
+  kvec[1] = (j < Nmesh / 2) ? j * 2 * PI / Box : -(Nmesh - j) * 2 * PI / Box;
+  kvec[2] = (k < Nmesh / 2) ? k * 2 * PI / Box : -(Nmesh - k) * 2 * PI / Box;
+
+  *kmag2 = kvec[0] * kvec[0] + kvec[1] * kvec[1] + kvec[2] * kvec[2];
+  *kmag1 = sqrt(*kmag2);
+
+  if(SphereMode == 1)
+    {
+      if(*kmag1 * Box / (2 * PI) > Nsample / 2)       /* select a sphere in k-space */
+        return 0;
+    }
+  else
+    {
+      if(fabs(kvec[0]) * Box / (2 * PI) > Nsample / 2)
+        return 0;
+      if(fabs(kvec[1]) * Box / (2 * PI) > Nsample / 2)
+        return 0;
+      if(fabs(kvec[2]) * Box / (2 * PI) > Nsample / 2)
+        return 0;
+    }
+  return 1;
+}
+
+/* Argument of the Legendre polynomials: k^{(4 - n_s)/3} mapped linearly onto [-1, 1] over [kmin, kmax]. */
+static inline double modal_legendre_x(double kmag1, double kmin_ns, double kmax_ns)
+{
+  double kmag_ns = pow(kmag1, (4 - PrimordialIndex)/3);
+  return -1 + 2 * (kmag_ns - kmin_ns)/(kmax_ns - kmin_ns);
+}
+
+/* Mode field N in Fourier space (normal x-slab layout), written to the in-band modes of out:
+ *   N <= 3:  out = k^{(4 - n_s)/3 (N - 3)} k^{4 - n_s} phi;
+ *   N >= 4:  r[2] = P_{N-1}(x) k^{2 - n_s} phi by the Legendre recursion from r[0] = P_{N-3}, r[1] = P_{N-2}
+ *            (set from gsl when restart), and out = r[2] - X0_{N-1} k^{2 - n_s} phi.
+ * After an N >= 4 step the caller rotates r (modal_rotate) so that r[0], r[1] hold P_{N-2}, P_{N-1}. */
+static void modal_build_field(unsigned int N, int restart, fftw_complex *cpot, fftw_complex *r[3], fftw_complex *out,
+                              double (*X0Table)[2], double kmin_ns, double kmax_ns)
+{
+  PROF_BEGIN(PROF_FIELD)
+  ptrdiff_t ii, i, j, k, kend = lpt_kz_end();
+  uint64_t coord;
+  double kmag2, kmag1, kmag, Pl, pk;
+  long double fnl_fac;
+  double np = ((double) N) - 1; //For doing legendre calculations later
+
+  for(ii = 0; ii < Local_nx; ii++)
+    {
+      i = ii + Local_x_start;
+      if(!lpt_axis_in_band(i)) continue;
+      for(j = 0; j < Nmesh; j++)
+        {
+          if(!lpt_axis_in_band(j)) continue;
+          for(k = 0; k <= kend; k++)
+            {
+              coord = (ii * Nmesh + j) * (Nmesh / 2 + 1) + k;
+              if(!modal_mode_in_band(i, j, k, &kmag2, &kmag1)) continue;
+
+              if(N <= 3)
+                {
+                  fnl_fac = pow(kmag1, (4 - PrimordialIndex)/3 * (N - 3.)) * pow(kmag1, 4 - PrimordialIndex); //including 1/P1(k) term here
+                  out[coord].re = fnl_fac * cpot[coord].re;
+                  out[coord].im = fnl_fac * cpot[coord].im;
+                  continue;
+                }
+
+              kmag = modal_legendre_x(kmag1, kmin_ns, kmax_ns);
+              //Use 2 - n_s instad of 4 - n_s since you implicitly account for the 1/k^2 factor
+              //in switching from S(k1, k2, k3) --> B(k1, k2, k3).
+              pk = pow(kmag1, (2 - PrimordialIndex));
+              if(restart)
+                {
+                  Pl = gsl_sf_legendre_Pl(N - 1 - 2, kmag) * pk;
+                  r[0][coord].re = cpot[coord].re * Pl;
+                  r[0][coord].im = cpot[coord].im * Pl;
+
+                  Pl = gsl_sf_legendre_Pl(N - 1 - 1, kmag) * pk;
+                  r[1][coord].re = cpot[coord].re * Pl;
+                  r[1][coord].im = cpot[coord].im * Pl;
+                }
+
+              r[2][coord].re = ( (2*np - 1) * kmag * r[1][coord].re - (np - 1) * r[0][coord].re ) / np ;
+              r[2][coord].im = ( (2*np - 1) * kmag * r[1][coord].im - (np - 1) * r[0][coord].im ) / np ;
+
+              Pl = X0Table[N - 1][0] * pk;
+              out[coord].re = r[2][coord].re - cpot[coord].re * Pl;
+              out[coord].im = r[2][coord].im - cpot[coord].im * Pl;
+            }
+        }
+    }
+  PROF_END(PROF_FIELD)
+}
+
+/* Advance the recursion buffers after an N >= 4 step: (P_{N-3}, P_{N-2}, P_{N-1}) -> (P_{N-2}, P_{N-1}, free). Only
+ * in-band modes are ever read or written, and each step overwrites r[2] there, so no copy or clearing is needed. */
+static inline void modal_rotate(fftw_complex *r[3])
+{
+  fftw_complex *t = r[0];
+  r[0] = r[1]; r[1] = r[2]; r[2] = t;
+}
+
+/* Output-leg kernel of pair (N_i, N_j) at one mode: sum over N_k >= N_j of alpha[N_k] g_{N_k}(k3) / k3^2 (the
+ * g_{N_k} for N_k >= 4 by the Legendre recursion started at max(4, N_j)). With pw/plk2 = NULL the powers and
+ * Legendre values are computed here; otherwise they come from the ModeTables row (identical values). */
+static inline long double modal_k3_factor(const double *alpha, unsigned int N_j, double kmag, double kmag1, double kmag2,
+                                          const double *pw, const double *plk2, double (*X0Table)[2])
+{
+  long double fnl_fac = 0;
+  double a = NAN, b = NAN, c, d;
+  unsigned int N_k;
+
+  for(N_k = N_j; N_k < N_modes; N_k++)
+    {
+      double np = ((double) N_k) - 1;
+
+      if(N_k <= 3)
+        fnl_fac += alpha[N_k] * (pw ? pw[N_k] : pow(kmag1, (4 - PrimordialIndex)/3 * (N_k - 3.)));
+      else
+        {
+          //Fill in missing modes if start at N_k != 0
+          if((N_k == 4) || ((N_j >= 4) && (N_j == N_k)))
+            {
+              a = plk2 ? plk2[N_k - 1 - 2] : gsl_sf_legendre_Pl(N_k - 1 - 2, kmag)/kmag2;
+              b = plk2 ? plk2[N_k - 1 - 1] : gsl_sf_legendre_Pl(N_k - 1 - 1, kmag)/kmag2;
+            }
+
+          c = ( (2 * np - 1) * kmag * b - (np - 1) * a ) / np;
+          d = c - X0Table[N_k - 1][0]/kmag2;
+
+          a = b;
+          b = c;
+          fnl_fac += alpha[N_k] * d;
+        }
+    }
+  return fnl_fac;
+}
+
+/* ModeTables 1: the in-band modes of the transposed k-space layout (where the NG potential is accumulated), with
+ * a row of per-mode values  [x, k^2, k^{(4-n_s)/3 (N-3)} for N = 0..3, P_l(x)/k^2 for l = 0..N_modes-3]. */
+typedef struct { long long n; int nt; uint64_t *coord; double *v; } ModalModeList;
+
+static void modal_build_mode_list(ModalModeList *L, double kmin_ns, double kmax_ns)
+{
+  ptrdiff_t ii, i, j, k, kend = lpt_kz_end();
+  double kmag2, kmag1, kmag, *v;
+  long long ntot;
+  int l, nl = (N_modes >= 5) ? N_modes - 2 : 0;
+  unsigned int N_k;
+
+  L->nt = 6 + nl;
+  for(int pass = 0; pass < 2; pass++)          /* pass 0 counts, pass 1 fills */
+    {
+      L->n = 0;
+      for(ii = 0; ii < Local_ny_t; ii++)
+        {
+          j = ii + Local_y_start_t;
+          if(!lpt_axis_in_band(j)) continue;
+          for(i = 0; i < Nmesh; i++)
+            {
+              if(!lpt_axis_in_band(i)) continue;
+              for(k = 0; k <= kend; k++)
+                {
+                  if(!modal_mode_in_band(i, j, k, &kmag2, &kmag1)) continue;
+                  if(pass == 1)
+                    {
+                      kmag = modal_legendre_x(kmag1, kmin_ns, kmax_ns);
+                      v = L->v + L->n * L->nt;
+                      L->coord[L->n] = (ii * Nmesh + i) * (Nmesh / 2 + 1) + k;
+                      v[0] = kmag;
+                      v[1] = kmag2;
+                      for(N_k = 0; N_k <= 3; N_k++)
+                        v[2 + N_k] = pow(kmag1, (4 - PrimordialIndex)/3 * (N_k - 3.));
+                      for(l = 0; l < nl; l++)
+                        v[6 + l] = gsl_sf_legendre_Pl(l, kmag)/kmag2;
+                    }
+                  L->n++;
+                }
+            }
+        }
+      if(pass == 0)
+        {
+          L->coord = malloc((L->n > 0 ? L->n : 1) * sizeof(uint64_t));
+          L->v     = malloc((L->n > 0 ? L->n : 1) * L->nt * sizeof(double));
+          if(!L->coord || !L->v)
+            {
+              printf("ModeTables 1: failed to allocate the mode table (%lld modes) on task %d\n", L->n, ThisTask);
+              FatalError(102);
+            }
+        }
+    }
+  MPI_Reduce(&L->n, &ntot, 1, MPI_LONG_LONG, MPI_SUM, 0, MPI_COMM_WORLD);
+  if(ThisTask == 0)
+    printf("  ModeTables 1: %lld modes tabulated (%.2f GB over all ranks).\n", ntot,
+           ntot * (double) (sizeof(uint64_t) + L->nt * sizeof(double)) / 1e9);
+}
+
+
 void displacement_fields(void) {
 
 
@@ -71,7 +276,6 @@ void displacement_fields(void) {
   fftw_complex *(cpot);  /* For computing nongaussian fnl ic */
     
   fftw_complex *(cpot_NG);  /* For computing nongaussian fnl ic */
-  fftw_real *(pot_NG);
     
   fftw_complex *(c_tmp); /* For non-local fluctuations */    
   fftw_real *(p_tmp); /* For non-local fluctuations */
@@ -80,15 +284,13 @@ void displacement_fields(void) {
   long double *(cpot_NG_im);
     
   unsigned int N, N_i, N_j, N_k;
-  double kvec[3], kmag, kmag2, kmag1, kmag_ns;
+  double kmag, kmag2, kmag1;
 
 
   long double fnl_fac;
 // ******* FAVN *****
 // ******* FAVN *****
     
-  double a, b, c, d; //For holding coeffs
-
   unsigned int bytes = 0;
 
   uint64_t coord;
@@ -114,7 +316,6 @@ void displacement_fields(void) {
   double kmin_ns = pow(kmin, (4 - PrimordialIndex)/3);
   double kmax_ns = pow(kmax, (4 - PrimordialIndex)/3);
     
-  double Pl; //for storing legendre coeffs
   
   MPI_Bcast(&SavePotentialField, 1, MPI_INT, 0, MPI_COMM_WORLD);
 
@@ -208,10 +409,8 @@ void displacement_fields(void) {
   MPI_Bcast(&(X0Table[0][0]), N_modes * 2, MPI_DOUBLE, 0, MPI_COMM_WORLD);
     
 
-  double t_012 = -AlphaTable[1][1][1]/AlphaTable[0][1][2];
-  double u_002 = -AlphaTable[0][1][1]/AlphaTable[0][0][2];
-  if (AlphaTable[0][1][2] == 0) t_012 = 0;
-  if (AlphaTable[0][0][2] == 0) u_002 = 0;
+  double t_012 = 0;
+  if (N_modes >= 3 && AlphaTable[0][1][2] != 0) t_012 = -AlphaTable[1][1][1]/AlphaTable[0][1][2];
   if(ThisTask == 0) {
       printf("Set coeff t_012 = %lg \n", t_012);
   }
@@ -232,11 +431,22 @@ void displacement_fields(void) {
 
   if (ThisTask == 0) {printf("Computing Legendre Basis non-Gaussian potential...\n"); fflush(stdout);};
 
-  /**** NON-LOCAL PRIMORDIAL POTENTIAL **************/ 
+  /**** NON-LOCAL PRIMORDIAL POTENTIAL **************/
+
+  /* The NG potential is sum_{N_i <= N_j} FFT[g_i g_j](k3) K_{ij}(k3) over the real-space mode fields g_N.
+   * ModeTables 0 rebuilds and inverse-transforms g_j for every pair (least memory). ModeTables 1 builds each g_N
+   * once and keeps all N_modes of them in real space, and tabulates the per-mode values of K_{ij}: about N_modes
+   * extra grids, half the FFTs. The two agree to rounding (the g_j of pairs with N_i >= 5 are recursed from 4
+   * instead of from N_i). */
+  fftw_real **gcache = NULL;
+  ModalModeList ML = {0, 0, NULL, NULL};
 
   //We'll use these fields to compute temporary terms of interest to us
   for(N = 0; N < 8; N++){
 
+      cfields[N] = NULL;
+      fields[N]  = NULL;
+      if(ModeTables && N >= 3) continue;      /* the g_i / g_j work grids are only used without the cache */
       cfields[N] = (fftw_complex *) malloc(sizeof(fftw_real) * TotalSizePlusAdditional);
       fields[N]  = (fftw_real *) cfields[N];
       ASSERT_ALLOC(cfields[N]);
@@ -248,209 +458,103 @@ void displacement_fields(void) {
   ASSERT_ALLOC(c_tmp);
 
   cpot_NG = (fftw_complex *) malloc(sizeof(fftw_real) * TotalSizePlusAdditional);
-  pot_NG  = (fftw_real *) cpot_NG;
   ASSERT_ALLOC(cpot_NG);
 
-  MPI_Barrier(MPI_COMM_WORLD);
+  if(ModeTables)
+    {
+      gcache = malloc(N_modes * sizeof(fftw_real *));
+      ASSERT_ALLOC(gcache);
+      for(N = 0; N < N_modes; N++)
+        {
+          gcache[N] = (fftw_real *) malloc(sizeof(fftw_real) * TotalSizePlusAdditional);
+          ASSERT_ALLOC(gcache[N]);
+        }
+      if(ThisTask == 0)
+        printf("  ModeTables 1: caching %d real-space mode fields (%.2f GB over all ranks).\n", N_modes,
+               N_modes * (double) sizeof(fftw_real) * TotalSizePlusAdditional * NTask / 1e9);
+    }
 
-  
-    
+  lpt_barrier();
+
+
+
   /* first, clean the array */
   for(N = 0; N < 8; N++)
-      memset(cfields[N], 0, sizeof(fftw_real) * TotalSizePlusAdditional);
+      if(cfields[N]) memset(cfields[N], 0, sizeof(fftw_real) * TotalSizePlusAdditional);
   memset(c_tmp, 0, sizeof(fftw_real) * TotalSizePlusAdditional);
   memset(cpot_NG, 0, sizeof(fftw_real) * TotalSizePlusAdditional);
 
-  MPI_Barrier(MPI_COMM_WORLD);
+  lpt_barrier();
 
-  /* Loop to start generating all fields */      
+  fftw_complex *ri[3] = {cfields[0], cfields[1], cfields[2]};   /* recursion buffers of g_i */
+
+  if(ModeTables)
+    {
+      /* build every mode field once, in order, and keep it in real space */
+      for(N = 0; N < N_modes; N++)
+        {
+          memset(gcache[N], 0, sizeof(fftw_real) * TotalSizePlusAdditional);
+          modal_build_field(N, N == 4, cpot, ri, (fftw_complex *) gcache[N], X0Table, kmin_ns, kmax_ns);
+          if(N >= 4) modal_rotate(ri);
+          lpt_barrier();
+          lpt_fft(Inverse_plan, gcache[N]);
+          lpt_barrier();
+        }
+      modal_build_mode_list(&ML, kmin_ns, kmax_ns);
+    }
+
+  /* Loop to start generating all fields */
   for(N_i = 0; N_i < N_modes; N_i++){
-      
-      double np = ((double) N_i) - 1; //For doing legendre calculations later
-          
-      memset(cfields[2], 0, sizeof(fftw_real) * TotalSizePlusAdditional); //Needed to prevent memory issue in loop
-      memset(cfields[3], 0, sizeof(fftw_real) * TotalSizePlusAdditional); //Needed to prevent memory issue in loop
-      
-      //Generate the first field in fourier space
-      for(ii = 0; ii < Local_nx; ii++)
-          for(j = 0; j < Nmesh; j++)
-              for(k = 0; k <= Nmesh / 2 ; k++)
-              {
 
-                  coord = (ii * Nmesh + j) * (Nmesh / 2 + 1) + k;
-                  i = ii + Local_x_start;
+      fftw_real *gi, *gj;
 
-                  kvec[0] = (i < Nmesh / 2) ? i * 2 * PI / Box : -(Nmesh - i) * 2 * PI / Box;
-                  kvec[1] = (j < Nmesh / 2) ? j * 2 * PI / Box : -(Nmesh - j) * 2 * PI / Box;
-                  kvec[2] = (k < Nmesh / 2) ? k * 2 * PI / Box : -(Nmesh - k) * 2 * PI / Box;
-
-                  kmag2   = kvec[0] * kvec[0] + kvec[1] * kvec[1] + kvec[2] * kvec[2];
-                  kmag1   = sqrt(kmag2);
-                  kmag_ns = pow(kmag1, (4 - PrimordialIndex)/3);
-                  kmag    = -1 + 2 * (kmag_ns - kmin_ns)/(kmax_ns - kmin_ns);
-
-                  if(i + j + k == 0) continue;
-
-                  if(SphereMode == 1)
-                    {
-                      if(kmag1 * Box / (2 * PI) > Nsample / 2)       /* select a sphere in k-space */
-                        continue;
-                    }
-                  else
-                    {
-                      if(fabs(kvec[0]) * Box / (2 * PI) > Nsample / 2)
-                        continue;
-                      if(fabs(kvec[1]) * Box / (2 * PI) > Nsample / 2)
-                        continue;
-                      if(fabs(kvec[2]) * Box / (2 * PI) > Nsample / 2)
-                        continue;
-                    }
-
-                  if (N_i <= 3){
-                      fnl_fac = pow(kmag1, (4 - PrimordialIndex)/3 * (N_i - 3.)) * pow(kmag1, 4 - PrimordialIndex); //including 1/P1(k) term here
-                      
-                      cfields[3][coord].re = fnl_fac * cpot[coord].re;
-                      cfields[3][coord].im = fnl_fac * cpot[coord].im;
-                      
-                  }
-                  else {
-                      
-                      //Setup the initial kernels only at the start
-                      if (N_i == 4){
-                          
-                          //Use 2 - n_s instad of 4 - n_s since you implicitly account for the 1/k^2 factor
-                          //in switching from S(k1, k2, k3) --> B(k1, k2, k3).
-                          Pl = gsl_sf_legendre_Pl(N_i - 1 - 2, kmag) * pow(kmag1, (2 - PrimordialIndex));
-                          cfields[0][coord].re = cpot[coord].re * Pl;
-                          cfields[0][coord].im = cpot[coord].im * Pl;
-
-                          Pl = gsl_sf_legendre_Pl(N_i - 1 - 1, kmag) * pow(kmag1, (2 - PrimordialIndex));
-                          cfields[1][coord].re = cpot[coord].re * Pl;
-                          cfields[1][coord].im = cpot[coord].im * Pl;
-                          
-                      }
-                      
-                      //Doesn't need 1/kmag2 since its already in cfields[4] and cfields[3]
-                      cfields[2][coord].re = ( (2*np - 1) * kmag * cfields[1][coord].re - (np - 1) * cfields[0][coord].re ) / np ;
-                      cfields[2][coord].im = ( (2*np - 1) * kmag * cfields[1][coord].im - (np - 1) * cfields[0][coord].im ) / np ;
-                      
-                      Pl = X0Table[N_i - 1][0] * pow(kmag1, (2 - PrimordialIndex));
-                      cfields[3][coord].re = cfields[2][coord].re - cpot[coord].re * Pl;
-                      cfields[3][coord].im = cfields[2][coord].im - cpot[coord].im * Pl;
-                      
-                  }
-              }
-      
-      
-      MPI_Barrier(MPI_COMM_WORLD);
-      
-      
-      //Copy kernels over so next iteration works ok
-      if (N_i <= 3) {}
+      if(ModeTables)
+          gi = gcache[N_i];
       else {
-          memcpy(cfields[0], cfields[1], sizeof(fftw_real) * TotalSizePlusAdditional);
-          memcpy(cfields[1], cfields[2], sizeof(fftw_real) * TotalSizePlusAdditional);
+          //Generate the first field in fourier space
+          memset(cfields[3], 0, sizeof(fftw_real) * TotalSizePlusAdditional); //Needed to prevent memory issue in loop
+          modal_build_field(N_i, N_i == 4, cpot, ri, cfields[3], X0Table, kmin_ns, kmax_ns);
+          if(N_i >= 4) modal_rotate(ri);   //so the next iteration continues the recursion
+          lpt_barrier();
+
+          lpt_fft(Inverse_plan, fields[3]);
+          lpt_barrier();
+          gi = fields[3];
       }
-      
-      rfftwnd_mpi(Inverse_plan, 1, fields[3], Workspace, FFTW_NORMAL_ORDER);
-      MPI_Barrier(MPI_COMM_WORLD);
-      
-      memset(cfields[4], 0, sizeof(fftw_real) * TotalSizePlusAdditional);
-      memset(cfields[5], 0, sizeof(fftw_real) * TotalSizePlusAdditional);
+
+      fftw_complex *rj[3] = {cfields[4], cfields[5], cfields[6]};   /* recursion buffers of g_j (restarted at N_i) */
 
       for(N_j = N_i; N_j < N_modes; N_j++){
-          
-          double np = ((double) N_j) - 1; //For doing legendre calculations later
-              
-          memset(cfields[6], 0, sizeof(fftw_real) * TotalSizePlusAdditional); //Needed to prevent memory issue in loop
-          memset(cfields[7], 0, sizeof(fftw_real) * TotalSizePlusAdditional); //Needed to prevent memory issue in loop
-          
-          //Generate the 2nd field, also in fourier space
-          for(ii = 0; ii < Local_nx; ii++)
-              for(j = 0; j < Nmesh; j++)
-                  for(k = 0; k <= Nmesh / 2 ; k++)
-                  {
 
-                      coord = (ii * Nmesh + j) * (Nmesh / 2 + 1) + k;
-                      i = ii + Local_x_start;
-
-                      kvec[0] = (i < Nmesh / 2) ? i * 2 * PI / Box : -(Nmesh - i) * 2 * PI / Box;
-                      kvec[1] = (j < Nmesh / 2) ? j * 2 * PI / Box : -(Nmesh - j) * 2 * PI / Box;
-                      kvec[2] = (k < Nmesh / 2) ? k * 2 * PI / Box : -(Nmesh - k) * 2 * PI / Box;
-
-                      kmag2   = kvec[0] * kvec[0] + kvec[1] * kvec[1] + kvec[2] * kvec[2];
-                      kmag1   = sqrt(kmag2);
-                      kmag_ns = pow(kmag1, (4 - PrimordialIndex)/3);
-                      kmag    = -1 + 2 * (kmag_ns - kmin_ns)/(kmax_ns - kmin_ns);
-
-                      if(SphereMode == 1)
-                        {
-                          if(kmag1 * Box / (2 * PI) > Nsample / 2)       /* select a sphere in k-space */
-                            continue;
-                        }
-                      else
-                        {
-                          if(fabs(kvec[0]) * Box / (2 * PI) > Nsample / 2)
-                            continue;
-                          if(fabs(kvec[1]) * Box / (2 * PI) > Nsample / 2)
-                            continue;
-                          if(fabs(kvec[2]) * Box / (2 * PI) > Nsample / 2)
-                            continue;
-                        }
-
-                      if(i + j + k == 0) continue;
-                      
-                      if (N_j <= 3){
-                          fnl_fac = pow(kmag1, (4 - PrimordialIndex)/3 * (N_j - 3.)) * pow(kmag1, 4 - PrimordialIndex); //including 1/P1(k) term here
-                          cfields[7][coord].re = fnl_fac * cpot[coord].re;
-                          cfields[7][coord].im = fnl_fac * cpot[coord].im;
-                          }
-                      else {
-                          
-                          //To fill-in modes that we haven't evaluated yet if we start at N_j != 0
-                          if ( (N_j == 4) || ( (N_i >= 4) && (N_i == N_j) )){ 
-                              Pl = gsl_sf_legendre_Pl(N_j - 1 - 2, kmag) * pow(kmag1, (2 - PrimordialIndex));
-                              cfields[4][coord].re = cpot[coord].re * Pl;
-                              cfields[4][coord].im = cpot[coord].im * Pl;
-
-                              Pl = gsl_sf_legendre_Pl(N_j - 1 - 1, kmag) * pow(kmag1, (2 - PrimordialIndex));
-                              cfields[5][coord].re = cpot[coord].re * Pl;
-                              cfields[5][coord].im = cpot[coord].im * Pl;
-                          }
-                          
-                          //Doesn't need 1/kmag2 since its already in cfields[4] and cfields[3]
-                          cfields[6][coord].re = ( (2*np - 1) * kmag * cfields[5][coord].re - (np - 1) * cfields[4][coord].re ) / np ;
-                          cfields[6][coord].im = ( (2*np - 1) * kmag * cfields[5][coord].im - (np - 1) * cfields[4][coord].im ) / np ;
-                          
-                          Pl = X0Table[N_j - 1][0] * pow(kmag1, (2 - PrimordialIndex));
-                          cfields[7][coord].re = cfields[6][coord].re - cpot[coord].re * Pl;
-                          cfields[7][coord].im = cfields[6][coord].im - cpot[coord].im * Pl;
-                          
-                          
-                          }
-                      
-                      
-
-                  }
-          
-          
-          
-          MPI_Barrier(MPI_COMM_WORLD);
-          
-          if (N_j <= 3) {}
-          else {
-              memcpy(cfields[4], cfields[5], sizeof(fftw_real) * TotalSizePlusAdditional);
-              memcpy(cfields[5], cfields[6], sizeof(fftw_real) * TotalSizePlusAdditional);
-          }
-
-          if (ThisTask == 0) {printf("Computing combination %d, %d ....", N_i, N_j); fflush(stdout);};
-          
           //Routine that determines if we can skip the FFTs assuming
           //the coefficients are zero for all these objects.
           ksum = 0;
           for (N_k = N_j; N_k < N_modes; N_k++){
             if (fabs(AlphaTable[N_i][N_j][N_k]) > 0) ksum = 1;
           }
+
+          if(ModeTables)
+              gj = gcache[N_j];
+          else {
+              /* g_j is needed for this pair, and for N_j >= 4 also to carry the recursion to a later pair */
+              int needed = ksum;
+              for(unsigned int M = N_j + 1; M < N_modes && N_j >= 4 && !needed; M++)
+                for(N_k = M; N_k < N_modes; N_k++)
+                  if(fabs(AlphaTable[N_i][M][N_k]) > 0) needed = 1;
+
+              if(needed) {
+                  //Generate the 2nd field, also in fourier space
+                  memset(cfields[7], 0, sizeof(fftw_real) * TotalSizePlusAdditional); //Needed to prevent memory issue in loop
+                  modal_build_field(N_j, (N_j == 4) || ((N_i >= 4) && (N_i == N_j)), cpot, rj, cfields[7], X0Table,
+                                    kmin_ns, kmax_ns);
+                  if(N_j >= 4) modal_rotate(rj);
+                  lpt_barrier();
+              }
+              gj = fields[7];
+          }
+
+          if (ThisTask == 0) {printf("Computing combination %d, %d ....", N_i, N_j); fflush(stdout);};
+
           if (ksum == 0.0) {
             if (ThisTask == 0 ) {
               int print_size = 0;
@@ -460,13 +564,16 @@ void displacement_fields(void) {
             }
             continue;
           }
-          
-          rfftwnd_mpi(Inverse_plan, 1, fields[7], Workspace, FFTW_NORMAL_ORDER);
-          MPI_Barrier(MPI_COMM_WORLD);
+
+          if(!ModeTables) {
+              lpt_fft(Inverse_plan, fields[7]);
+              lpt_barrier();
+          }
 
           memset(p_tmp, 0, sizeof(fftw_real) * TotalSizePlusAdditional);
-          MPI_Barrier(MPI_COMM_WORLD);
-          
+          lpt_barrier();
+
+      PROF_BEGIN(PROF_MULT)
           //Multiply terms in realspace [\phi gi] x [\phi gj]
           for(i = 0; i < Local_nx; i++)
             for(j = 0; j < Nmesh; j++)
@@ -474,323 +581,183 @@ void displacement_fields(void) {
                     {
                       coord = (i * Nmesh + j) * (2 * (Nmesh / 2 + 1)) + k;
 
-                      p_tmp[coord] = fields[3][coord] * fields[7][coord];
-                  
+                      p_tmp[coord] = gi[coord] * gj[coord];
+
                     }
-          
 
-          MPI_Barrier(MPI_COMM_WORLD);
-          rfftwnd_mpi(Forward_plan, 1, p_tmp, Workspace, FFTW_NORMAL_ORDER);
-          MPI_Barrier(MPI_COMM_WORLD);
 
-          
-          
-          for(ii = 0; ii < Local_nx; ii++)
-              for(j = 0; j < Nmesh; j++)
-                  for(k = 0; k <= Nmesh / 2 ; k++)
+      PROF_END(PROF_MULT)
+          lpt_barrier();
+          lpt_fft_forward_t(p_tmp);
+          lpt_barrier();
+
+
+
+          PROF_BEGIN(PROF_ACCUM)
+          //Add the g3(k) kernel. This can be summed linearly for fixed gi and gj.
+          const double *alpha = AlphaTable[N_i][N_j];
+          if(ModeTables)
+            for(long long m = 0; m < ML.n; m++)
+              {
+                const double *v = ML.v + m * ML.nt;
+                fnl_fac = modal_k3_factor(alpha, N_j, v[0], 0, v[1], v + 2, v + 6, X0Table);
+                coord = ML.coord[m];
+                cpot_NG_re[coord] += (long double) (fnl_fac * c_tmp[coord].re);
+                cpot_NG_im[coord] += (long double) (fnl_fac * c_tmp[coord].im);
+              }
+          else
+          for(ii = 0; ii < Local_ny_t; ii++)          /* transposed layout: [y (local)][x][z] */
+            {
+              j = ii + Local_y_start_t;
+              if(!lpt_axis_in_band(j)) continue;
+              for(i = 0; i < Nmesh; i++)
+                {
+                  if(!lpt_axis_in_band(i)) continue;
+                  for(k = 0; k <= lpt_kz_end(); k++)
                   {
 
-                      coord = (ii * Nmesh + j) * (Nmesh / 2 + 1) + k;
-                      i = ii + Local_x_start;
+                      coord = (ii * Nmesh + i) * (Nmesh / 2 + 1) + k;
+                      if(!modal_mode_in_band(i, j, k, &kmag2, &kmag1)) continue;
+                      kmag = modal_legendre_x(kmag1, kmin_ns, kmax_ns);
 
-                      if(i == 0 && j == 0 && k == 0)
-                        {
-                          cpot_NG[0].re=0.;
-                          cpot_NG[0].im=0.;
-
-                          continue;
-                        }
-
-                      kvec[0] = (i < Nmesh / 2) ? i * 2 * PI / Box : -(Nmesh - i) * 2 * PI / Box;
-                      kvec[1] = (j < Nmesh / 2) ? j * 2 * PI / Box : -(Nmesh - j) * 2 * PI / Box;
-                      kvec[2] = (k < Nmesh / 2) ? k * 2 * PI / Box : -(Nmesh - k) * 2 * PI / Box;
-
-                      kmag2   = kvec[0] * kvec[0] + kvec[1] * kvec[1] + kvec[2] * kvec[2];
-                      kmag1   = sqrt(kmag2);
-                      kmag_ns = pow(kmag1, (4 - PrimordialIndex)/3);
-                      kmag    = -1 + 2 * (kmag_ns - kmin_ns)/(kmax_ns - kmin_ns);
-
-                      if(SphereMode == 1)
-                        {
-                          if(kmag1 * Box / (2 * PI) > Nsample / 2)       /* select a sphere in k-space */
-                            continue;
-                        }
-                      else
-                        {
-                          if(fabs(kvec[0]) * Box / (2 * PI) > Nsample / 2)
-                            continue;
-                          if(fabs(kvec[1]) * Box / (2 * PI) > Nsample / 2)
-                            continue;
-                          if(fabs(kvec[2]) * Box / (2 * PI) > Nsample / 2)
-                            continue;
-                        }
-
-                      fnl_fac = 0;
-                      
-                      a = NAN;
-                      b = NAN;
-                      c = NAN;
-                      d = NAN;
-                      
-                      //Add the g3(k) kernel. This can be summed linearly for fixed gi and gj.
-                      for(N_k = N_j; N_k < N_modes; N_k++){
-                          
-                          double np = ((double) N_k) - 1;
-                          
-                          if (N_k <= 3) {
-                              fnl_fac += AlphaTable[N_i][N_j][N_k] * pow(kmag1, (4 - PrimordialIndex)/3 * (N_k - 3.));
-                              
-                          }
-                          else { 
-                              
-                              //Fill in missing modes if start at N_k != 0
-                              if ( (N_k == 4) || ( (N_j >= 4) && (N_j == N_k) )) {
-                                  a = gsl_sf_legendre_Pl(N_k - 1 - 2, kmag)/kmag2; 
-                                  b = gsl_sf_legendre_Pl(N_k - 1 - 1, kmag)/kmag2;
-                              }
-                              
-                              c = ( (2 * np - 1) * kmag * b - (np - 1) * a ) / np;
-                              d = c - X0Table[N_k - 1][0]/kmag2;
-                                  
-                              a = b * 1;
-                              b = c * 1;
-                              fnl_fac += AlphaTable[N_i][N_j][N_k] * d;
-                              
-                          }
-                          
-                          
-                          
-                      }//End of N_k loop
-                      
-                      
-                      // cpot_NG[coord].re += fnl_fac * c_tmp[coord].re;
-                      // cpot_NG[coord].im += fnl_fac * c_tmp[coord].im;
+                      fnl_fac = modal_k3_factor(alpha, N_j, kmag, kmag1, kmag2, NULL, NULL, X0Table);
 
                       cpot_NG_re[coord] += (long double) (fnl_fac * c_tmp[coord].re);
                       cpot_NG_im[coord] += (long double) (fnl_fac * c_tmp[coord].im);
-                      
-
                   }
+                }
+            }
 
+          PROF_END(PROF_ACCUM)
           if (ThisTask == 0 ) {
             int print_size = 0;
             if (N_i >= 10) print_size += 1;
             if (N_j >= 10) print_size += 1;
             print_timed_done(23 - print_size);
           }
-          MPI_Barrier(MPI_COMM_WORLD);
+          lpt_barrier();
           }
       } //Close the Ni,Nj,Nk loop
 
-  
+
   //Now need to include the extra templates for cancelling divergent terms :P
-   
-  //Free six of the fields (2..7), since we won't use them anymore
+  //Only the pairs (0, 1) and (0, 2) carry a t_012 term, so the other pairs N_i, N_j <= 3 are not computed.
+
+  //Free the g_i / g_j work fields (2..7), since we won't use them anymore
   for(N = 2; N < 8; N++) free(cfields[N]);
-  
-  for(N_i = 0; N_i <= 3; N_i++){
-      
-      memset(cfields[0], 0, sizeof(fftw_real) * TotalSizePlusAdditional); //Needed to prevent memory issue in loop
-      
-      //Generate the first field in fourier space
-      for(ii = 0; ii < Local_nx; ii++)
-          for(j = 0; j < Nmesh; j++)
-              for(k = 0; k <= Nmesh / 2 ; k++)
-              {
+  free(ML.coord);
+  free(ML.v);
 
-                  coord = (ii * Nmesh + j) * (Nmesh / 2 + 1) + k;
-                  i = ii + Local_x_start;
+  if(N_modes >= 3 && t_012 != 0){
 
-                  kvec[0] = (i < Nmesh / 2) ? i * 2 * PI / Box : -(Nmesh - i) * 2 * PI / Box;
-                  kvec[1] = (j < Nmesh / 2) ? j * 2 * PI / Box : -(Nmesh - j) * 2 * PI / Box;
-                  kvec[2] = (k < Nmesh / 2) ? k * 2 * PI / Box : -(Nmesh - k) * 2 * PI / Box;
+      fftw_real *g0, *gj;
 
-                  kmag2   = kvec[0] * kvec[0] + kvec[1] * kvec[1] + kvec[2] * kvec[2];
-                  kmag1   = sqrt(kmag2);
+      if(ModeTables)
+          g0 = gcache[0];
+      else {
+          //Generate the first field in fourier space
+          memset(cfields[0], 0, sizeof(fftw_real) * TotalSizePlusAdditional); //Needed to prevent memory issue in loop
+          modal_build_field(0, 0, cpot, ri, cfields[0], X0Table, kmin_ns, kmax_ns);
+          lpt_barrier();
+          lpt_fft(Inverse_plan, fields[0]);
+          lpt_barrier();
+          g0 = fields[0];
+      }
 
-                  if(SphereMode == 1)
-                    {
-                      if(kmag1 * Box / (2 * PI) > Nsample / 2)       /* select a sphere in k-space */
-                        continue;
-                    }
-                  else
-                    {
-                      if(fabs(kvec[0]) * Box / (2 * PI) > Nsample / 2)
-                        continue;
-                      if(fabs(kvec[1]) * Box / (2 * PI) > Nsample / 2)
-                        continue;
-                      if(fabs(kvec[2]) * Box / (2 * PI) > Nsample / 2)
-                        continue;
-                    }
+      for(N_j = 1; N_j <= 2; N_j++){
 
-                  if(i + j + k == 0) continue;
-
-                  fnl_fac = pow(kmag1, (4 - PrimordialIndex)/3 * (N_i - 3.)) * pow(kmag1, 4 - PrimordialIndex);
-                  
-                  cfields[0][coord].re = fnl_fac * cpot[coord].re;
-                  cfields[0][coord].im = fnl_fac * cpot[coord].im;
-              
-              }
-      
-      
-      MPI_Barrier(MPI_COMM_WORLD);
-      rfftwnd_mpi(Inverse_plan, 1, fields[0], Workspace, FFTW_NORMAL_ORDER);
-      MPI_Barrier(MPI_COMM_WORLD);
-
-      for(N_j = N_i; N_j <= 3; N_j++){
-          
-          memset(cfields[1], 0, sizeof(fftw_real) * TotalSizePlusAdditional); //Needed to prevent memory issue in loop
-          
-          //Generate the 2nd field, also in fourier space
-          for(ii = 0; ii < Local_nx; ii++)
-              for(j = 0; j < Nmesh; j++)
-                  for(k = 0; k <= Nmesh / 2 ; k++)
-                  {
-
-                      coord = (ii * Nmesh + j) * (Nmesh / 2 + 1) + k;
-                      i = ii + Local_x_start;
-
-                      kvec[0] = (i < Nmesh / 2) ? i * 2 * PI / Box : -(Nmesh - i) * 2 * PI / Box;
-                      kvec[1] = (j < Nmesh / 2) ? j * 2 * PI / Box : -(Nmesh - j) * 2 * PI / Box;
-                      kvec[2] = (k < Nmesh / 2) ? k * 2 * PI / Box : -(Nmesh - k) * 2 * PI / Box;
-
-                      kmag2   = kvec[0] * kvec[0] + kvec[1] * kvec[1] + kvec[2] * kvec[2];
-                      kmag1   = sqrt(kmag2);
-
-                      if(SphereMode == 1)
-                        {
-                          if(kmag1 * Box / (2 * PI) > Nsample / 2)       /* select a sphere in k-space */
-                            continue;
-                        }
-                      else
-                        {
-                          if(fabs(kvec[0]) * Box / (2 * PI) > Nsample / 2)
-                            continue;
-                          if(fabs(kvec[1]) * Box / (2 * PI) > Nsample / 2)
-                            continue;
-                          if(fabs(kvec[2]) * Box / (2 * PI) > Nsample / 2)
-                            continue;
-                        }
-
-                      if(i + j + k == 0) continue;
-                      
-                      fnl_fac = pow(kmag1, (4 - PrimordialIndex)/3. * (N_j - 3.)) * pow(kmag1, 4 - PrimordialIndex);
-
-                      cfields[1][coord].re = fnl_fac * cpot[coord].re;
-                      cfields[1][coord].im = fnl_fac * cpot[coord].im;
-                      
-                      
-
-                  }
-          
-          
-          MPI_Barrier(MPI_COMM_WORLD);
-          rfftwnd_mpi(Inverse_plan, 1, fields[1], Workspace, FFTW_NORMAL_ORDER);
-          MPI_Barrier(MPI_COMM_WORLD);
+          if(ModeTables)
+              gj = gcache[N_j];
+          else {
+              //Generate the 2nd field, also in fourier space
+              memset(cfields[1], 0, sizeof(fftw_real) * TotalSizePlusAdditional); //Needed to prevent memory issue in loop
+              modal_build_field(N_j, 0, cpot, ri, cfields[1], X0Table, kmin_ns, kmax_ns);
+              lpt_barrier();
+              lpt_fft(Inverse_plan, fields[1]);
+              lpt_barrier();
+              gj = fields[1];
+          }
 
           memset(p_tmp, 0, sizeof(fftw_real) * TotalSizePlusAdditional);
-          MPI_Barrier(MPI_COMM_WORLD);
-          
+          lpt_barrier();
+
           //Multiply terms in realspace [\phi gi] x [\phi gj]
           for(i = 0; i < Local_nx; i++)
             for(j = 0; j < Nmesh; j++)
               for(k = 0; k < Nmesh; k++)
                     {
-                      coord = (i * Nmesh + j) * (2 * (Nmesh / 2 + 1)) + k; 
-                      p_tmp[coord] = fields[0][coord] * fields[1][coord];
+                      coord = (i * Nmesh + j) * (2 * (Nmesh / 2 + 1)) + k;
+                      p_tmp[coord] = g0[coord] * gj[coord];
 
                     }
 
-          
-          MPI_Barrier(MPI_COMM_WORLD);
-          rfftwnd_mpi(Forward_plan, 1, p_tmp, Workspace, FFTW_NORMAL_ORDER);
-          MPI_Barrier(MPI_COMM_WORLD);
-          
-          if (ThisTask == 0) {printf("Computing Beta combination %d, %d ....", N_i, N_j); fflush(stdout);};
 
-          for(ii = 0; ii < Local_nx; ii++)
-              for(j = 0; j < Nmesh; j++)
-                  for(k = 0; k <= Nmesh / 2 ; k++)
+          lpt_barrier();
+          lpt_fft_forward_t(p_tmp);
+          lpt_barrier();
+
+          if (ThisTask == 0) {printf("Computing Beta combination %d, %d ....", 0, N_j); fflush(stdout);};
+
+          for(ii = 0; ii < Local_ny_t; ii++)          /* transposed layout: [y (local)][x][z] */
+            {
+              j = ii + Local_y_start_t;
+              if(!lpt_axis_in_band(j)) continue;
+              for(i = 0; i < Nmesh; i++)
+                {
+                  if(!lpt_axis_in_band(i)) continue;
+                  for(k = 0; k <= lpt_kz_end(); k++)
                   {
 
-                      coord = (ii * Nmesh + j) * (Nmesh / 2 + 1) + k;
-                      i = ii + Local_x_start;
-
-                      if(i == 0 && j == 0 && k == 0) continue;
-
-                      kvec[0] = (i < Nmesh / 2) ? i * 2 * PI / Box : -(Nmesh - i) * 2 * PI / Box;
-                      kvec[1] = (j < Nmesh / 2) ? j * 2 * PI / Box : -(Nmesh - j) * 2 * PI / Box;
-                      kvec[2] = (k < Nmesh / 2) ? k * 2 * PI / Box : -(Nmesh - k) * 2 * PI / Box;
-
-                      kmag2   = kvec[0] * kvec[0] + kvec[1] * kvec[1] + kvec[2] * kvec[2];
-                      kmag1   = sqrt(kmag2);
-
-                      if(SphereMode == 1)
-                        {
-                          if(kmag1 * Box / (2 * PI) > Nsample / 2)       /* select a sphere in k-space */
-                            continue;
-                        }
-                      else
-                        {
-                          if(fabs(kvec[0]) * Box / (2 * PI) > Nsample / 2)
-                            continue;
-                          if(fabs(kvec[1]) * Box / (2 * PI) > Nsample / 2)
-                            continue;
-                          if(fabs(kvec[2]) * Box / (2 * PI) > Nsample / 2)
-                            continue;
-                        }
+                      coord = (ii * Nmesh + i) * (Nmesh / 2 + 1) + k;
+                      if(!modal_mode_in_band(i, j, k, &kmag2, &kmag1)) continue;
 
                       fnl_fac = 0;
-                      
-                      
-                      //First handle the t_012 piece (cancels the divergent (0,1,2) term). 
-                      {
-                      if ( (N_i == 0) && (N_j == 1) ) { //Subtract from the original kernel
+
+                      //The t_012 piece (cancels the divergent (0,1,2) term).
+                      if (N_j == 1) //Subtract from the original kernel
                           fnl_fac += -AlphaTable[0][1][2] * t_012 * pow(kmag1, (4 - PrimordialIndex)/3 * (2 - 3.0));
-                          }
-                          
-                      if ( (N_i == 0) && (N_j == 2) ) //Now add the t_012 piece
+                      else          //Now add the t_012 piece
                           fnl_fac +=  AlphaTable[0][1][2] * t_012 * pow(kmag1, (4 - PrimordialIndex)/3 * (1 - 3.0));
 
-                      }
-
                       cpot_NG_re[coord] += (long double) (fnl_fac * c_tmp[coord].re);
-                      cpot_NG_im[coord] += (long double) (fnl_fac * c_tmp[coord].im);  
-                                          
-                      
+                      cpot_NG_im[coord] += (long double) (fnl_fac * c_tmp[coord].im);
                   }
+                }
+            }
 
           if (ThisTask == 0 ) print_timed_done(18);
-          MPI_Barrier(MPI_COMM_WORLD);
+          lpt_barrier();
           }
-      } //Close the Ni,Nj,Nk loop
-  
+      } //Close the Beta loop
+
   free(c_tmp);
 
   for(N = 0; N < 2; N++){
       free(cfields[N]);
   }
+  if(gcache)
+    {
+      for(N = 0; N < N_modes; N++) free(gcache[N]);
+      free(gcache);
+    }
 
-  MPI_Barrier(MPI_COMM_WORLD);
+  lpt_barrier();
 
   //Add NG potential to the full potential
-  for(ii = 0; ii < Local_nx; ii++)
-    for(j = 0; j < Nmesh; j++)
-      for(k = 0; k <= Nmesh / 2 ; k++){
-
-          coord = (ii * Nmesh + j) * (Nmesh / 2 + 1) + k;
-
-          //Copy the long-double accumulator into the FFTW complex array
-          cpot_NG[coord].re = cpot_NG_re[coord]; 
-          cpot_NG[coord].im = cpot_NG_im[coord];           
-      }
+  //Copy the long-double accumulator (transposed k-space layout) into the FFTW complex array, then transpose it
+  //back to the normal x-slab layout used below
+  for(coord = 0; coord < (uint64_t) Local_ny_t * Nmesh * (Nmesh / 2 + 1); coord++){
+      cpot_NG[coord].re = cpot_NG_re[coord];
+      cpot_NG[coord].im = cpot_NG_im[coord];
+  }
+  lpt_transposed_to_normal(cpot_NG);
 
   free(cpot_NG_re);
   free(cpot_NG_im);
   free(AlphaTable);
   free(X0Table);
 
-  MPI_Barrier(MPI_COMM_WORLD);
+  lpt_barrier();
   
   
 
