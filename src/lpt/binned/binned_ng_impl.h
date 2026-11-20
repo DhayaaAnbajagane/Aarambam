@@ -253,13 +253,30 @@ static void NG(bpng_accumulate_hybrid_convolution)(NGC *conv, lpt_complex *out,
 
   if(ModeTables)
     {
+      /* the coefficients of this pair (and of its symmetric partner (ib, ia)) for every output bin, read once per
+       * pair instead of once per mode; the modes stay in memory order. Same arithmetic as
+       * bpng_output_k3_pair_coefficient_u. */
+      const int pair = use_symmetry && ia != ib, nb3 = BPNG.nk[2];
+      double    ca[nb3][4], cb[nb3][4];
+
+      for(ic = 0; ic < nb3; ic++)
+        {
+          for(int q = 0; q < 4; q++)
+            ca[ic][q] = cb[ic][q] = 0;
+          bpng_cell_coefficients(ia, ib, ic, ca[ic]);
+          if(pair)
+            bpng_cell_coefficients(ib, ia, ic, cb[ic]);
+        }
+
       for(long long m = 0; m < BMLT.n; m++)
         {
           ic = BMLT.ic[m];
           if(ic < 0)
             continue;
 
-          coef = bpng_output_k3_pair_coefficient_u(ia, ib, ic, BMLT.u[m], use_symmetry);
+          coef = bpng_cell_polynomial(ca[ic], BMLT.u[m]);
+          if(pair)
+            coef += bpng_cell_polynomial(cb[ic], BMLT.u[m]);
           if(coef == 0.0 || !isfinite(coef))
             continue;
 

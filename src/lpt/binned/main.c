@@ -692,23 +692,39 @@ static double bpng_input_basis_value(int axis, int node, double kmag)
 /* ---- per-mode steps of the convolution: filter, product, output-leg coefficient ---- */
 
 /* dst = psi_node(|k|) src in Fourier space (normal x-slab layout), zero elsewhere. */
-static double bpng_output_k3_coefficient_u(int ia, int ib, int ic, double u)
+/* The output-leg polynomial of one cell, sum_q c[q] u^q for the BPNG.coeff_count coefficients c. */
+static inline double bpng_cell_polynomial(const double *c, double u)
 {
   double u2;
   double coef;
 
-  coef = bpng_coeff(0, ia, ib, ic);
+  coef = c[0];
   if(BPNG.coeff_count <= 1)
     return coef;
 
-  coef += bpng_coeff(1, ia, ib, ic) * u;
+  coef += c[1] * u;
   if(BPNG.coeff_count <= 2)
     return coef;
 
   u2    = u * u;
-  coef += bpng_coeff(2, ia, ib, ic) * u2
-        + bpng_coeff(3, ia, ib, ic) * u2 * u;
+  coef += c[2] * u2
+        + c[3] * u2 * u;
   return coef;
+}
+
+/* The coefficients of cell (ia, ib, ic), in c[0 .. coeff_count-1]. */
+static inline void bpng_cell_coefficients(int ia, int ib, int ic, double *c)
+{
+  for(int q = 0; q < BPNG.coeff_count; q++)
+    c[q] = bpng_coeff(q, ia, ib, ic);
+}
+
+static double bpng_output_k3_coefficient_u(int ia, int ib, int ic, double u)
+{
+  double c[4] = {0, 0, 0, 0};
+
+  bpng_cell_coefficients(ia, ib, ic, c);
+  return bpng_cell_polynomial(c, u);
 }
 
 static int bpng_internal_edges_are_identical(void)
