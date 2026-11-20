@@ -152,6 +152,12 @@ permutation weights and the amplitude convention ($B_\Phi = 6 f_{\rm NL} B_{\rm 
 Particle IDs are 32-bit by default (up to $2^{31}-1$ particles). Set `export Aarambam_64BIT_IDS=ON` before
 `pip install` for larger runs.
 
+Running faster: with enough memory, `ModeTables = 1`, `BinnedPNGCacheBlockSize = 64` (binned) and
+`FFTBackend = 'band'` are the fastest settings (binned at $384^3$: 10.9 s, against 21.4 s with `ModeTables = 0` and
+the default `fftw` backend). The
+[Running faster page](https://aarambam.readthedocs.io/en/latest/performance.html) lists every speed option with its
+gain and its cost; the paragraphs below summarise them.
+
 Speed vs memory: the `ModeTables` config tag (`make_config_*(..., ModeTables = 0 | 1 | 'auto')`) switches
 between per-mode tables and cached mode fields (`1`, fastest; about 3-4x faster ICs at $192^3$ than version 1.0.0) and on-the-fly
 computation (`0`, least memory, for very large grids). `'auto'` picks for you from `Nmesh`. See the

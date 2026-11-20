@@ -42,6 +42,7 @@ Please cite the corresponding papers if you use the code (BibTeX entries are in 
    installation
    cli
    conventions
+   performance
    api_reference
 
 
