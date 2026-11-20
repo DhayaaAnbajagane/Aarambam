@@ -12,7 +12,7 @@ def run_2lpt(method, args):
     exe = str(files("Aarambam") / "bin" / BINARIES[method])
     if not os.path.isfile(exe):
         sys.exit(f"Aarambam: the compiled 2LPT executable {exe} was not found. It is built when Aarambam is "
-                 f"installed with pip and FFTW2/GSL/MPI are available; see the installation docs.")
+                 f"installed with pip and FFTW3 (with MPI)/GSL/MPI are available; see the installation docs.")
     os.execv(exe, [exe] + list(args))
 
 

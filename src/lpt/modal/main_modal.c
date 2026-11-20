@@ -109,7 +109,7 @@ static inline double modal_legendre_x(double kmag1, double kmin_ns, double kmax_
  *   N >= 4:  r[2] = P_{N-1}(x) k^{2 - n_s} phi by the Legendre recursion from r[0] = P_{N-3}, r[1] = P_{N-2}
  *            (set from gsl when restart), and out = r[2] - X0_{N-1} k^{2 - n_s} phi.
  * After an N >= 4 step the caller rotates r (modal_rotate) so that r[0], r[1] hold P_{N-2}, P_{N-1}. */
-static void modal_build_field(unsigned int N, int restart, fftw_complex *cpot, fftw_complex *r[3], fftw_complex *out,
+static void modal_build_field(unsigned int N, int restart, lpt_complex *cpot, lpt_complex *r[3], lpt_complex *out,
                               double (*X0Table)[2], double kmin_ns, double kmax_ns)
 {
   PROF_BEGIN(PROF_FIELD)
@@ -177,9 +177,9 @@ static void modal_build_field(unsigned int N, int restart, fftw_complex *cpot, f
 
 /* Advance the recursion buffers after an N >= 4 step: (P_{N-3}, P_{N-2}, P_{N-1}) -> (P_{N-2}, P_{N-1}, free). Only
  * in-band modes are ever read or written, and each step overwrites r[2] there, so no copy or clearing is needed. */
-static inline void modal_rotate(fftw_complex *r[3])
+static inline void modal_rotate(lpt_complex *r[3])
 {
-  fftw_complex *t = r[0];
+  lpt_complex *t = r[0];
 
   r[0] = r[1];
   r[1] = r[2];
@@ -306,10 +306,10 @@ void displacement_fields(void)
   ptrdiff_t     i, j, k, ii;     /* 64-bit grid indices, as in the shared core */
   int           ksum;
   double        Beta;
-  fftw_complex *cpot;            /* Gaussian potential */
-  fftw_complex *cpot_NG;         /* non-Gaussian term, in the FFTW complex layout */
-  fftw_complex *c_tmp;           /* product of two mode fields (Fourier space after the forward FFT) */
-  fftw_real    *p_tmp;           /* the same array in real space */
+  lpt_complex  *cpot;            /* Gaussian potential */
+  lpt_complex  *cpot_NG;         /* non-Gaussian term, in the complex grid layout */
+  lpt_complex  *c_tmp;           /* product of two mode fields (Fourier space after the forward FFT) */
+  lpt_real     *p_tmp;           /* the same array in real space */
   long double  *cpot_NG_re;      /* long-double accumulators of the NG term */
   long double  *cpot_NG_im;
   unsigned int  N, N_i, N_j, N_k;
@@ -319,8 +319,8 @@ void displacement_fields(void)
   uint64_t      coord;
 
   //DHAYAA: For computing temporary fields
-  fftw_complex *(cfields[8]);
-  fftw_real    *(fields[8]);
+  lpt_complex *(cfields[8]);
+  lpt_real    *(fields[8]);
 
   //Nmax sets how many modes we build our basis approximation fore.
   //If it is lower than Nsample then we can't use the Legendre modes.
@@ -456,7 +456,7 @@ void displacement_fields(void)
    * once and keeps all N_modes of them in real space, and tabulates the per-mode values of K_{ij}: about N_modes
    * extra grids, half the FFTs. The two agree to rounding (the g_j of pairs with N_i >= 5 are recursed from 4
    * instead of from N_i). */
-  fftw_real   **gcache = NULL;
+  lpt_real    **gcache = NULL;
   ModalModeList ML     = {0, 0, NULL, NULL};
 
   //We'll use these fields to compute temporary terms of interest to us
@@ -467,31 +467,31 @@ void displacement_fields(void)
       if(ModeTables && N >= 3)          /* the g_i / g_j work grids are only used without the cache */
         continue;
 
-      cfields[N] = (fftw_complex *) malloc(sizeof(fftw_real) * TotalSizePlusAdditional);
-      fields[N]  = (fftw_real *) cfields[N];
+      cfields[N] = (lpt_complex *) lpt_alloc_grid();
+      fields[N]  = (lpt_real *) cfields[N];
       ASSERT_ALLOC(cfields[N]);
     }
 
-  c_tmp = (fftw_complex *) malloc(sizeof(fftw_real) * TotalSizePlusAdditional);
-  p_tmp = (fftw_real *) c_tmp;
+  c_tmp = (lpt_complex *) lpt_alloc_grid();
+  p_tmp = (lpt_real *) c_tmp;
   ASSERT_ALLOC(c_tmp);
 
-  cpot_NG = (fftw_complex *) malloc(sizeof(fftw_real) * TotalSizePlusAdditional);
+  cpot_NG = (lpt_complex *) lpt_alloc_grid();
   ASSERT_ALLOC(cpot_NG);
 
   if(ModeTables)
     {
-      gcache = malloc(N_modes * sizeof(fftw_real *));
+      gcache = malloc(N_modes * sizeof(lpt_real *));
       ASSERT_ALLOC(gcache);
       for(N = 0; N < N_modes; N++)
         {
-          gcache[N] = (fftw_real *) malloc(sizeof(fftw_real) * TotalSizePlusAdditional);
+          gcache[N] = (lpt_real *) lpt_alloc_grid();
           ASSERT_ALLOC(gcache[N]);
         }
 
       if(ThisTask == 0)
         printf("  ModeTables 1: caching %d real-space mode fields (%.2f GB over all ranks).\n", N_modes,
-               N_modes * (double) sizeof(fftw_real) * TotalSizePlusAdditional * NTask / 1e9);
+               N_modes * (double) sizeof(lpt_real) * TotalSizePlusAdditional * NTask / 1e9);
     }
 
   lpt_barrier();
@@ -499,21 +499,21 @@ void displacement_fields(void)
   /* first, clean the array */
   for(N = 0; N < 8; N++)
     if(cfields[N])
-      memset(cfields[N], 0, sizeof(fftw_real) * TotalSizePlusAdditional);
-  memset(c_tmp, 0, sizeof(fftw_real) * TotalSizePlusAdditional);
-  memset(cpot_NG, 0, sizeof(fftw_real) * TotalSizePlusAdditional);
+      memset(cfields[N], 0, sizeof(lpt_real) * TotalSizePlusAdditional);
+  memset(c_tmp, 0, sizeof(lpt_real) * TotalSizePlusAdditional);
+  memset(cpot_NG, 0, sizeof(lpt_real) * TotalSizePlusAdditional);
 
   lpt_barrier();
 
-  fftw_complex *ri[3] = {cfields[0], cfields[1], cfields[2]};   /* recursion buffers of g_i */
+  lpt_complex *ri[3] = {cfields[0], cfields[1], cfields[2]};   /* recursion buffers of g_i */
 
   if(ModeTables)
     {
       /* build every mode field once, in order, and keep it in real space */
       for(N = 0; N < N_modes; N++)
         {
-          memset(gcache[N], 0, sizeof(fftw_real) * TotalSizePlusAdditional);
-          modal_build_field(N, N == 4, cpot, ri, (fftw_complex *) gcache[N], X0Table, kmin_ns, kmax_ns);
+          memset(gcache[N], 0, sizeof(lpt_real) * TotalSizePlusAdditional);
+          modal_build_field(N, N == 4, cpot, ri, (lpt_complex *) gcache[N], X0Table, kmin_ns, kmax_ns);
           if(N >= 4)
             modal_rotate(ri);
           lpt_barrier();
@@ -528,7 +528,7 @@ void displacement_fields(void)
   /* Loop over the mode pairs (N_i <= N_j) */
   for(N_i = 0; N_i < N_modes; N_i++)
     {
-      fftw_real *gi, *gj;
+      lpt_real *gi, *gj;
 
       if(ModeTables)
         gi = gcache[N_i];
@@ -536,7 +536,7 @@ void displacement_fields(void)
         {
           //Generate the first field in fourier space
           //zero the out-of-band modes: the previous FFT left this grid in real space
-          memset(cfields[3], 0, sizeof(fftw_real) * TotalSizePlusAdditional);
+          memset(cfields[3], 0, sizeof(lpt_real) * TotalSizePlusAdditional);
           modal_build_field(N_i, N_i == 4, cpot, ri, cfields[3], X0Table, kmin_ns, kmax_ns);
           if(N_i >= 4)
             modal_rotate(ri);     //so the next iteration continues the recursion
@@ -547,7 +547,7 @@ void displacement_fields(void)
           gi = fields[3];
         }
 
-      fftw_complex *rj[3] = {cfields[4], cfields[5], cfields[6]};   /* recursion buffers of g_j (restarted at N_i) */
+      lpt_complex *rj[3] = {cfields[4], cfields[5], cfields[6]};   /* recursion buffers of g_j (restarted at N_i) */
 
       for(N_j = N_i; N_j < N_modes; N_j++)
         {
@@ -574,7 +574,7 @@ void displacement_fields(void)
                 {
                   //Generate the 2nd field, also in fourier space
                   //zero the out-of-band modes: the previous FFT left this grid in real space
-                  memset(cfields[7], 0, sizeof(fftw_real) * TotalSizePlusAdditional);
+                  memset(cfields[7], 0, sizeof(lpt_real) * TotalSizePlusAdditional);
                   modal_build_field(N_j, (N_j == 4) || ((N_i >= 4) && (N_i == N_j)), cpot, rj, cfields[7], X0Table,
                                     kmin_ns, kmax_ns);
                   if(N_j >= 4)
@@ -610,7 +610,7 @@ void displacement_fields(void)
               lpt_barrier();
             }
 
-          memset(p_tmp, 0, sizeof(fftw_real) * TotalSizePlusAdditional);
+          memset(p_tmp, 0, sizeof(lpt_real) * TotalSizePlusAdditional);
           lpt_barrier();
 
           //Multiply terms in realspace [\phi gi] x [\phi gj]
@@ -700,7 +700,7 @@ void displacement_fields(void)
 
   if(N_modes >= 3 && t_012 != 0)
     {
-      fftw_real *g0, *gj;
+      lpt_real *g0, *gj;
 
       if(ModeTables)
         g0 = gcache[0];
@@ -708,7 +708,7 @@ void displacement_fields(void)
         {
           //Generate the first field in fourier space
           //zero the out-of-band modes: the previous FFT left this grid in real space
-          memset(cfields[0], 0, sizeof(fftw_real) * TotalSizePlusAdditional);
+          memset(cfields[0], 0, sizeof(lpt_real) * TotalSizePlusAdditional);
           modal_build_field(0, 0, cpot, ri, cfields[0], X0Table, kmin_ns, kmax_ns);
           lpt_barrier();
 
@@ -725,7 +725,7 @@ void displacement_fields(void)
             {
               //Generate the 2nd field, also in fourier space
               //zero the out-of-band modes: the previous FFT left this grid in real space
-              memset(cfields[1], 0, sizeof(fftw_real) * TotalSizePlusAdditional);
+              memset(cfields[1], 0, sizeof(lpt_real) * TotalSizePlusAdditional);
               modal_build_field(N_j, 0, cpot, ri, cfields[1], X0Table, kmin_ns, kmax_ns);
               lpt_barrier();
 
@@ -734,7 +734,7 @@ void displacement_fields(void)
               gj = fields[1];
             }
 
-          memset(p_tmp, 0, sizeof(fftw_real) * TotalSizePlusAdditional);
+          memset(p_tmp, 0, sizeof(lpt_real) * TotalSizePlusAdditional);
           lpt_barrier();
 
           //Multiply terms in realspace [\phi gi] x [\phi gj]
@@ -809,7 +809,7 @@ void displacement_fields(void)
 
   /**** Add the NG potential to the Gaussian one, then the displacements ****/
 
-  //Copy the long-double accumulator (transposed k-space layout) into the FFTW complex array, then transpose it
+  //Copy the long-double accumulator (transposed k-space layout) into the complex grid, then transpose it
   //back to the normal x-slab layout used below
   for(coord = 0; coord < (uint64_t) Local_ny_t * Nmesh * (Nmesh / 2 + 1); coord++)
     {

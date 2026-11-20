@@ -692,14 +692,14 @@ static double bpng_input_basis_value(int axis, int node, double kmag)
 /* ---- per-mode steps of the convolution: filter, product, output-leg coefficient ---- */
 
 /* dst = psi_node(|k|) src in Fourier space (normal x-slab layout), zero elsewhere. */
-static void bpng_build_input_filtered_field(fftw_complex *dst, fftw_complex *src, int axis, int node)
+static void bpng_build_input_filtered_field(lpt_complex *dst, lpt_complex *src, int axis, int node)
 {
   PROF_BEGIN(PROF_FIELD)
   ptrdiff_t ii, j, k, i;
   uint64_t  coord;
   double    kx, ky, kz, kmag, filt;
 
-  memset(dst, 0, sizeof(fftw_real) * TotalSizePlusAdditional);
+  memset(dst, 0, sizeof(lpt_real) * TotalSizePlusAdditional);
 
   if(ModeTables)
     {
@@ -752,13 +752,13 @@ static void bpng_build_input_filtered_field(fftw_complex *dst, fftw_complex *src
 }
 
 /* out = a * b on the real-space grid (padding zeroed). */
-static void bpng_multiply_real_fields(fftw_real *out, fftw_real *a, fftw_real *b)
+static void bpng_multiply_real_fields(lpt_real *out, lpt_real *a, lpt_real *b)
 {
   PROF_BEGIN(PROF_MULT)
   ptrdiff_t i, j, k;
   uint64_t  coord;
 
-  memset(out, 0, sizeof(fftw_real) * TotalSizePlusAdditional);
+  memset(out, 0, sizeof(lpt_real) * TotalSizePlusAdditional);
 
   for(i = 0; i < Local_nx; i++)
     for(j = 0; j < Nmesh; j++)
@@ -896,28 +896,28 @@ static void bpng_free_mode_list(void)
 
 /* ---- the NG potential: loops over bin pairs ---- */
 
-static fftw_real **bpng_alloc_real_field_cache(int nfield)
+static lpt_real **bpng_alloc_real_field_cache(int nfield)
 {
-  int         a;
-  fftw_real **cache;
+  int        a;
+  lpt_real **cache;
 
   if(nfield <= 0)
     return NULL;
 
-  cache = (fftw_real **) malloc(nfield * sizeof(fftw_real *));
+  cache = (lpt_real **) malloc(nfield * sizeof(lpt_real *));
   if(!cache)
     FatalError(9301);
 
   for(a = 0; a < nfield; a++)
     {
-      cache[a] = (fftw_real *) malloc(sizeof(fftw_real) * TotalSizePlusAdditional);
+      cache[a] = (lpt_real *) lpt_alloc_grid();
       if(!cache[a])
         FatalError(9302);
     }
   return cache;
 }
 
-static void bpng_free_real_field_cache(fftw_real **cache, int nfield)
+static void bpng_free_real_field_cache(lpt_real **cache, int nfield)
 {
   int a;
 
@@ -931,30 +931,30 @@ static void bpng_free_real_field_cache(fftw_real **cache, int nfield)
 }
 
 /* Filtered input field psi_node(k) phi(k), transformed to real space. */
-static void bpng_fill_cached_real_field(fftw_real *field, fftw_complex *src, int axis, int node)
+static void bpng_fill_cached_real_field(lpt_real *field, lpt_complex *src, int axis, int node)
 {
-  bpng_build_input_filtered_field((fftw_complex *) field, src, axis, node);
+  bpng_build_input_filtered_field((lpt_complex *) field, src, axis, node);
   lpt_barrier();
   lpt_fft(Inverse_plan, field);
   lpt_barrier();
 }
 
 static void bpng_convolve_and_accumulate_hybrid(
-    fftw_complex *field_a, fftw_real *field_a_real,
-    fftw_complex *field_b, fftw_real *field_b_real,
-    fftw_complex *c_tmp, fftw_real *p_tmp,
+    lpt_complex *field_a, lpt_real *field_a_real,
+    lpt_complex *field_b, lpt_real *field_b_real,
+    lpt_complex *c_tmp, lpt_real *p_tmp,
     long double *out_re, long double *out_im,
     int ia, int ib, int use_symmetry);
 
 /* ia <= ib pairs, with the filtered real-space fields of block_size k1 bins (and of the k2 bins they pair with)
  * kept in memory, so each field is transformed once per block instead of once per pair. */
 static void bpng_compute_non_gaussian_potential_symmetric_blocked(
-    fftw_complex *cpot, long double *cpot_NG_re, long double *cpot_NG_im,
-    fftw_complex *c_tmp, fftw_real *p_tmp, int block_size)
+    lpt_complex *cpot, long double *cpot_NG_re, long double *cpot_NG_im,
+    lpt_complex *c_tmp, lpt_real *p_tmp, int block_size)
 {
-  int         n, a0, b0, ia, ib, na, nb, la, lb, start_b;
-  int         timed_chars = 0;
-  fftw_real **acache, **bcache;
+  int        n, a0, b0, ia, ib, na, nb, la, lb, start_b;
+  int        timed_chars = 0;
+  lpt_real **acache, **bcache;
 
   n = BPNG.nk[0];
   if(block_size <= 0)
@@ -1001,8 +1001,8 @@ static void bpng_compute_non_gaussian_potential_symmetric_blocked(
               for(lb = start_b; lb < nb; lb++)
                 {
                   ib = b0 + lb;
-                  bpng_convolve_and_accumulate_hybrid((fftw_complex *) acache[la], acache[la],
-                                                      (fftw_complex *) bcache[lb], bcache[lb],
+                  bpng_convolve_and_accumulate_hybrid((lpt_complex *) acache[la], acache[la],
+                                                      (lpt_complex *) bcache[lb], bcache[lb],
                                                       c_tmp, p_tmp,
                                                       cpot_NG_re, cpot_NG_im, ia, ib, 1);
                 }
@@ -1020,7 +1020,7 @@ static void bpng_compute_non_gaussian_potential_symmetric_blocked(
 
 /* out += Fnl K_ab(k3) conv(k3). conv is a transposed-order forward FFT; out_re/out_im are accumulated in the
  * same transposed layout. */
-static void bpng_accumulate_hybrid_convolution(fftw_complex *conv, long double *out_re, long double *out_im,
+static void bpng_accumulate_hybrid_convolution(lpt_complex *conv, long double *out_re, long double *out_im,
                                                int ia, int ib, int use_symmetry)
 {
   PROF_BEGIN(PROF_ACCUM)
@@ -1093,9 +1093,9 @@ static void bpng_accumulate_hybrid_convolution(fftw_complex *conv, long double *
 
 /* One pair: product of the two real-space fields, forward FFT, output-leg accumulation. */
 static void bpng_convolve_and_accumulate_hybrid(
-    fftw_complex *field_a, fftw_real *field_a_real,
-    fftw_complex *field_b, fftw_real *field_b_real,
-    fftw_complex *c_tmp, fftw_real *p_tmp,
+    lpt_complex *field_a, lpt_real *field_a_real,
+    lpt_complex *field_b, lpt_real *field_b_real,
+    lpt_complex *c_tmp, lpt_real *p_tmp,
     long double *out_re, long double *out_im,
     int ia, int ib, int use_symmetry)
 {
@@ -1108,13 +1108,13 @@ static void bpng_convolve_and_accumulate_hybrid(
   bpng_accumulate_hybrid_convolution(c_tmp, out_re, out_im, ia, ib, use_symmetry);
 }
 
-static void bpng_compute_non_gaussian_potential(fftw_complex *cpot, long double *cpot_NG_re, long double *cpot_NG_im)
+static void bpng_compute_non_gaussian_potential(lpt_complex *cpot, long double *cpot_NG_re, long double *cpot_NG_im)
 {
   int           ia, ib, ib_start, use_symmetry, cache_block;
   int           timed_chars = 0;
   uint64_t      bytes = 0;
-  fftw_complex *cf1, *cf2, *c_tmp;
-  fftw_real    *f1, *f2, *p_tmp;
+  lpt_complex  *cf1, *cf2, *c_tmp;
+  lpt_real     *f1, *f2, *p_tmp;
 
   if(ThisTask == 0)
     {
@@ -1140,8 +1140,8 @@ static void bpng_compute_non_gaussian_potential(fftw_complex *cpot, long double 
   if(cache_block < 0)
     cache_block = 0;
 
-  c_tmp = (fftw_complex *) malloc(sizeof(fftw_real) * TotalSizePlusAdditional);
-  p_tmp = (fftw_real *) c_tmp;
+  c_tmp = (lpt_complex *) lpt_alloc_grid();
+  p_tmp = (lpt_real *) c_tmp;
   ASSERT_ALLOC(c_tmp);
 
   /* blocked path: filtered fields cached in real space */
@@ -1170,10 +1170,10 @@ static void bpng_compute_non_gaussian_potential(fftw_complex *cpot, long double 
     }
 
   /* unblocked path: two work fields, the k2 field rebuilt for every pair */
-  cf1 = (fftw_complex *) malloc(sizeof(fftw_real) * TotalSizePlusAdditional);
-  cf2 = (fftw_complex *) malloc(sizeof(fftw_real) * TotalSizePlusAdditional);
-  f1  = (fftw_real *) cf1;
-  f2  = (fftw_real *) cf2;
+  cf1 = (lpt_complex *) lpt_alloc_grid();
+  cf2 = (lpt_complex *) lpt_alloc_grid();
+  f1  = (lpt_real *) cf1;
+  f2  = (lpt_real *) cf2;
   ASSERT_ALLOC(cf1 && cf2 && c_tmp);
 
   if(ThisTask == 0 && use_symmetry)
@@ -1238,8 +1238,8 @@ static void bpng_compute_non_gaussian_potential(fftw_complex *cpot, long double 
 void displacement_fields(void)
 {
   double        Beta;
-  fftw_complex *cpot;           /* Gaussian potential */
-  fftw_complex *cpot_NG;        /* non-Gaussian term, in the FFTW complex layout */
+  lpt_complex  *cpot;           /* Gaussian potential */
+  lpt_complex  *cpot_NG;        /* non-Gaussian term, in the complex grid layout */
   long double  *cpot_NG_re;     /* its long-double accumulators */
   long double  *cpot_NG_im;
   uint64_t      bytes = 0;
@@ -1262,16 +1262,16 @@ void displacement_fields(void)
 
   /**** BINNED PRIMORDIAL POTENTIAL **************/
 
-  cpot_NG = (fftw_complex *) malloc(sizeof(fftw_real) * TotalSizePlusAdditional);
+  cpot_NG = (lpt_complex *) lpt_alloc_grid();
   ASSERT_ALLOC(cpot_NG);
-  memset(cpot_NG, 0, sizeof(fftw_real) * TotalSizePlusAdditional);
+  memset(cpot_NG, 0, sizeof(lpt_real) * TotalSizePlusAdditional);
 
   lpt_barrier();
   bpng_compute_non_gaussian_potential(cpot, cpot_NG_re, cpot_NG_im);
   lpt_barrier();
 
   /* Move the long-double accumulator (transposed k-space layout, see bpng_accumulate_hybrid_convolution) into
-   * the FFTW complex array, then transpose it back to the normal x-slab layout used below. */
+   * the complex grid, then transpose it back to the normal x-slab layout used below. */
   for(coord = 0; coord < (uint64_t) Local_ny_t * Nmesh * (Nmesh / 2 + 1); coord++)
     {
       cpot_NG[coord].re = (double) cpot_NG_re[coord];

@@ -65,10 +65,11 @@ int Local_nx, Local_x_start;
 
 int IdStart;
 
-rfftwnd_mpi_plan Inverse_plan;
-rfftwnd_mpi_plan Forward_plan;
+fftw_plan Inverse_plan;
+fftw_plan Forward_plan;
+fftw_plan Forward_plan_t;
+fftw_plan Transpose_plan;
 unsigned int TotalSizePlusAdditional;
-fftw_real *Workspace;
 
 
 double UnitTime_in_s, UnitLength_in_cm, UnitMass_in_g, UnitVelocity_in_cm_per_s;

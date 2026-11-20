@@ -26,30 +26,58 @@
 double lpt_prof_time[PROF_NCAT];
 #endif
 
-void lpt_fft(rfftwnd_mpi_plan plan, fftw_real *field)
+static int lpt_plan_alignment;      /* fftw_alignment_of() of the grid the plans were made on */
+
+/* One grid of TotalSizePlusAdditional reals. The plans are made once (initialize_ffts) and run on every grid
+ * through FFTW3's new-array execute functions, which need the planning alignment: 64-byte aligned grids have it
+ * for every SIMD instruction set. Freed with free(). */
+void *lpt_alloc_grid(void)
+{
+  void *p = NULL;
+
+  if(posix_memalign(&p, 64, sizeof(lpt_real) * (size_t) TotalSizePlusAdditional))
+    return NULL;
+  return p;
+}
+
+static void lpt_check_alignment(const void *field)
+{
+  if(fftw_alignment_of((double *) field) != lpt_plan_alignment)
+    {
+      printf("Task %d: grid passed to an FFT is not allocated with lpt_alloc_grid()\n", ThisTask);
+      FatalError(1116);
+    }
+}
+
+/* In-place FFT of one grid with Forward_plan (r2c) or Inverse_plan (c2r), normal x-slab layout, unnormalised. */
+void lpt_fft(fftw_plan plan, lpt_real *field)
 {
   PROF_BEGIN(PROF_FFT)
-  rfftwnd_mpi(plan, 1, field, Workspace, FFTW_NORMAL_ORDER);
+  lpt_check_alignment(field);
+  if(plan == Inverse_plan)
+    fftw_mpi_execute_dft_c2r(plan, (fftw_complex *) field, field);
+  else
+    fftw_mpi_execute_dft_r2c(plan, field, (fftw_complex *) field);
   PROF_END(PROF_FFT)
 }
 
 /* Forward FFT left in transposed order: k-space data are [Local_ny_t][Nmesh (x)][Nmesh/2+1 (z)], with
  * y = Local_y_start_t + jj. Skips the final all-to-all of the normal-order transform. */
-void lpt_fft_forward_t(fftw_real *field)
+void lpt_fft_forward_t(lpt_real *field)
 {
   PROF_BEGIN(PROF_FFT)
-  rfftwnd_mpi(Forward_plan, 1, field, Workspace, FFTW_TRANSPOSED_ORDER);
+  lpt_check_alignment(field);
+  fftw_mpi_execute_dft_r2c(Forward_plan_t, field, (fftw_complex *) field);
   PROF_END(PROF_FFT)
 }
 
-/* Transposed-order k-space data -> normal order (x-slabs), in place: the final step of a normal-order forward
- * rfftwnd_mpi, so the result is bit-identical to having transformed in normal order. */
-void lpt_transposed_to_normal(fftw_complex *data)
+/* Transposed-order k-space data -> normal order (x-slabs), in place. A pure data movement, so the values are
+ * those of the transposed-order transform. */
+void lpt_transposed_to_normal(lpt_complex *data)
 {
-  int el_size = (sizeof(fftw_complex) / sizeof(TRANSPOSE_EL_TYPE)) * Forward_plan->p_fft->n_after[0];
-
   PROF_BEGIN(PROF_FFT)
-  transpose_mpi(Forward_plan->p_transpose_inv, el_size, (TRANSPOSE_EL_TYPE *) data, (TRANSPOSE_EL_TYPE *) Workspace);
+  lpt_check_alignment(data);
+  fftw_mpi_execute_r2r(Transpose_plan, (double *) data, (double *) data);
   PROF_END(PROF_FFT)
 }
 
@@ -129,6 +157,7 @@ int main(int argc, char **argv)
   int timed_chars = 0;
 
   MPI_Init(&argc, &argv);
+  fftw_mpi_init();
   MPI_Comm_rank(MPI_COMM_WORLD, &ThisTask);
   MPI_Comm_size(MPI_COMM_WORLD, &NTask);
 
@@ -194,14 +223,14 @@ int main(int argc, char **argv)
 
 /* Gaussian primordial potential on this rank's slab (the random phases do not depend on the number of
  * ranks). Allocates and returns cpot and the zeroed long-double NG accumulators, and the factor Beta. */
-void lpt_setup_gaussian_potential(fftw_complex **cpot_out, long double **re_out, long double **im_out,
+void lpt_setup_gaussian_potential(lpt_complex **cpot_out, long double **re_out, long double **im_out,
                                   double *Beta_out)
 {
   gsl_rng      *random_generator;
   ptrdiff_t     i, j, k, ii, jj;
   int           timed_chars = 0;
   double        phig, Beta;
-  fftw_complex *cpot;              /* Gaussian potential */
+  lpt_complex  *cpot;              /* Gaussian potential */
   long double  *cpot_NG_re;        /* long-double accumulators of the NG term */
   long double  *cpot_NG_im;
   double        fac;
@@ -259,7 +288,7 @@ void lpt_setup_gaussian_potential(fftw_complex **cpot_out, long double **re_out,
     }
 
   bytes = 0; /*initialize*/
-  cpot  = (fftw_complex *) malloc(sizeof(fftw_real) * TotalSizePlusAdditional);
+  cpot  = (lpt_complex *) lpt_alloc_grid();
   ASSERT_ALLOC(cpot);
 
   cpot_NG_re = malloc(sizeof(long double) * TotalSizePlusAdditional);
@@ -269,7 +298,7 @@ void lpt_setup_gaussian_potential(fftw_complex **cpot_out, long double **re_out,
 
   memset(cpot_NG_re, 0, sizeof(long double) * TotalSizePlusAdditional);
   memset(cpot_NG_im, 0, sizeof(long double) * TotalSizePlusAdditional);
-  memset(cpot, 0, sizeof(fftw_real) * TotalSizePlusAdditional);
+  memset(cpot, 0, sizeof(lpt_real) * TotalSizePlusAdditional);
 
   /* Ho in units of UnitLength_in_cm and c=1, i.e., internal units so far  */
   Beta = 1.5 * Omega / (2998. * 2998. / UnitLength_in_cm / UnitLength_in_cm * 3.085678e24 * 3.085678e24 ) / D0 ;
@@ -443,7 +472,7 @@ void lpt_setup_gaussian_potential(fftw_complex **cpot_out, long double **re_out,
  * potentials written if SavePotentialField, then the ZA and 2LPT displacements and velocities of P[].
  * Frees cpot and cpot_NG. ng_scale is Fnl for the modal method and 1 for the binned one (whose
  * kernel already includes Fnl). */
-void lpt_displacements_from_potential(fftw_complex *cpot, fftw_complex *cpot_NG, double ng_scale, double Beta)
+void lpt_displacements_from_potential(lpt_complex *cpot, lpt_complex *cpot_NG, double ng_scale, double Beta)
 {
   MPI_Request   request;
   MPI_Status    status;
@@ -452,7 +481,7 @@ void lpt_displacements_from_potential(fftw_complex *cpot, fftw_complex *cpot_NG,
   int           timed_chars = 0;
   int           sendTask, recvTask;
   double        t_of_k, twb;
-  fftw_real    *pot;
+  lpt_real     *pot;
   double        vel_prefac, vel_prefac2;
   double        kvec[3], kmag, kmag2;
   double        hubble_a;
@@ -461,16 +490,16 @@ void lpt_displacements_from_potential(fftw_complex *cpot, fftw_complex *cpot_NG,
   double        dis, dis2, maxdisp, max_disp_glob;
   uint64_t      bytes = 0, nmesh3;
   uint64_t      coord;
-  fftw_complex *(cdisp[3]), *(cdisp2[3]);   /* ZA and 2nd order displacements */
-  fftw_real    *(disp[3]), *(disp2[3]);
-  fftw_complex *(cdigrad[6]);               /* displacement gradient */
-  fftw_real    *(digrad[6]);
+  lpt_complex  *(cdisp[3]), *(cdisp2[3]);  /* ZA and 2nd order displacements */
+  lpt_real     *(disp[3]), *(disp2[3]);
+  lpt_complex  *(cdigrad[6]);              /* displacement gradient */
+  lpt_real     *(digrad[6]);
 
 #ifdef CORRECT_CIC
   double fx, fy, fz, ff, smth;
 #endif
 
-  pot = (fftw_real *) cpot;
+  pot = (lpt_real *) cpot;
 
   hubble_a    = Hubble * sqrt(Omega / pow(InitTime, 3) + (1 - Omega - OmegaLambda) / pow(InitTime, 2) + OmegaLambda);
   vel_prefac  = InitTime * hubble_a * F_Omega(InitTime) / sqrt(InitTime);
@@ -550,8 +579,8 @@ void lpt_displacements_from_potential(fftw_complex *cpot, fftw_complex *cpot_NG,
 
   for(axes = 0, bytes = 0; axes < 3; axes++)
     {
-      cdisp[axes] = (fftw_complex *) malloc(sizeof(fftw_real) * TotalSizePlusAdditional);
-      disp[axes]  = (fftw_real *) cdisp[axes];
+      cdisp[axes] = (lpt_complex *) lpt_alloc_grid();
+      disp[axes]  = (lpt_real *) cdisp[axes];
     }
   ASSERT_ALLOC(cdisp[0] && cdisp[1] && cdisp[2]);
 
@@ -619,8 +648,8 @@ void lpt_displacements_from_potential(fftw_complex *cpot, fftw_complex *cpot_NG,
 
   for(i = 0; i < 6; i++)
     {
-      cdigrad[i] = (fftw_complex *) malloc(sizeof(fftw_real) * TotalSizePlusAdditional);
-      digrad[i]  = (fftw_real *) cdigrad[i];
+      cdigrad[i] = (lpt_complex *) lpt_alloc_grid();
+      digrad[i]  = (lpt_real *) cdigrad[i];
       ASSERT_ALLOC(cdigrad[i]);
     }
 
@@ -688,7 +717,7 @@ void lpt_displacements_from_potential(fftw_complex *cpot, fftw_complex *cpot_NG,
   for(axes = 0; axes < 3; axes++)
     {
       cdisp2[axes] = cdigrad[axes];
-      disp2[axes]  = (fftw_real *) cdisp2[axes];
+      disp2[axes]  = (lpt_real *) cdisp2[axes];
     }
 
   free(cdigrad[4]);
@@ -796,22 +825,22 @@ void lpt_displacements_from_potential(fftw_complex *cpot, fftw_complex *cpot_NG,
         {
           /* send ZA disp */
           MPI_Isend(&(disp[axes][0]),
-                    sizeof(fftw_real) * Nmesh * (2 * (Nmesh / 2 + 1)),
+                    sizeof(lpt_real) * Nmesh * (2 * (Nmesh / 2 + 1)),
                     MPI_BYTE, recvTask, 10, MPI_COMM_WORLD, &request);
 
           MPI_Recv(&(disp[axes][(Local_nx * Nmesh) * (2 * (Nmesh / 2 + 1))]),
-                   sizeof(fftw_real) * Nmesh * (2 * (Nmesh / 2 + 1)),
+                   sizeof(lpt_real) * Nmesh * (2 * (Nmesh / 2 + 1)),
                    MPI_BYTE, sendTask, 10, MPI_COMM_WORLD, &status);
 
           MPI_Wait(&request, &status);
 
           /* send 2nd order disp */
           MPI_Isend(&(disp2[axes][0]),
-                    sizeof(fftw_real) * Nmesh * (2 * (Nmesh / 2 + 1)),
+                    sizeof(lpt_real) * Nmesh * (2 * (Nmesh / 2 + 1)),
                     MPI_BYTE, recvTask, 10, MPI_COMM_WORLD, &request);
 
           MPI_Recv(&(disp2[axes][(Local_nx * Nmesh) * (2 * (Nmesh / 2 + 1))]),
-                   sizeof(fftw_real) * Nmesh * (2 * (Nmesh / 2 + 1)),
+                   sizeof(lpt_real) * Nmesh * (2 * (Nmesh / 2 + 1)),
                    MPI_BYTE, sendTask, 10, MPI_COMM_WORLD, &status);
 
           MPI_Wait(&request, &status);
@@ -929,25 +958,39 @@ void set_units(void)     /* ... set some units */
   Hubble        = HUBBLE * UnitTime_in_s;
 }
 
+/* FFTW3-MPI plans of the in-place Nmesh^3 transforms (slab-decomposed in x), the slab sizes, and the grid size.
+ * All plans use FFTW_ESTIMATE: no timing measurements, so planning is instant and repeated runs start at once. */
 void initialize_ffts(void)
 {
-  int    total_size, i, additional;
-  int    local_ny_after_transpose, local_y_start_after_transpose;
-  int   *slab_to_task_local;
-  size_t bytes = 0;
+  ptrdiff_t alloc_c, alloc_t, n0, s0, n1, s1, t0, ts0, t1, ts1;
+  long long total_size;
+  int       i, additional;
+  int      *slab_to_task_local;
+  size_t    bytes = 0;
+  lpt_real *plan_grid;
+  const int nzc = Nmesh / 2 + 1;     /* complex z length of the r2c layout */
 
   lpt_barrier();
 
-  Inverse_plan = rfftw3d_mpi_create_plan(MPI_COMM_WORLD,
-                                         Nmesh, Nmesh, Nmesh, FFTW_COMPLEX_TO_REAL, FFTW_ESTIMATE);
+  /* r2c layout: real [Local_nx][Nmesh][2 nzc] in x-slabs; the transposed output is [Local_ny_t][Nmesh][nzc] */
+  alloc_c = fftw_mpi_local_size_3d_transposed(Nmesh, Nmesh, nzc, MPI_COMM_WORLD, &n0, &s0, &n1, &s1);
 
-  Forward_plan = rfftw3d_mpi_create_plan(MPI_COMM_WORLD,
-                                         Nmesh, Nmesh, Nmesh, FFTW_REAL_TO_COMPLEX, FFTW_ESTIMATE);
+  /* the transposed -> normal transpose of the k-space grid: an Nmesh (y) x Nmesh (x) matrix of 2 nzc doubles */
+  alloc_t = fftw_mpi_local_size_many_transposed(2, (ptrdiff_t[]) {Nmesh, Nmesh}, 2 * nzc,
+                                                FFTW_MPI_DEFAULT_BLOCK, FFTW_MPI_DEFAULT_BLOCK, MPI_COMM_WORLD,
+                                                &t0, &ts0, &t1, &ts1);
+  if(t0 != n1 || ts0 != s1 || t1 != n0 || ts1 != s0)
+    {
+      printf("Task %d: FFTW3 transpose layout (%td+%td, %td+%td) does not match the FFT layout (%td+%td, %td+%td)\n",
+             ThisTask, ts0, t0, ts1, t1, s1, n1, s0, n0);
+      FatalError(1117);
+    }
 
-  rfftwnd_mpi_local_sizes(Forward_plan, &Local_nx, &Local_x_start,
-                          &local_ny_after_transpose, &local_y_start_after_transpose, &total_size);
-  Local_ny_t      = local_ny_after_transpose;
-  Local_y_start_t = local_y_start_after_transpose;
+  Local_nx        = (int) n0;
+  Local_x_start   = (int) s0;
+  Local_ny_t      = (int) n1;
+  Local_y_start_t = (int) s1;
+  total_size      = (2 * alloc_c > alloc_t) ? 2 * (long long) alloc_c : (long long) alloc_t;   /* in reals */
 
   Local_nx_table = malloc(sizeof(int) * NTask);
   MPI_Allgather(&Local_nx, 1, MPI_INT, Local_nx_table, 1, MPI_INT, MPI_COMM_WORLD);
@@ -967,26 +1010,46 @@ void initialize_ffts(void)
 
   additional = (Nmesh) * (2 * (Nmesh / 2 + 1));     /* additional plane on the right side */
 
-  if((long long) Local_nx * Nmesh * (2 * (Nmesh / 2 + 1)) + additional > AARAMBAM_MAX_SLAB_REALS)
+  if(total_size + additional > AARAMBAM_MAX_SLAB_REALS)
     {
-      printf("Task %d: its slab (%d x %d x %d reals plus one plane) exceeds the 32-bit size limit of FFTW2 "
-             "(%lld). Run with more MPI ranks.\n", ThisTask, Local_nx, Nmesh, 2 * (Nmesh / 2 + 1),
-             (long long) AARAMBAM_MAX_SLAB_REALS);
+      printf("Task %d: its grid (%lld reals for a %d x %d x %d slab plus one plane) exceeds the 32-bit grid size "
+             "of this code (%lld). Run with more MPI ranks.\n", ThisTask, total_size + additional, Local_nx, Nmesh,
+             2 * nzc, (long long) AARAMBAM_MAX_SLAB_REALS);
       FatalError(1114);
     }
 
   TotalSizePlusAdditional = total_size + additional;
 
-  Workspace = (fftw_real *) malloc(sizeof(fftw_real) * total_size);
-  ASSERT_ALLOC(Workspace)
+  /* plan on a grid from lpt_alloc_grid, so every grid the plans later run on has the planning alignment */
+  plan_grid = lpt_alloc_grid();
+  ASSERT_ALLOC(plan_grid);
+
+  Forward_plan   = fftw_mpi_plan_dft_r2c_3d(Nmesh, Nmesh, Nmesh, plan_grid, (fftw_complex *) plan_grid,
+                                            MPI_COMM_WORLD, FFTW_ESTIMATE);
+  Forward_plan_t = fftw_mpi_plan_dft_r2c_3d(Nmesh, Nmesh, Nmesh, plan_grid, (fftw_complex *) plan_grid,
+                                            MPI_COMM_WORLD, FFTW_ESTIMATE | FFTW_MPI_TRANSPOSED_OUT);
+  Inverse_plan   = fftw_mpi_plan_dft_c2r_3d(Nmesh, Nmesh, Nmesh, (fftw_complex *) plan_grid, plan_grid,
+                                            MPI_COMM_WORLD, FFTW_ESTIMATE);
+  Transpose_plan = fftw_mpi_plan_many_transpose(Nmesh, Nmesh, 2 * nzc, FFTW_MPI_DEFAULT_BLOCK, FFTW_MPI_DEFAULT_BLOCK,
+                                                plan_grid, plan_grid, MPI_COMM_WORLD, FFTW_ESTIMATE);
+  if(!Forward_plan || !Forward_plan_t || !Inverse_plan || !Transpose_plan)
+    {
+      printf("Task %d: FFTW3 could not create the MPI plans\n", ThisTask);
+      FatalError(1118);
+    }
+
+  lpt_plan_alignment = fftw_alignment_of(plan_grid);
+  free(plan_grid);
 }
 
 void free_ffts(void)
 {
-  free(Workspace);
   free(Slab_to_task);
-  rfftwnd_mpi_destroy_plan(Inverse_plan);
-  rfftwnd_mpi_destroy_plan(Forward_plan);
+  fftw_destroy_plan(Inverse_plan);
+  fftw_destroy_plan(Forward_plan);
+  fftw_destroy_plan(Forward_plan_t);
+  fftw_destroy_plan(Transpose_plan);
+  fftw_mpi_cleanup();
 }
 
 int FatalError(int errnum)

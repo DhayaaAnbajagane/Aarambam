@@ -46,27 +46,45 @@ find_library(GSL_LIBRARY
 )
 get_filename_component(GSL_LIB_DIR ${GSL_LIBRARY} DIRECTORY)
 
-# FFTW2
-if(DEFINED ENV{Aarambam_FFTW2_ROOT})
-  set(_FFTW2_HINT "$ENV{Aarambam_FFTW2_ROOT}")
-else()
-  message(FATAL_ERROR "Environment variable Aarambam_FFTW2_ROOT must be set to your FFTW2 install/build root")
+# FFTW3: double precision, built with MPI (fftw3-mpi.h, libfftw3_mpi) against the same MPI as mpicc.
+# Aarambam_FFTW3_ROOT is the --prefix of that build and is then the only place looked in; without it,
+# FFTW3_ROOT / FFTW_DIR / FFTW_ROOT and the system paths are searched for fftw3-mpi.h.
+if(DEFINED ENV{Aarambam_FFTW2_ROOT} AND NOT DEFINED ENV{Aarambam_FFTW3_ROOT})
+  message(WARNING "Aarambam_FFTW2_ROOT is no longer used: Aarambam now uses FFTW3 with MPI (set Aarambam_FFTW3_ROOT)")
 endif()
 
-find_path(FFTW2_INCLUDE_DIR
-  NAMES        dfftw.h
-  HINTS        ${_FFTW2_HINT}
-  PATH_SUFFIXES include
-  REQUIRED
-)
+if(DEFINED ENV{Aarambam_FFTW3_ROOT})
+  set(_FFTW3_HINT "$ENV{Aarambam_FFTW3_ROOT}")
+  set(_FFTW3_PATHS NO_DEFAULT_PATH)
+else()
+  foreach(_var FFTW3_ROOT FFTW_DIR FFTW_ROOT)
+    if(DEFINED ENV{${_var}})
+      list(APPEND _FFTW3_HINT "$ENV{${_var}}")
+    endif()
+  endforeach()
+endif()
 
-find_library(_FFTW2_LIB
-  NAMES        fftw  dfftw
-  HINTS        ${_FFTW2_HINT}
-  PATH_SUFFIXES lib
-  REQUIRED
+find_path(FFTW3_INCLUDE_DIR
+  NAMES        fftw3-mpi.h
+  HINTS        ${_FFTW3_HINT}
+  PATH_SUFFIXES include
+  ${_FFTW3_PATHS}
 )
-get_filename_component(FFTW2_LIB_DIR ${_FFTW2_LIB} DIRECTORY)
+if(NOT FFTW3_INCLUDE_DIR)
+  message(FATAL_ERROR "FFTW3 with MPI support (fftw3-mpi.h) was not found. Build FFTW3 with --enable-mpi (see "
+                      "the installation docs) and set Aarambam_FFTW3_ROOT to its --prefix.")
+endif()
+
+# the libraries of that same build, next to its include/ directory
+get_filename_component(_FFTW3_PREFIX "${FFTW3_INCLUDE_DIR}" DIRECTORY)
+find_library(FFTW3_MPI_LIBRARY NAMES fftw3_mpi HINTS ${_FFTW3_PREFIX} PATH_SUFFIXES lib lib64 NO_DEFAULT_PATH)
+find_library(FFTW3_LIBRARY     NAMES fftw3     HINTS ${_FFTW3_PREFIX} PATH_SUFFIXES lib lib64 NO_DEFAULT_PATH)
+if(NOT FFTW3_MPI_LIBRARY OR NOT FFTW3_LIBRARY)
+  message(FATAL_ERROR "Found ${FFTW3_INCLUDE_DIR}/fftw3-mpi.h, but not libfftw3_mpi and libfftw3 under "
+                      "${_FFTW3_PREFIX}/lib. Was FFTW3 built and installed with --enable-mpi?")
+endif()
+get_filename_component(FFTW3_LIB_DIR ${FFTW3_LIBRARY} DIRECTORY)
+message(STATUS "Aarambam: FFTW3 ${FFTW3_MPI_LIBRARY}")
 
 # MPI
 if(DEFINED ENV{Aarambam_OPENMPI_ROOT})
@@ -124,7 +142,7 @@ set(LPT_DEFINITIONS
 if(NOT Aarambam_64BIT_IDS)
   list(APPEND LPT_DEFINITIONS NO64BITID=1)
 endif()
-set(LPT_INCLUDE_DIRS ${LPT_DIR}/common ${LPT_DIR}/common/nrsrc ${GSL_INCLUDE_DIR} ${FFTW2_INCLUDE_DIR})
+set(LPT_INCLUDE_DIRS ${LPT_DIR}/common ${LPT_DIR}/common/nrsrc ${GSL_INCLUDE_DIR} ${FFTW3_INCLUDE_DIR})
 
 # Code shared by all methods, compiled once
 add_library(lptcore OBJECT ${LPT_COMMON_SRC})
@@ -135,10 +153,10 @@ function(aarambam_lpt_executable name method_dir)
   add_executable(${name} ${ARGN} $<TARGET_OBJECTS:lptcore>)
   target_include_directories(${name} PRIVATE ${method_dir} ${LPT_INCLUDE_DIRS})
   target_compile_definitions(${name} PRIVATE ${LPT_DEFINITIONS})
-  target_link_directories(${name} PRIVATE ${OPENMPI_LIB_DIR} ${GSL_LIB_DIR} ${FFTW2_LIB_DIR})
-  target_link_libraries(${name} PRIVATE m mpi drfftw_mpi dfftw_mpi drfftw dfftw gsl gslcblas)
-  # Installed binaries must find libmpi / libgsl without LD_LIBRARY_PATH
-  set_target_properties(${name} PROPERTIES INSTALL_RPATH "${OPENMPI_LIB_DIR};${GSL_LIB_DIR};${FFTW2_LIB_DIR}")
+  target_link_directories(${name} PRIVATE ${OPENMPI_LIB_DIR} ${GSL_LIB_DIR} ${FFTW3_LIB_DIR})
+  target_link_libraries(${name} PRIVATE ${FFTW3_MPI_LIBRARY} ${FFTW3_LIBRARY} gsl gslcblas m mpi)
+  # Installed binaries must find libmpi / libgsl / libfftw3 without LD_LIBRARY_PATH
+  set_target_properties(${name} PROPERTIES INSTALL_RPATH "${OPENMPI_LIB_DIR};${GSL_LIB_DIR};${FFTW3_LIB_DIR}")
   install(TARGETS ${name} RUNTIME DESTINATION Aarambam/bin)
 endfunction()
 

@@ -1,8 +1,9 @@
 #ifndef AARAMBAM_ALLVARS_H
 #define AARAMBAM_ALLVARS_H
 
-/* Limits set by 32-bit integers in FFTW2 and in the output formats. Overridable with -D (tests use small values). */
-#ifndef AARAMBAM_MAX_SLAB_REALS            /* FFTW2's per-rank rfftwnd_mpi total_size is an int */
+/* Limits set by 32-bit integers in this code and in the output formats. Overridable with -D (tests use small
+ * values). */
+#ifndef AARAMBAM_MAX_SLAB_REALS            /* per-rank grid size: TotalSizePlusAdditional and the potential-dump header */
 #define AARAMBAM_MAX_SLAB_REALS 2147483647LL
 #endif
 #ifndef AARAMBAM_MAX_INT_ID                /* particle IDs written as 4-byte ints (NO64BITID) */
@@ -12,9 +13,18 @@
 #define AARAMBAM_MAX_BLOCK_BYTES 2147483647LL
 #endif
 
-#include <drfftw_mpi.h>
+#include <fftw3-mpi.h>
 #include <stdio.h>
 #include <time.h>
+
+/* Grid types. lpt_complex has the memory layout of FFTW3's fftw_complex (two doubles), so grids are handed to
+ * FFTW by a cast; the .re / .im members keep the k-space loops readable. */
+typedef double lpt_real;
+typedef struct
+{
+  double re, im;
+}
+lpt_complex;
 
 #define  PI          3.14159265358979323846
 #define  GRAVITY     6.672e-8
@@ -69,7 +79,7 @@ extern int      *Local_nx_table;
 extern int      WhichSpectrum;
 extern int      WhichTransfer;
 extern int      SavePotentialField;
-extern int      Local_ny_t, Local_y_start_t;   /* k-space y-slab of FFTW_TRANSPOSED_ORDER output */
+extern int      Local_ny_t, Local_y_start_t;   /* k-space y-slab of FFTW_MPI_TRANSPOSED_OUT output */
 extern int      ModeTables;          /* 0: per-mode quantities on the fly (least memory); 1: precomputed tables (faster) */
 
 extern FILE     *FdTmp, *FdTmpInput;
@@ -135,11 +145,10 @@ extern int      Local_nx, Local_x_start;
 extern int  IdStart;
 
 extern unsigned int TotalSizePlusAdditional;
-extern rfftwnd_mpi_plan Inverse_plan;
-extern rfftwnd_mpi_plan Forward_plan;
-//extern fftw_real        *Disp;
-extern fftw_real        *Workspace;
-//extern fftw_complex     *Cdata;
+extern fftw_plan Inverse_plan;       /* c2r, normal (x-slab) input */
+extern fftw_plan Forward_plan;       /* r2c, normal (x-slab) output */
+extern fftw_plan Forward_plan_t;     /* r2c, transposed (y-slab) output */
+extern fftw_plan Transpose_plan;     /* transposed -> normal k-space layout */
 
 
 extern double UnitTime_in_s, UnitLength_in_cm, UnitMass_in_g, UnitVelocity_in_cm_per_s;

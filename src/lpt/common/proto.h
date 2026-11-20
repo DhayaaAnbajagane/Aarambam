@@ -20,8 +20,8 @@ void   assemble_grid(void);
 double periodic_wrap(double x);
 
 void read_transfer_table(void);
-void write_phi(fftw_real *pot, int isNonGaus);
-void write_phi_single_task(int task, fftw_real *pot, int isNonGaus, int *Local_x_start_table, int *Local_nx_table);
+void write_phi(lpt_real *pot, int isNonGaus);
+void write_phi_single_task(int task, lpt_real *pot, int isNonGaus, int *Local_x_start_table, int *Local_nx_table);
 
 double PowerSpec(double kmag);
 double PowerSpec_DM_2ndSpecies(double k);

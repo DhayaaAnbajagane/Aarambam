@@ -25,9 +25,10 @@ extern double lpt_prof_time[PROF_NCAT];
 #define PROF_BEGIN(cat) {
 #define PROF_END(cat)   }
 #endif
-void lpt_fft(rfftwnd_mpi_plan plan, fftw_real *field);   /* in-place rfftwnd_mpi with Workspace, timed */
-void lpt_fft_forward_t(fftw_real *field);               /* forward FFT, output left in transposed order */
-void lpt_transposed_to_normal(fftw_complex *data);      /* transposed -> normal order k-space, in place */
+void *lpt_alloc_grid(void);                              /* one grid (TotalSizePlusAdditional reals), FFT-aligned */
+void lpt_fft(fftw_plan plan, lpt_real *field);            /* in-place FFT with Forward_plan or Inverse_plan, timed */
+void lpt_fft_forward_t(lpt_real *field);               /* forward FFT, output left in transposed order */
+void lpt_transposed_to_normal(lpt_complex *data);      /* transposed -> normal order k-space, in place */
 void lpt_barrier(void);                                   /* MPI_Barrier on MPI_COMM_WORLD, timed as PROF_WAIT */
 void lpt_prof_report(void);
 
@@ -47,9 +48,9 @@ static inline ptrdiff_t lpt_kz_end(void)
 
 void print_timed_done(int n);
 void print_timed_done_aligned(int printed_chars);
-void lpt_setup_gaussian_potential(fftw_complex **cpot_out, long double **re_out, long double **im_out,
+void lpt_setup_gaussian_potential(lpt_complex **cpot_out, long double **re_out, long double **im_out,
                                   double *Beta_out);
-void lpt_displacements_from_potential(fftw_complex *cpot, fftw_complex *cpot_NG, double ng_scale, double Beta);
+void lpt_displacements_from_potential(lpt_complex *cpot, lpt_complex *cpot_NG, double ng_scale, double Beta);
 
 /* supplied by each method */
 void print_setup(void);

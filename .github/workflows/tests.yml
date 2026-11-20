@@ -1,6 +1,6 @@
 name: tests
 
-# Python-only tests from the source tree. The 2LPT executables need FFTW2 + MPI + GSL and the
+# Python-only tests from the source tree. The 2LPT executables need FFTW3 (with MPI) + MPI + GSL and the
 # Legendre backend needs the compiled Cython extension, so neither is built here: tests marked
 # `mpi` skip themselves, and tests/conftest.py imports the pure-Python modules directly.
 

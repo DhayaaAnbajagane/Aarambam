@@ -32,11 +32,11 @@ static void phi_name(char *buf, size_t n, int isNonGaus, int start_x, int nx)
 
 /* One slab file: header (int total_size, int Nmesh, double Box), then per cell a 4-byte slab index and the
  * value (the format read by Aarambam.postprocess.collate_potential), written one row (Nmesh cells) per fwrite. */
-static void phi_write_slab(const char *name, int total_size, const fftw_real *buffer, int nx)
+static void phi_write_slab(const char *name, int total_size, const lpt_real *buffer, int nx)
 {
   FILE *write_ptr;
   size_t i, j, k;
-  unsigned char *row = malloc((size_t) Nmesh * (sizeof(int) + sizeof(fftw_real)));
+  unsigned char *row = malloc((size_t) Nmesh * (sizeof(int) + sizeof(lpt_real)));
 
   if(!row)
     {
@@ -60,10 +60,10 @@ static void phi_write_slab(const char *name, int total_size, const fftw_real *bu
             size_t coord = (i * Nmesh + j) * (2 * (Nmesh / 2 + 1)) + k;
             int coord_out = (int) coord;     /* the file format stores a 4-byte slab index */
             memcpy(q, &coord_out, sizeof(int));
-            memcpy(q + sizeof(int), &buffer[coord], sizeof(fftw_real));
-            q += sizeof(int) + sizeof(fftw_real);
+            memcpy(q + sizeof(int), &buffer[coord], sizeof(lpt_real));
+            q += sizeof(int) + sizeof(lpt_real);
           }
-        my_fwrite(row, sizeof(int) + sizeof(fftw_real), (size_t) Nmesh, write_ptr);
+        my_fwrite(row, sizeof(int) + sizeof(lpt_real), (size_t) Nmesh, write_ptr);
       }
   fclose(write_ptr);
   free(row);
@@ -73,7 +73,7 @@ static void phi_write_slab(const char *name, int total_size, const fftw_real *bu
  * in parallel, so no slab is sent through MPI (the former task-0 writer sent each slab as one message with
  * an int count). The header keeps task 0's TotalSizePlusAdditional, broadcast, so the file bytes are those of
  * the former writer. A single-file dump (NTaskWithN <= 1) is still gathered and written by task 0. */
-void write_phi(fftw_real *pot, int isNonGaus)
+void write_phi(lpt_real *pot, int isNonGaus)
 {
   char buf_will[1100];
   int total_size = TotalSizePlusAdditional;   /* header field kept for format compatibility */
@@ -92,13 +92,13 @@ void write_phi(fftw_real *pot, int isNonGaus)
       MPI_Send(&Local_x_start, 1, MPI_INT, 0, 0, MPI_COMM_WORLD);
       MPI_Send(&Local_nx, 1, MPI_INT, 0, 1, MPI_COMM_WORLD);
       MPI_Send(&local_pot_size, 1, MPI_INT, 0, 2, MPI_COMM_WORLD);
-      MPI_Send(pot, local_pot_size, MPI_DOUBLE, 0, 3, MPI_COMM_WORLD);   /* fftw_real assumed to be double */
+      MPI_Send(pot, local_pot_size, MPI_DOUBLE, 0, 3, MPI_COMM_WORLD);   /* lpt_real assumed to be double */
       return;
     }
   for(int task = 0; task < NTask; task++)
     {
       int start_x, nx, recv_size;
-      fftw_real *buffer = NULL;
+      lpt_real *buffer = NULL;
 
       if(task == 0)
         {
@@ -111,7 +111,7 @@ void write_phi(fftw_real *pot, int isNonGaus)
           MPI_Recv(&start_x, 1, MPI_INT, task, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
           MPI_Recv(&nx, 1, MPI_INT, task, 1, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
           MPI_Recv(&recv_size, 1, MPI_INT, task, 2, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-          buffer = malloc(recv_size * sizeof(fftw_real));
+          buffer = malloc(recv_size * sizeof(lpt_real));
           if(!buffer)
             {
               printf("Task 0: failed to allocate buffer from task %d\n", task);
