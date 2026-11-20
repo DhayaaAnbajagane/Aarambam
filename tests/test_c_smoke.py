@@ -171,6 +171,14 @@ def test_unusable_wisdom_dir_aborts(am, lpt_binaries, tmp_path):
     assert r.returncode != 0 and 'cannot be created or is not writable' in r.stdout
 
 
+def test_too_long_wisdom_dir_env_aborts(am, lpt_binaries, tmp_path, monkeypatch):
+    """AARAMBAM_FFTW_WISDOM_DIR longer than the FFTWWisdomDir tag allows: an error, not a silently shortened path."""
+    monkeypatch.setenv('AARAMBAM_FFTW_WISDOM_DIR', str(tmp_path / ('d' * 600)))
+    cfg = write_config(am, 'binned', tmp_path, FFTWWisdomDir='auto')
+    r = run(lpt_binaries, 'binned', cfg, 2)
+    assert r.returncode != 0 and 'AARAMBAM_FFTW_WISDOM_DIR is longer than' in r.stdout
+
+
 @pytest.mark.parametrize('method', ['basis', 'binned'])
 def test_bad_tag_aborts(am, lpt_binaries, tmp_path, method):
     cfg = write_config(am, method, tmp_path)

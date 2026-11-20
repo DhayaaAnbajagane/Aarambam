@@ -103,10 +103,15 @@ void lpt_band_to_normal(lpt_complex *data)
 
 /* ---- wisdom file ---- */
 
+/* Room for a wisdom directory (FFTWWisdomDir or AARAMBAM_FFTW_WISDOM_DIR, both at most sizeof(FFTWWisdomDir) - 1
+ * characters, or the default cache directory) and for the file and temporary-file names in it. */
+#define LPT_WISDOM_DIR_LEN  (sizeof(FFTWWisdomDir) + 32)
+#define LPT_WISDOM_PATH_LEN (LPT_WISDOM_DIR_LEN + 64)
+
 /* mkdir -p; returns 0 if dir exists (or was created) and is writable */
 static int lpt_make_dir(const char *dir)
 {
-  char  buf[600];
+  char  buf[LPT_WISDOM_DIR_LEN];
   char *p;
 
   snprintf(buf, sizeof(buf), "%s", dir);
@@ -149,7 +154,8 @@ static unsigned long lpt_cpu_tag(void)
 static int lpt_wisdom_path(char *path, size_t n)
 {
   const char *env = getenv("AARAMBAM_FFTW_WISDOM_DIR"), *given = NULL, *base;
-  char        dir[400];
+  char        dir[LPT_WISDOM_DIR_LEN];
+  int         n_dir;
 
   if(strcmp(FFTWWisdomDir, "none") == 0)
     return 0;
@@ -162,6 +168,12 @@ static int lpt_wisdom_path(char *path, size_t n)
     {
       if(strcmp(given, "none") == 0)
         return 0;
+      if(strlen(given) >= sizeof(FFTWWisdomDir))
+        {
+          printf("\nAARAMBAM_FFTW_WISDOM_DIR is longer than %d characters.\n", (int) sizeof(FFTWWisdomDir) - 1);
+          fflush(stdout);
+          FatalError(1119);
+        }
       snprintf(dir, sizeof(dir), "%s", given);
       if(lpt_make_dir(dir) != 0)
         {
@@ -174,11 +186,17 @@ static int lpt_wisdom_path(char *path, size_t n)
   else
     {
       if((base = getenv("XDG_CACHE_HOME")) && base[0])
-        snprintf(dir, sizeof(dir), "%s/aarambam", base);
+        n_dir = snprintf(dir, sizeof(dir), "%s/aarambam", base);
       else if((base = getenv("HOME")) && base[0])
-        snprintf(dir, sizeof(dir), "%s/.cache/aarambam", base);
+        n_dir = snprintf(dir, sizeof(dir), "%s/.cache/aarambam", base);
       else
         return 0;
+      if(n_dir >= (int) sizeof(dir))
+        {
+          printf("\nThe default FFT plan directory (under %s) is too long: planning with FFTW_ESTIMATE. Set "
+                 "FFTWWisdomDir to keep measured plans.\n", base);
+          return 0;
+        }
 
       if(lpt_make_dir(dir) != 0)
         {
@@ -196,7 +214,7 @@ static int lpt_wisdom_path(char *path, size_t n)
  * temporary file and rename it over the wisdom file, so concurrent runs never see a half-written file. */
 static void lpt_save_wisdom(const char *path)
 {
-  char tmp[700];
+  char tmp[LPT_WISDOM_PATH_LEN + 32];
 
   fftw_import_wisdom_from_filename(path);
   snprintf(tmp, sizeof(tmp), "%s.tmp.%ld", path, (long) getpid());
@@ -223,7 +241,7 @@ void initialize_ffts(void)
   int      *slab_to_task_local;
   lpt_real *plan_grid;
   unsigned  flags;
-  char      wisdom_path[600], *wisdom_before = NULL;
+  char      wisdom_path[LPT_WISDOM_PATH_LEN], *wisdom_before = NULL;
   double    tplan;
   const int nzc = Nmesh / 2 + 1;     /* complex z length of the r2c layout */
   const int band = strcmp(FFTBackend, "band") == 0;

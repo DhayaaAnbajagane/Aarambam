@@ -246,9 +246,11 @@ void lpt_setup_gaussian_potential(lpt_complex **cpot_out, double *Beta_out)
         {
           for(j = 0; j < Nmesh; j++)
             {
+              if(!lpt_axis_in_band(i) || !lpt_axis_in_band(j))      /* no sampled mode in this column */
+                continue;
               gsl_rng_set(random_generator, seedtable[i * Nmesh + j]);
 
-              for(k = 0; k < Nmesh / 2; k++)
+              for(k = 0; k < Nmesh / 2 && k <= Nsample / 2 + 1; k++)   /* later draws are not used */
                 {
                   phase  = gsl_rng_uniform(random_generator) * 2 * PI;
                   phase += phase_shift;
@@ -436,14 +438,17 @@ void lpt_displacements_from_potential(lpt_complex *cpot, lpt_complex *cpot_NG, d
 
   maxdisp = 0;
 
-  //Trasnform to real space so we can write out the potential
-  lpt_fft(Inverse_plan, pot);
+  //Transform to real space and back only to write out the potential (the round trip multiplies it by nmesh3)
   if(SavePotentialField == 1)
-    write_phi(pot, 0);
-  lpt_barrier();
-  lpt_fft(Forward_plan, pot);
+    {
+      lpt_fft(Inverse_plan, pot);
+      write_phi(pot, 0);
+      lpt_barrier();
+      lpt_fft(Forward_plan, pot);
+    }
 
   nmesh3 = ((uint64_t) Nmesh) * ((uint64_t) Nmesh ) * ((uint64_t) Nmesh);
+  const double rt = (SavePotentialField == 1) ? (double) nmesh3 : 1.0;   /* FFT round trip of the potential */
 
   //Add NG potential to the full potential
   for(ii = 0; ii < Local_nx; ii++)
@@ -452,9 +457,9 @@ void lpt_displacements_from_potential(lpt_complex *cpot, lpt_complex *cpot_NG, d
         {
           coord = (ii * Nmesh + j) * (Nmesh / 2 + 1) + k;
 
-          //One factor of nmesh3 due to the FFT from the save potential step above
-          cpot[coord].re /= (double) nmesh3;
-          cpot[coord].im /= (double) nmesh3;
+          //Undo the factor nmesh3 of the save-potential round trip above, if there was one
+          cpot[coord].re /= rt;
+          cpot[coord].im /= rt;
 
           //One factor due to converting c_tmp from real space to fourier space
           cpot[coord].re += ng_scale * cpot_NG[coord].re / (double) nmesh3;
@@ -477,11 +482,13 @@ void lpt_displacements_from_potential(lpt_complex *cpot, lpt_complex *cpot_NG, d
       timed_chars = printf("Writing potential to disc...");
       fflush(stdout);
     }
-  lpt_fft(Inverse_plan, pot);
   if(SavePotentialField == 1)
-    write_phi(pot, 1);
-  lpt_barrier();
-  lpt_fft(Forward_plan, pot);
+    {
+      lpt_fft(Inverse_plan, pot);
+      write_phi(pot, 1);
+      lpt_barrier();
+      lpt_fft(Forward_plan, pot);
+    }
 
   for(ii = 0; ii < Local_nx; ii++)
     for(j = 0; j < Nmesh; j++)
@@ -489,8 +496,8 @@ void lpt_displacements_from_potential(lpt_complex *cpot, lpt_complex *cpot_NG, d
         {
           coord = (ii * Nmesh + j) * (Nmesh / 2 + 1) + k;
 
-          cpot[coord].re = cpot[coord].re / (double) nmesh3;
-          cpot[coord].im = cpot[coord].im / (double) nmesh3;
+          cpot[coord].re = cpot[coord].re / rt;
+          cpot[coord].im = cpot[coord].im / rt;
         }
 
   if(ThisTask == 0)
