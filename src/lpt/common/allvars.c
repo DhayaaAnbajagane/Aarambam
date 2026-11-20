@@ -6,8 +6,8 @@
 double lpt_prof_time[PROF_NCAT];
 #endif
 
-clock_t start_time;
-clock_t previous_time;
+double start_time;
+double previous_time;
 
 struct io_header_1 header1, header;
 

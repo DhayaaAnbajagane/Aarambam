@@ -142,104 +142,6 @@ static int NG(bpng_fill_cached_real_field)(NGR *field, lpt_complex *src, int axi
   return 1;
 }
 
-static void NG(bpng_convolve_and_accumulate_hybrid)(
-    NGC *field_a, NGR *field_a_real,
-    NGC *field_b, NGR *field_b_real,
-    NGC *c_tmp, NGR *p_tmp,
-    lpt_complex *out,
-    int ia, int ib, int use_symmetry);
-
-/* ia <= ib pairs, with the filtered real-space fields of block_size k1 bins (and of the k2 bins they pair with)
- * kept in memory, so each field is transformed once per block instead of once per pair. */
-static void NG(bpng_compute_non_gaussian_potential_symmetric_blocked)(
-    lpt_complex *cpot, lpt_complex *cpot_NG,
-    NGC *c_tmp, NGR *p_tmp, int block_size)
-{
-  int        n, a0, b0, ia, ib, na, nb, la, lb, start_b;
-  int        timed_chars = 0, npair = 0, nskip = 0;
-  NGR      **acache, **bcache;
-  int       *anz, *bnz;           /* filtered field nonzero somewhere */
-
-  n = BPNG.nk[0];
-  if(block_size <= 0)
-    block_size = 1;
-  if(block_size > n)
-    block_size = n;
-
-  for(a0 = 0; a0 < n; a0 += block_size)
-    {
-      na = block_size;
-      if(a0 + na > n)
-        na = n - a0;
-
-      if(ThisTask == 0)
-        {
-          timed_chars = printf("  binned PNG internal block a=[%d,%d) of %d...", a0, a0 + na, n);
-          fflush(stdout);
-        }
-
-      acache = NG(bpng_alloc_real_field_cache)(na);
-      anz    = malloc(sizeof(int) * na);
-      for(la = 0; la < na; la++)
-        anz[la] = NG(bpng_fill_cached_real_field)(acache[la], cpot, 0, a0 + la);
-
-      for(b0 = a0; b0 < n; b0 += block_size)
-        {
-          nb = block_size;
-          if(b0 + nb > n)
-            nb = n - b0;
-
-          if(b0 == a0)
-            {
-              bcache = acache;
-              bnz    = anz;
-            }
-          else
-            {
-              bcache = NG(bpng_alloc_real_field_cache)(nb);
-              bnz    = malloc(sizeof(int) * nb);
-              for(lb = 0; lb < nb; lb++)
-                bnz[lb] = NG(bpng_fill_cached_real_field)(bcache[lb], cpot, 1, b0 + lb);
-            }
-
-          for(la = 0; la < na; la++)
-            {
-              ia      = a0 + la;
-              start_b = (b0 == a0) ? la : 0;
-
-              for(lb = start_b; lb < nb; lb++)
-                {
-                  ib = b0 + lb;
-                  npair++;
-                  if(!anz[la] || !bnz[lb])        /* a zero field: the pair adds exactly zero */
-                    {
-                      nskip++;
-                      continue;
-                    }
-                  NG(bpng_convolve_and_accumulate_hybrid)((NGC *) acache[la], acache[la],
-                                                          (NGC *) bcache[lb], bcache[lb],
-                                                      c_tmp, p_tmp,
-                                                      cpot_NG, ia, ib, 1);
-                }
-            }
-
-          if(b0 != a0)
-            {
-              NG(bpng_free_real_field_cache)(bcache, nb);
-              free(bnz);
-            }
-        }
-
-      NG(bpng_free_real_field_cache)(acache, na);
-      free(anz);
-      if(ThisTask == 0)
-        print_timed_done_aligned(timed_chars);
-    }
-  if(ThisTask == 0 && nskip > 0)
-    printf("  %d of %d bin pairs skipped: a filtered field is zero on this grid (bin outside its k range).\n",
-           nskip, npair);
-}
-
 /* out += Fnl K_ab(k3) conv(k3). conv is a forward FFT in the band layout (lpt_fft.h); out is accumulated in the
  * same layout. */
 static void NG(bpng_accumulate_hybrid_convolution)(NGC *conv, lpt_complex *out,
@@ -331,14 +233,10 @@ static void NG(bpng_accumulate_hybrid_convolution)(NGC *conv, lpt_complex *out,
 }
 
 /* One pair: product of the two real-space fields, forward FFT, output-leg accumulation. */
-static void NG(bpng_convolve_and_accumulate_hybrid)(
-    NGC *field_a, NGR *field_a_real,
-    NGC *field_b, NGR *field_b_real,
-    NGC *c_tmp, NGR *p_tmp,
-    lpt_complex *out,
-    int ia, int ib, int use_symmetry)
+static void NG(bpng_convolve_and_accumulate_hybrid)(NGR *field_a, NGR *field_b, NGC *c_tmp, NGR *p_tmp,
+                                                    lpt_complex *out, int ia, int ib, int use_symmetry)
 {
-  NG(bpng_multiply_real_fields)(p_tmp, field_a_real, field_b_real);
+  NG(bpng_multiply_real_fields)(p_tmp, field_a, field_b);
   lpt_barrier();
 
   NG_FWD(p_tmp);
@@ -347,73 +245,105 @@ static void NG(bpng_convolve_and_accumulate_hybrid)(
   NG(bpng_accumulate_hybrid_convolution)(c_tmp, out, ia, ib, use_symmetry);
 }
 
-static void NG(bpng_compute_non_gaussian_potential)(lpt_complex *cpot, lpt_complex *cpot_NG)
+/* ia <= ib pairs, with the filtered real-space fields of block_size k1 bins (and of the k2 bins they pair with)
+ * kept in memory, so each field is transformed once per block instead of once per pair. */
+static void NG(bpng_compute_non_gaussian_potential_symmetric_blocked)(
+    lpt_complex *cpot, lpt_complex *cpot_NG,
+    NGC *c_tmp, NGR *p_tmp, int block_size)
 {
-  int           ia, ib, ib_start, use_symmetry, cache_block;
-  int           timed_chars = 0;
-  uint64_t      bytes = 0;
-  NGC          *cf1, *cf2, *c_tmp;
-  NGR          *f1, *f2, *p_tmp;
+  int        n, a0, b0, ia, ib, na, nb, la, lb, start_b;
+  int        timed_chars = 0, npair = 0, nskip = 0;
+  NGR      **acache, **bcache;
+  int       *anz, *bnz;           /* filtered field nonzero somewhere */
 
-  if(ThisTask == 0)
+  n = BPNG.nk[0];
+  if(block_size <= 0)
+    block_size = 1;
+  if(block_size > n)
+    block_size = n;
+
+  for(a0 = 0; a0 < n; a0 += block_size)
     {
-      printf("Computing hybrid binned-kernel non-Gaussian potential (k3 is output leg)...\n");
-      fflush(stdout);
-    }
-
-  bpng_read_and_broadcast_table();
-  bpng_precompute_axes();
-  if(ModeTables)
-    bpng_build_mode_list();
-
-  use_symmetry = (BinnedPNGUseInternalSymmetry != 0);
-  if(use_symmetry && !bpng_internal_edges_are_identical())
-    {
-      if(ThisTask == 0)
-        printf("ERROR: BinnedPNGUseInternalSymmetry=1 but k1/k2 edges differ. Disable the flag or regenerate "
-               "with matched k1/k2 bins.\n");
-      FatalError(9310);
-    }
-
-  cache_block = BinnedPNGCacheBlockSize;
-  if(cache_block < 0)
-    cache_block = 0;
-
-  c_tmp = (NGC *) NG_ALLOC();
-  p_tmp = (NGR *) c_tmp;
-  ASSERT_ALLOC(c_tmp);
-
-  /* blocked path: filtered fields cached in real space */
-  if(use_symmetry && cache_block > 0)
-    {
-      if(ThisTask == 0)
-        {
-          printf("  Using internal-leg symmetry and block cache size %d.\n", cache_block);
-          fflush(stdout);
-        }
-
-      NG(bpng_compute_non_gaussian_potential_symmetric_blocked)(cpot, cpot_NG,
-                                                            c_tmp, p_tmp, cache_block);
-
-      free(c_tmp);
-      if(ModeTables)
-        bpng_free_mode_list();
-      bpng_free_table();
+      na = block_size;
+      if(a0 + na > n)
+        na = n - a0;
 
       if(ThisTask == 0)
         {
-          printf("Finished hybrid binned-kernel non-Gaussian potential.\n");
+          timed_chars = printf("  binned PNG internal block a=[%d,%d) of %d...", a0, a0 + na, n);
           fflush(stdout);
         }
-      return;
-    }
 
-  /* unblocked path: two work fields, the k2 field rebuilt for every pair */
-  cf1 = (NGC *) NG_ALLOC();
-  cf2 = (NGC *) NG_ALLOC();
-  f1  = (NGR *) cf1;
-  f2  = (NGR *) cf2;
-  ASSERT_ALLOC(cf1 && cf2 && c_tmp);
+      acache = NG(bpng_alloc_real_field_cache)(na);
+      anz    = malloc(sizeof(int) * na);
+      for(la = 0; la < na; la++)
+        anz[la] = NG(bpng_fill_cached_real_field)(acache[la], cpot, 0, a0 + la);
+
+      for(b0 = a0; b0 < n; b0 += block_size)
+        {
+          nb = block_size;
+          if(b0 + nb > n)
+            nb = n - b0;
+
+          if(b0 == a0)
+            {
+              bcache = acache;
+              bnz    = anz;
+            }
+          else
+            {
+              bcache = NG(bpng_alloc_real_field_cache)(nb);
+              bnz    = malloc(sizeof(int) * nb);
+              for(lb = 0; lb < nb; lb++)
+                bnz[lb] = NG(bpng_fill_cached_real_field)(bcache[lb], cpot, 1, b0 + lb);
+            }
+
+          for(la = 0; la < na; la++)
+            {
+              ia      = a0 + la;
+              start_b = (b0 == a0) ? la : 0;
+
+              for(lb = start_b; lb < nb; lb++)
+                {
+                  ib = b0 + lb;
+                  npair++;
+                  if(!anz[la] || !bnz[lb])        /* a zero field: the pair adds exactly zero */
+                    {
+                      nskip++;
+                      continue;
+                    }
+                  NG(bpng_convolve_and_accumulate_hybrid)(acache[la], bcache[lb], c_tmp, p_tmp, cpot_NG, ia, ib, 1);
+                }
+            }
+
+          if(b0 != a0)
+            {
+              NG(bpng_free_real_field_cache)(bcache, nb);
+              free(bnz);
+            }
+        }
+
+      NG(bpng_free_real_field_cache)(acache, na);
+      free(anz);
+      if(ThisTask == 0)
+        print_timed_done_aligned(timed_chars);
+    }
+  if(ThisTask == 0 && nskip > 0)
+    printf("  %d of %d bin pairs skipped: a filtered field is zero on this grid (bin outside its k range).\n",
+           nskip, npair);
+}
+
+/* All pairs (ia <= ib with the internal-leg symmetry, else all ia, ib) with two work fields: the k2 field is rebuilt
+ * and transformed for every pair (least memory). */
+static void NG(bpng_compute_non_gaussian_potential_unblocked)(lpt_complex *cpot, lpt_complex *cpot_NG,
+                                                              NGC *c_tmp, NGR *p_tmp, int use_symmetry)
+{
+  int      ia, ib, ib_start, timed_chars = 0;
+  uint64_t bytes = 0;
+  NGC     *cf1 = (NGC *) NG_ALLOC(), *cf2 = (NGC *) NG_ALLOC();
+  NGR     *f1  = (NGR *) cf1, *f2 = (NGR *) cf2;
+
+  ASSERT_ALLOC(cf1 && cf2);
 
   if(ThisTask == 0 && use_symmetry)
     {
@@ -445,8 +375,7 @@ static void NG(bpng_compute_non_gaussian_potential)(lpt_complex *cpot, lpt_compl
           if(use_symmetry && ib == ia)
             {
               /* Reuse the already transformed field on the diagonal. */
-              NG(bpng_convolve_and_accumulate_hybrid)(cf1, f1, cf1, f1, c_tmp, p_tmp,
-                                                  cpot_NG, ia, ib, use_symmetry);
+              NG(bpng_convolve_and_accumulate_hybrid)(f1, f1, c_tmp, p_tmp, cpot_NG, ia, ib, use_symmetry);
             }
           else
             {
@@ -456,8 +385,7 @@ static void NG(bpng_compute_non_gaussian_potential)(lpt_complex *cpot, lpt_compl
               NG_INV(f2);
               lpt_barrier();
 
-              NG(bpng_convolve_and_accumulate_hybrid)(cf1, f1, cf2, f2, c_tmp, p_tmp,
-                                                  cpot_NG, ia, ib, use_symmetry);
+              NG(bpng_convolve_and_accumulate_hybrid)(f1, f2, c_tmp, p_tmp, cpot_NG, ia, ib, use_symmetry);
             }
         }
 
@@ -467,6 +395,55 @@ static void NG(bpng_compute_non_gaussian_potential)(lpt_complex *cpot, lpt_compl
 
   free(cf1);
   free(cf2);
+}
+
+static void NG(bpng_compute_non_gaussian_potential)(lpt_complex *cpot, lpt_complex *cpot_NG)
+{
+  int           use_symmetry, cache_block;
+  uint64_t      bytes = 0;
+  NGC          *c_tmp;
+  NGR          *p_tmp;
+
+  if(ThisTask == 0)
+    {
+      printf("Computing hybrid binned-kernel non-Gaussian potential (k3 is output leg)...\n");
+      fflush(stdout);
+    }
+
+  bpng_read_and_broadcast_table();
+  bpng_precompute_axes();
+  if(ModeTables)
+    bpng_build_mode_list();
+
+  use_symmetry = (BinnedPNGUseInternalSymmetry != 0);
+  if(use_symmetry && !bpng_internal_edges_are_identical())
+    {
+      if(ThisTask == 0)
+        printf("ERROR: BinnedPNGUseInternalSymmetry=1 but k1/k2 edges differ. Disable the flag or regenerate "
+               "with matched k1/k2 bins.\n");
+      FatalError(9310);
+    }
+
+  cache_block = BinnedPNGCacheBlockSize;
+  if(cache_block < 0)
+    cache_block = 0;
+
+  c_tmp = (NGC *) NG_ALLOC();
+  p_tmp = (NGR *) c_tmp;
+  ASSERT_ALLOC(c_tmp);
+
+  if(use_symmetry && cache_block > 0)       /* blocked path: filtered fields cached in real space */
+    {
+      if(ThisTask == 0)
+        {
+          printf("  Using internal-leg symmetry and block cache size %d.\n", cache_block);
+          fflush(stdout);
+        }
+      NG(bpng_compute_non_gaussian_potential_symmetric_blocked)(cpot, cpot_NG, c_tmp, p_tmp, cache_block);
+    }
+  else
+    NG(bpng_compute_non_gaussian_potential_unblocked)(cpot, cpot_NG, c_tmp, p_tmp, use_symmetry);
+
   free(c_tmp);
   if(ModeTables)
     bpng_free_mode_list();

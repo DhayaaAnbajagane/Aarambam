@@ -380,27 +380,11 @@ static void lpt_float_wisdom_keep(const char *fpath, char *before, int loaded, d
 
 /* ---- setup ---- */
 
-/* FFTW3-MPI plans of the in-place Nmesh^3 transforms (slab-decomposed in x), the slab sizes, the FFTs of the
- * non-Gaussian stage (FFTBackend fftw: FFTW3-MPI's transposed transform and a transpose; band: band_fft.c), the
- * band layout and the grid size. With a wisdom file (FFTWWisdomDir, default "auto") the plans are measured
- * (FFTW_MEASURE) once per grid size, rank count and CPU model and kept in the file; later runs read them back and
- * plan instantly. With FFTWWisdomDir none they are FFTW_ESTIMATE plans (no measuring, no file). */
-void initialize_ffts(void)
+/* FFTBackend and NGPrecision: checked, NGFloat set. Returns whether the NG stage uses a band FFT (FFTBackend band,
+ * or NGPrecision float, whose FFTs are always band FFTs). */
+static int lpt_fft_options(void)
 {
-  ptrdiff_t alloc_c, alloc_t, n0, s0, n1, s1, t0, ts0, t1, ts1;
-  long long total_size;
-  int       i, additional, use_wisdom = 0, loaded = 0;
-  int      *slab_to_task_local;
-  lpt_real *plan_grid;
-  unsigned  flags;
-  char      wisdom_path[LPT_WISDOM_PATH_LEN], *wisdom_before = NULL;
-  double    tplan;
-  const int nzc = Nmesh / 2 + 1;     /* complex z length of the r2c layout */
-  int       band = strcmp(FFTBackend, "band") == 0;
-#ifndef AARAMBAM_NO_FLOAT
-  char      fwisdom_path[LPT_WISDOM_PATH_LEN + 8], *fwisdom_before = NULL;     /* single-precision plans */
-  int       floaded = 0;
-#endif
+  int band = strcmp(FFTBackend, "band") == 0;
 
   if(!band && strcmp(FFTBackend, "fftw") != 0)
     {
@@ -429,20 +413,28 @@ void initialize_ffts(void)
 #endif
   if(NGFloat && !band && ThisTask == 0)
     printf("\nNGPrecision float: the non-Gaussian FFTs use the band FFT (FFTBackend fftw applies to double only).\n");
+  return band || NGFloat;
+}
 
-  MPI_Barrier(MPI_COMM_WORLD);
+/* The x-slab layout of FFTW3-MPI's transforms: Local_nx, Local_x_start, Local_nx_table, Slab_to_task, and (n1, s1) the
+ * y-slab of the transposed output. Returns the reals a grid needs for FFTW's transforms and transpose. */
+static long long lpt_slab_layout(ptrdiff_t *n1, ptrdiff_t *s1)
+{
+  ptrdiff_t alloc_c, alloc_t, n0, s0, t0, ts0, t1, ts1;
+  int      *slab_to_task_local;
+  const int nzc = Nmesh / 2 + 1;     /* complex z length of the r2c layout */
 
   /* r2c layout: real [Local_nx][Nmesh][2 nzc] in x-slabs; the transposed output is [n1][Nmesh][nzc] */
-  alloc_c = fftw_mpi_local_size_3d_transposed(Nmesh, Nmesh, nzc, MPI_COMM_WORLD, &n0, &s0, &n1, &s1);
+  alloc_c = fftw_mpi_local_size_3d_transposed(Nmesh, Nmesh, nzc, MPI_COMM_WORLD, &n0, &s0, n1, s1);
 
   /* the transposed -> normal transpose of the k-space grid: an Nmesh (y) x Nmesh (x) matrix of 2 nzc doubles */
   alloc_t = fftw_mpi_local_size_many_transposed(2, (ptrdiff_t[]) {Nmesh, Nmesh}, 2 * nzc,
                                                 FFTW_MPI_DEFAULT_BLOCK, FFTW_MPI_DEFAULT_BLOCK, MPI_COMM_WORLD,
                                                 &t0, &ts0, &t1, &ts1);
-  if(t0 != n1 || ts0 != s1 || t1 != n0 || ts1 != s0)
+  if(t0 != *n1 || ts0 != *s1 || t1 != n0 || ts1 != s0)
     {
       printf("Task %d: FFTW3 transpose layout (%td+%td, %td+%td) does not match the FFT layout (%td+%td, %td+%td)\n",
-             ThisTask, ts0, t0, ts1, t1, s1, n1, s0, n0);
+             ThisTask, ts0, t0, ts1, t1, *s1, *n1, s0, n0);
       FatalError(1117);
     }
 
@@ -453,140 +445,101 @@ void initialize_ffts(void)
   MPI_Allgather(&Local_nx, 1, MPI_INT, Local_nx_table, 1, MPI_INT, MPI_COMM_WORLD);
 
   Slab_to_task       = malloc(sizeof(int) * Nmesh);
-  slab_to_task_local = malloc(sizeof(int) * Nmesh);
-
-  for(i = 0; i < Nmesh; i++)
-    slab_to_task_local[i] = 0;
-
-  for(i = 0; i < Local_nx; i++)
+  slab_to_task_local = calloc(Nmesh, sizeof(int));
+  for(int i = 0; i < Local_nx; i++)
     slab_to_task_local[Local_x_start + i] = ThisTask;
-
   MPI_Allreduce(slab_to_task_local, Slab_to_task, Nmesh, MPI_INT, MPI_SUM, MPI_COMM_WORLD);
-
   free(slab_to_task_local);
 
-  /* wisdom file: read on rank 0, the same plans on every rank */
+  return (2 * alloc_c > alloc_t) ? 2 * (long long) alloc_c : (long long) alloc_t;
+}
+
+/* Band_ny, Band_nz, Band_sx, Band_sy, Band_y from the layout of a band transform (band_fft.h: [x][row][kz]), and its
+ * buffer reported. */
+static void lpt_set_band_layout(int ny, int nz, const int *row_y, size_t buffer_bytes, int nrows, const char *what)
+{
+  double buf_mb = buffer_bytes / 1048576.0, buf_max;
+
+  Band_ny = ny;
+  Band_nz = nz;
+  Band_sy = Band_nz;
+  Band_sx = (ptrdiff_t) Band_ny * Band_nz;
+  Band_y  = malloc(sizeof(int) * (Band_ny > 0 ? Band_ny : 1));
+  memcpy(Band_y, row_y, sizeof(int) * Band_ny);
+
+  MPI_Reduce(&buf_mb, &buf_max, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
   if(ThisTask == 0)
-    use_wisdom = lpt_wisdom_path(wisdom_path, sizeof(wisdom_path));
-  MPI_Bcast(&use_wisdom, 1, MPI_INT, 0, MPI_COMM_WORLD);
-  if(use_wisdom)
-    {
-      if(ThisTask == 0)
-        {
-          loaded        = fftw_import_wisdom_from_filename(wisdom_path);
-          wisdom_before = fftw_export_wisdom_to_string();
-        }
-      fftw_mpi_broadcast_wisdom(MPI_COMM_WORLD);
-#ifndef AARAMBAM_NO_FLOAT
-      if(NGFloat)
-        {
-          if(ThisTask == 0)
-            lpt_float_wisdom_path(fwisdom_path, sizeof(fwisdom_path), wisdom_path);
-          lpt_float_wisdom_load(fwisdom_path, &fwisdom_before, &floaded);
-        }
-#endif
-    }
-  flags = use_wisdom ? FFTW_MEASURE : FFTW_ESTIMATE;
-  tplan = MPI_Wtime();
+    printf("\n%s %d of %d rows of ky, %d of %d planes of kz; communication buffer %.1f MB per rank\n", what, nrows,
+           Nmesh, Band_nz, Nmesh / 2 + 1, buf_max);
+}
 
-  /* band layout */
-  total_size = (2 * alloc_c > alloc_t) ? 2 * (long long) alloc_c : (long long) alloc_t;   /* in reals */
-#ifndef AARAMBAM_NO_FLOAT
-  if(NGFloat)
-    {
-      int   *row_in_band = malloc(sizeof(int) * Nmesh), nrows = 0;
-      double buf_mb, buf_max;
+static void lpt_band_failed(const char *what)
+{
+  if(ThisTask == 0)
+    printf("\n%s: the transfers per rank exceed 2^31 numbers or a plan failed; run with more MPI ranks%s.\n", what,
+           NGFloat ? "" : " or FFTBackend fftw");
+  fflush(stdout);
+  FatalError(1121);
+}
 
-      for(i = 0; i < Nmesh; i++)
-        nrows += (row_in_band[i] = lpt_axis_in_band(i));
-      BandF = band_fftf_create(Nmesh, (int) lpt_kz_end(), row_in_band, Local_nx, Local_x_start, MPI_COMM_WORLD,
-                               flags);
-      free(row_in_band);
-      if(!BandF)
-        {
-          if(ThisTask == 0)
-            printf("\nNGPrecision float: the transfers per rank exceed 2^31 numbers or a plan failed; run with more "
-                   "MPI ranks.\n");
-          fflush(stdout);
-          FatalError(1121);
-        }
-      Band_ny = band_fftf_rows(BandF);
-      Band_nz = band_fftf_nz(BandF);
-      Band_sy = Band_nz;
-      Band_sx = (ptrdiff_t) Band_ny * Band_nz;
-      Band_y  = malloc(sizeof(int) * (Band_ny > 0 ? Band_ny : 1));
-      memcpy(Band_y, band_fftf_row_y(BandF), sizeof(int) * Band_ny);
-      if(2 * (long long) band_fftf_local_size(BandF) > total_size)
-        total_size = 2 * (long long) band_fftf_local_size(BandF);
-      band = 1;      /* no FFTW transposed plans either */
+/* The FFTs of the NG stage and their k-space ("band") layout: the single-precision band FFT (NGPrecision float), the
+ * band FFT (FFTBackend band), or FFTW's transposed y-slab (FFTBackend fftw, whose plans lpt_make_plans makes).
+ * Returns the reals a grid needs for the band FFT (0 for fftw). */
+static long long lpt_band_setup(int band, unsigned flags, ptrdiff_t n1, ptrdiff_t s1)
+{
+  int *row_in_band, nrows = 0;
+  long long need = 0;
 
-      buf_mb = band_fftf_buffer_bytes(BandF) / 1048576.0;
-      MPI_Reduce(&buf_mb, &buf_max, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
-      if(ThisTask == 0)
-        printf("\nNGPrecision float: band FFT with %d of %d rows of ky, %d of %d planes of kz; communication buffer "
-               "%.1f MB per rank\n", nrows, Nmesh, Band_nz, nzc, buf_max);
-    }
-  else
-#endif
-  if(band)
-    {
-      int   *row_in_band = malloc(sizeof(int) * Nmesh), nrows = 0;
-      double buf_mb, buf_max;
-
-      for(i = 0; i < Nmesh; i++)
-        nrows += (row_in_band[i] = lpt_axis_in_band(i));
-      Band = band_fft_create(Nmesh, (int) lpt_kz_end(), row_in_band, Local_nx, Local_x_start, MPI_COMM_WORLD, flags);
-      free(row_in_band);
-      if(!Band)
-        {
-          if(ThisTask == 0)
-            printf("\nFFTBackend band: the transfers per rank exceed 2^31 numbers or a plan failed; run with more "
-                   "MPI ranks or FFTBackend fftw.\n");
-          fflush(stdout);
-          FatalError(1121);
-        }
-      Band_ny = band_fft_rows(Band);
-      Band_nz = band_fft_nz(Band);
-      Band_sy = Band_nz;
-      Band_sx = (ptrdiff_t) Band_ny * Band_nz;
-      Band_y  = malloc(sizeof(int) * (Band_ny > 0 ? Band_ny : 1));
-      memcpy(Band_y, band_fft_row_y(Band), sizeof(int) * Band_ny);
-      if(2 * (long long) band_fft_local_size(Band) > total_size)
-        total_size = 2 * (long long) band_fft_local_size(Band);
-
-      buf_mb = band_fft_buffer_bytes(Band) / 1048576.0;
-      MPI_Reduce(&buf_mb, &buf_max, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
-      if(ThisTask == 0)
-        printf("\nFFTBackend band: %d of %d rows of ky, %d of %d planes of kz; communication buffer %.1f MB per rank\n",
-               nrows, Nmesh, Band_nz, nzc, buf_max);
-    }
-  else
+  if(!band)
     {
       /* FFTW's transposed y-slab, all of its rows */
       Band_ny = (int) n1;
-      Band_nz = nzc;
-      Band_sy = (ptrdiff_t) Nmesh * nzc;
-      Band_sx = nzc;
+      Band_nz = Nmesh / 2 + 1;
+      Band_sy = (ptrdiff_t) Nmesh * Band_nz;
+      Band_sx = Band_nz;
       Band_y  = malloc(sizeof(int) * (Band_ny > 0 ? Band_ny : 1));
-      for(i = 0; i < Band_ny; i++)
+      for(int i = 0; i < Band_ny; i++)
         Band_y[i] = (int) s1 + i;
+      return 0;
     }
 
-  additional = (Nmesh) * (2 * (Nmesh / 2 + 1));     /* additional plane on the right side */
+  row_in_band = malloc(sizeof(int) * Nmesh);
+  for(int i = 0; i < Nmesh; i++)
+    nrows += (row_in_band[i] = lpt_axis_in_band(i));
 
-  if(total_size + additional > AARAMBAM_MAX_SLAB_REALS)
+#ifndef AARAMBAM_NO_FLOAT
+  if(NGFloat)
     {
-      printf("Task %d: its grid (%lld reals for a %d x %d x %d slab plus one plane) exceeds the 32-bit grid size "
-             "of this code (%lld). Run with more MPI ranks.\n", ThisTask, total_size + additional, Local_nx, Nmesh,
-             2 * nzc, (long long) AARAMBAM_MAX_SLAB_REALS);
-      FatalError(1114);
+      BandF = band_fftf_create(Nmesh, (int) lpt_kz_end(), row_in_band, Local_nx, Local_x_start, MPI_COMM_WORLD,
+                               flags);
+      if(!BandF)
+        lpt_band_failed("NGPrecision float");
+      lpt_set_band_layout(band_fftf_rows(BandF), band_fftf_nz(BandF), band_fftf_row_y(BandF),
+                          band_fftf_buffer_bytes(BandF), nrows, "NGPrecision float: band FFT with");
+      need = 2 * (long long) band_fftf_local_size(BandF);
     }
+  else
+#endif
+    {
+      Band = band_fft_create(Nmesh, (int) lpt_kz_end(), row_in_band, Local_nx, Local_x_start, MPI_COMM_WORLD, flags);
+      if(!Band)
+        lpt_band_failed("FFTBackend band");
+      lpt_set_band_layout(band_fft_rows(Band), band_fft_nz(Band), band_fft_row_y(Band), band_fft_buffer_bytes(Band),
+                          nrows, "FFTBackend band:");
+      need = 2 * (long long) band_fft_local_size(Band);
+    }
+  free(row_in_band);
+  return need;
+}
 
-  TotalSizePlusAdditional = total_size + additional;
+/* FFTW3-MPI plans: the full r2c / c2r (lpt_fft), and for FFTBackend fftw the transposed r2c and the transpose. Made on
+ * a grid from lpt_alloc_grid, so every grid they later run on has the planning alignment (FFTW_MEASURE overwrites it
+ * while timing candidate plans). */
+static void lpt_make_plans(int band, unsigned flags)
+{
+  const int nzc       = Nmesh / 2 + 1;
+  lpt_real *plan_grid = lpt_alloc_grid();
 
-  /* plan on a grid from lpt_alloc_grid, so every grid the plans later run on has the planning alignment
-   * (FFTW_MEASURE overwrites it while timing candidate plans) */
-  plan_grid = lpt_alloc_grid();
   if(!plan_grid)
     {
       printf("Task %d: failed to allocate the FFT planning grid\n", ThisTask);
@@ -605,7 +558,6 @@ void initialize_ffts(void)
                                                     FFTW_MPI_DEFAULT_BLOCK, plan_grid, plan_grid, MPI_COMM_WORLD,
                                                     flags);
     }
-  tplan = MPI_Wtime() - tplan;
   if(!Forward_plan || !Inverse_plan || (!band && (!Forward_plan_t || !Transpose_plan)))
     {
       printf("Task %d: FFTW3 could not create the MPI plans\n", ThisTask);
@@ -614,31 +566,111 @@ void initialize_ffts(void)
 
   lpt_plan_alignment = fftw_alignment_of(plan_grid);
   free(plan_grid);
+}
 
-  /* keep newly measured plans */
-  if(use_wisdom)
+/* The wisdom files of a run: the double-precision plans (FFTW3-MPI, and the band FFT's serial plans) and, for
+ * NGPrecision float, the single-precision ones. */
+typedef struct
+{
+  int   use, loaded, floaded;
+  char  path[LPT_WISDOM_PATH_LEN], fpath[LPT_WISDOM_PATH_LEN + 8];
+  char *before, *fbefore;      /* rank 0: the wisdom before planning, to tell whether new plans were measured */
+}
+lpt_wisdom;
+
+/* Read the wisdom files (rank 0) and give every rank the same wisdom. */
+static void lpt_wisdom_begin(lpt_wisdom *w)
+{
+  memset(w, 0, sizeof(*w));
+  if(ThisTask == 0)
+    w->use = lpt_wisdom_path(w->path, sizeof(w->path));
+  MPI_Bcast(&w->use, 1, MPI_INT, 0, MPI_COMM_WORLD);
+  if(!w->use)
+    return;
+  if(ThisTask == 0)
     {
-      fftw_mpi_gather_wisdom(MPI_COMM_WORLD);
-      if(ThisTask == 0)
-        {
-          char *wisdom_after = fftw_export_wisdom_to_string();
-          int   measured     = !wisdom_before || !wisdom_after || strcmp(wisdom_before, wisdom_after) != 0;
-
-          if(measured)
-            {
-              lpt_save_wisdom(wisdom_path);
-              printf("\nFFT plans measured in %.1f s and saved to %s\n", tplan, wisdom_path);
-            }
-          else
-            printf("\nFFT plans read from %s%s\n", wisdom_path, loaded ? "" : " (no file)");
-          free(wisdom_before);
-          free(wisdom_after);
-        }
-#ifndef AARAMBAM_NO_FLOAT
-      if(NGFloat)
-        lpt_float_wisdom_keep(fwisdom_path, fwisdom_before, floaded, tplan);
-#endif
+      w->loaded = fftw_import_wisdom_from_filename(w->path);
+      w->before = fftw_export_wisdom_to_string();
     }
+  fftw_mpi_broadcast_wisdom(MPI_COMM_WORLD);
+#ifndef AARAMBAM_NO_FLOAT
+  if(NGFloat)
+    {
+      if(ThisTask == 0)
+        lpt_float_wisdom_path(w->fpath, sizeof(w->fpath), w->path);
+      lpt_float_wisdom_load(w->fpath, &w->fbefore, &w->floaded);
+    }
+#endif
+}
+
+/* Gather the plans of all ranks and save the files if new plans were measured (rank 0). */
+static void lpt_wisdom_end(lpt_wisdom *w, double tplan)
+{
+  if(!w->use)
+    return;
+  fftw_mpi_gather_wisdom(MPI_COMM_WORLD);
+  if(ThisTask == 0)
+    {
+      char *after    = fftw_export_wisdom_to_string();
+      int   measured = !w->before || !after || strcmp(w->before, after) != 0;
+
+      if(measured)
+        {
+          lpt_save_wisdom(w->path);
+          printf("\nFFT plans measured in %.1f s and saved to %s\n", tplan, w->path);
+        }
+      else
+        printf("\nFFT plans read from %s%s\n", w->path, w->loaded ? "" : " (no file)");
+      free(w->before);
+      free(after);
+    }
+#ifndef AARAMBAM_NO_FLOAT
+  if(NGFloat)
+    lpt_float_wisdom_keep(w->fpath, w->fbefore, w->floaded, tplan);
+#endif
+}
+
+/* FFTW3-MPI plans of the in-place Nmesh^3 transforms (slab-decomposed in x), the slab sizes, the FFTs of the
+ * non-Gaussian stage (FFTBackend fftw: FFTW3-MPI's transposed transform and a transpose; band: band_fft.c;
+ * NGPrecision float: band_fft.c in single precision), the band layout and the grid size. With a wisdom file
+ * (FFTWWisdomDir, default "auto") the plans are measured (FFTW_MEASURE) once per grid size, rank count and CPU model
+ * and kept in the file; later runs read them back and plan instantly. With FFTWWisdomDir none they are
+ * FFTW_ESTIMATE plans (no measuring, no file). */
+void initialize_ffts(void)
+{
+  const int  band = lpt_fft_options();
+  ptrdiff_t  n1, s1;
+  long long  total_size, band_size;
+  int        additional;
+  unsigned   flags;
+  double     tplan;
+  lpt_wisdom wisdom;
+
+  MPI_Barrier(MPI_COMM_WORLD);
+  total_size = lpt_slab_layout(&n1, &s1);
+
+  lpt_wisdom_begin(&wisdom);
+  flags = wisdom.use ? FFTW_MEASURE : FFTW_ESTIMATE;
+  tplan = MPI_Wtime();
+
+  band_size = lpt_band_setup(band, flags, n1, s1);
+  if(band_size > total_size)
+    total_size = band_size;
+
+  additional = (Nmesh) * (2 * (Nmesh / 2 + 1));     /* additional plane on the right side */
+  if(total_size + additional > AARAMBAM_MAX_SLAB_REALS)
+    {
+      printf("Task %d: its grid (%lld reals for a %d x %d x %d slab plus one plane) exceeds the 32-bit grid size "
+             "of this code (%lld). Run with more MPI ranks.\n", ThisTask, total_size + additional, Local_nx, Nmesh,
+             2 * (Nmesh / 2 + 1), (long long) AARAMBAM_MAX_SLAB_REALS);
+      FatalError(1114);
+    }
+  TotalSizePlusAdditional = total_size + additional;
+
+  lpt_make_plans(band, flags);
+  tplan = MPI_Wtime() - tplan;
+
+  lpt_wisdom_end(&wisdom, tplan);
 }
 
 void free_ffts(void)

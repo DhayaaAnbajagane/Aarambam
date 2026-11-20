@@ -51,11 +51,12 @@ void lpt_prof_report(void)
 
 /* ---- progress output ---- */
 
+/* "Done [time of this step, time since start-up]" (wall clock), after n spaces */
 void print_timed_done(int n)
 {
-  clock_t now  = clock();
-  double  tot  = ((double)(now - start_time)) / CLOCKS_PER_SEC;
-  double  diff = ((double)(now - previous_time)) / CLOCKS_PER_SEC;
+  double now  = MPI_Wtime();
+  double tot  = now - start_time;
+  double diff = now - previous_time;
 
   int    tot_hours = (int) floor(tot / 3600.0);
   int    tot_mins  = (int) floor(tot / 60.0) - 60 * tot_hours;
@@ -105,7 +106,7 @@ int main(int argc, char **argv)
   // Setup signal handling
   signal(SIGINT, handle_signal);
 
-  start_time    = clock();
+  start_time    = MPI_Wtime();
   previous_time = start_time;
 
   if(argc < 2)

@@ -77,6 +77,30 @@ static void NG(modal_build_field)(unsigned int N, int restart, lpt_complex *cpot
 }
 
 
+/* p = a b on the real-space grid, row padding zeroed (the only other input of the r2c FFT: no full-grid clear needed) */
+static void NG(modal_multiply_fields)(NGR *p, const NGR *a, const NGR *b)
+{
+  PROF_BEGIN(PROF_MULT)
+  for(ptrdiff_t i = 0; i < Local_nx; i++)
+    for(ptrdiff_t j = 0; j < Nmesh; j++)
+      {
+        const uint64_t row = (i * Nmesh + j) * (2 * (Nmesh / 2 + 1));
+
+        for(ptrdiff_t k = 0; k < Nmesh; k++)
+          p[row + k] = a[row + k] * b[row + k];
+        for(ptrdiff_t k = Nmesh; k < 2 * (Nmesh / 2 + 1); k++)
+          p[row + k] = 0;
+      }
+  PROF_END(PROF_MULT)
+}
+
+/* rank 0: "Done" for the pair line "Computing combination i, j ....", aligned whatever the width of i and j */
+static void NG(modal_pair_done)(unsigned int N_i, unsigned int N_j)
+{
+  if(ThisTask == 0)
+    print_timed_done(23 - (N_i >= 10) - (N_j >= 10));
+}
+
 /* The NG stage: cpot_NG (double, band layout, zeroed) += sum over the mode pairs of K_ij FFT[g_i g_j], and the Beta
  * terms. */
 static void NG(modal_ng_stage)(lpt_complex *cpot, lpt_complex *cpot_NG, double (*AlphaTable)[N_modes][N_modes],
@@ -244,17 +268,9 @@ static void NG(modal_ng_stage)(lpt_complex *cpot, lpt_complex *cpot_NG, double (
               fflush(stdout);
             }
 
-          if(ksum == 0.0)
+          if(ksum == 0)
             {
-              if(ThisTask == 0)
-                {
-                  int print_size = 0;
-                  if(N_i >= 10)
-                    print_size += 1;
-                  if(N_j >= 10)
-                    print_size += 1;
-                  print_timed_done(23 - print_size);
-                }
+              NG(modal_pair_done)(N_i, N_j);
               continue;
             }
 
@@ -265,20 +281,7 @@ static void NG(modal_ng_stage)(lpt_complex *cpot, lpt_complex *cpot_NG, double (
             }
 
           //Multiply terms in realspace [\phi gi] x [\phi gj]
-          PROF_BEGIN(PROF_MULT)
-          for(i = 0; i < Local_nx; i++)
-            for(j = 0; j < Nmesh; j++)
-              {
-                for(k = 0; k < Nmesh; k++)
-                  {
-                    coord        = (i * Nmesh + j) * (2 * (Nmesh / 2 + 1)) + k;
-                    p_tmp[coord] = gi[coord] * gj[coord];
-                  }
-
-                for(k = Nmesh; k < 2 * (Nmesh / 2 + 1); k++)      /* row padding (no full-grid clear needed) */
-                  p_tmp[(i * Nmesh + j) * (2 * (Nmesh / 2 + 1)) + k] = 0;
-              }
-          PROF_END(PROF_MULT)
+          NG(modal_multiply_fields)(p_tmp, gi, gj);
           lpt_barrier();
 
           NG_FWD(p_tmp);
@@ -330,18 +333,10 @@ static void NG(modal_ng_stage)(lpt_complex *cpot, lpt_complex *cpot_NG, double (
             }
           PROF_END(PROF_ACCUM)
 
-          if(ThisTask == 0)
-            {
-              int print_size = 0;
-              if(N_i >= 10)
-                print_size += 1;
-              if(N_j >= 10)
-                print_size += 1;
-              print_timed_done(23 - print_size);
-            }
+          NG(modal_pair_done)(N_i, N_j);
           lpt_barrier();
         }
-    } //Close the Ni,Nj,Nk loop
+    }
 
 
   /**** Extra templates cancelling the divergent (0,1,2) term ****/
@@ -390,19 +385,8 @@ static void NG(modal_ng_stage)(lpt_complex *cpot, lpt_complex *cpot_NG, double (
               gj = g_jr;
             }
 
-          //Multiply terms in realspace [\phi gi] x [\phi gj]
-          for(i = 0; i < Local_nx; i++)
-            for(j = 0; j < Nmesh; j++)
-              {
-                for(k = 0; k < Nmesh; k++)
-                  {
-                    coord        = (i * Nmesh + j) * (2 * (Nmesh / 2 + 1)) + k;
-                    p_tmp[coord] = g0[coord] * gj[coord];
-                  }
-
-                for(k = Nmesh; k < 2 * (Nmesh / 2 + 1); k++)      /* row padding (no full-grid clear needed) */
-                  p_tmp[(i * Nmesh + j) * (2 * (Nmesh / 2 + 1)) + k] = 0;
-              }
+          //Multiply terms in realspace [\phi g0] x [\phi gj]
+          NG(modal_multiply_fields)(p_tmp, g0, gj);
           lpt_barrier();
 
           NG_FWD(p_tmp);
@@ -449,7 +433,7 @@ static void NG(modal_ng_stage)(lpt_complex *cpot, lpt_complex *cpot_NG, double (
             print_timed_done(18);
           lpt_barrier();
         }
-    } //Close the Beta loop
+    }
 
   free(c_tmp);
   for(N = 0; N < 2; N++)
