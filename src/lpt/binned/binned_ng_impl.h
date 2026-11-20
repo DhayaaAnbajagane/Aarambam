@@ -4,8 +4,12 @@
  * term (cpot_NG / out) are double in both; NG_ALLOC, NG_FWD and NG_INV are the grid allocation and the band FFTs of
  * the precision. */
 
-static void NG(bpng_build_input_filtered_field)(NGC *dst, lpt_complex *src, int axis, int node)
+/* Returns whether the field is nonzero on some rank (collective): a field that is zero everywhere (a bin outside the
+ * k range of the grid) gives products and FFTs that are exactly zero, so its pairs can be skipped. */
+static int NG(bpng_build_input_filtered_field)(NGC *dst, lpt_complex *src, int axis, int node)
 {
+  int nonzero = 0, nonzero_all;
+
   PROF_BEGIN(PROF_FIELD)
   ptrdiff_t ii, j, k, i;
   uint64_t  coord;
@@ -24,6 +28,7 @@ static void NG(bpng_build_input_filtered_field)(NGC *dst, lpt_complex *src, int 
           coord = BML.coord[m];
           dst[coord].re = filt * src[coord].re;
           dst[coord].im = filt * src[coord].im;
+          nonzero |= (dst[coord].re != 0 || dst[coord].im != 0);
         }
     }
   else
@@ -56,11 +61,14 @@ static void NG(bpng_build_input_filtered_field)(NGC *dst, lpt_complex *src, int 
 
                   dst[coord].re = filt * src[coord].re;
                   dst[coord].im = filt * src[coord].im;
+                  nonzero |= (dst[coord].re != 0 || dst[coord].im != 0);
                 }
             }
         }
     }
   PROF_END(PROF_FIELD)
+  MPI_Allreduce(&nonzero, &nonzero_all, 1, MPI_INT, MPI_LOR, MPI_COMM_WORLD);
+  return nonzero_all;
 }
 
 /* out = a * b on the real-space grid, row padding zeroed (no full-grid clear needed). */
@@ -122,13 +130,16 @@ static void NG(bpng_free_real_field_cache)(NGR **cache, int nfield)
   free(cache);
 }
 
-/* Filtered input field psi_node(k) phi(k), transformed to real space. */
-static void NG(bpng_fill_cached_real_field)(NGR *field, lpt_complex *src, int axis, int node)
+/* Filtered input field psi_node(k) phi(k), transformed to real space. Returns 0 (and skips the FFT) if it is zero
+ * everywhere. */
+static int NG(bpng_fill_cached_real_field)(NGR *field, lpt_complex *src, int axis, int node)
 {
-  NG(bpng_build_input_filtered_field)((NGC *) field, src, axis, node);
+  if(!NG(bpng_build_input_filtered_field)((NGC *) field, src, axis, node))
+    return 0;
   lpt_barrier();
   NG_INV(field);
   lpt_barrier();
+  return 1;
 }
 
 static void NG(bpng_convolve_and_accumulate_hybrid)(
@@ -145,8 +156,9 @@ static void NG(bpng_compute_non_gaussian_potential_symmetric_blocked)(
     NGC *c_tmp, NGR *p_tmp, int block_size)
 {
   int        n, a0, b0, ia, ib, na, nb, la, lb, start_b;
-  int        timed_chars = 0;
+  int        timed_chars = 0, npair = 0, nskip = 0;
   NGR      **acache, **bcache;
+  int       *anz, *bnz;           /* filtered field nonzero somewhere */
 
   n = BPNG.nk[0];
   if(block_size <= 0)
@@ -167,8 +179,9 @@ static void NG(bpng_compute_non_gaussian_potential_symmetric_blocked)(
         }
 
       acache = NG(bpng_alloc_real_field_cache)(na);
+      anz    = malloc(sizeof(int) * na);
       for(la = 0; la < na; la++)
-        NG(bpng_fill_cached_real_field)(acache[la], cpot, 0, a0 + la);
+        anz[la] = NG(bpng_fill_cached_real_field)(acache[la], cpot, 0, a0 + la);
 
       for(b0 = a0; b0 < n; b0 += block_size)
         {
@@ -177,12 +190,16 @@ static void NG(bpng_compute_non_gaussian_potential_symmetric_blocked)(
             nb = n - b0;
 
           if(b0 == a0)
-            bcache = acache;
+            {
+              bcache = acache;
+              bnz    = anz;
+            }
           else
             {
               bcache = NG(bpng_alloc_real_field_cache)(nb);
+              bnz    = malloc(sizeof(int) * nb);
               for(lb = 0; lb < nb; lb++)
-                NG(bpng_fill_cached_real_field)(bcache[lb], cpot, 1, b0 + lb);
+                bnz[lb] = NG(bpng_fill_cached_real_field)(bcache[lb], cpot, 1, b0 + lb);
             }
 
           for(la = 0; la < na; la++)
@@ -193,6 +210,12 @@ static void NG(bpng_compute_non_gaussian_potential_symmetric_blocked)(
               for(lb = start_b; lb < nb; lb++)
                 {
                   ib = b0 + lb;
+                  npair++;
+                  if(!anz[la] || !bnz[lb])        /* a zero field: the pair adds exactly zero */
+                    {
+                      nskip++;
+                      continue;
+                    }
                   NG(bpng_convolve_and_accumulate_hybrid)((NGC *) acache[la], acache[la],
                                                           (NGC *) bcache[lb], bcache[lb],
                                                       c_tmp, p_tmp,
@@ -201,13 +224,20 @@ static void NG(bpng_compute_non_gaussian_potential_symmetric_blocked)(
             }
 
           if(b0 != a0)
-            NG(bpng_free_real_field_cache)(bcache, nb);
+            {
+              NG(bpng_free_real_field_cache)(bcache, nb);
+              free(bnz);
+            }
         }
 
       NG(bpng_free_real_field_cache)(acache, na);
+      free(anz);
       if(ThisTask == 0)
         print_timed_done_aligned(timed_chars);
     }
+  if(ThisTask == 0 && nskip > 0)
+    printf("  %d of %d bin pairs skipped: a filtered field is zero on this grid (bin outside its k range).\n",
+           nskip, npair);
 }
 
 /* out += Fnl K_ab(k3) conv(k3). conv is a forward FFT in the band layout (lpt_fft.h); out is accumulated in the
@@ -382,7 +412,12 @@ static void NG(bpng_compute_non_gaussian_potential)(lpt_complex *cpot, lpt_compl
           fflush(stdout);
         }
 
-      NG(bpng_build_input_filtered_field)(cf1, cpot, 0, ia);
+      if(!NG(bpng_build_input_filtered_field)(cf1, cpot, 0, ia))       /* zero field: all its pairs add zero */
+        {
+          if(ThisTask == 0)
+            print_timed_done_aligned(timed_chars);
+          continue;
+        }
       lpt_barrier();
       NG_INV(f1);
       lpt_barrier();
@@ -398,7 +433,8 @@ static void NG(bpng_compute_non_gaussian_potential)(lpt_complex *cpot, lpt_compl
             }
           else
             {
-              NG(bpng_build_input_filtered_field)(cf2, cpot, 1, ib);
+              if(!NG(bpng_build_input_filtered_field)(cf2, cpot, 1, ib))
+                continue;
               lpt_barrier();
               NG_INV(f2);
               lpt_barrier();
