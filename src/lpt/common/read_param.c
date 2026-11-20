@@ -23,6 +23,7 @@ static const struct lpt_param common_params[] = {
   {"Redshift",                       &Redshift,                      PARAM_DOUBLE, 0, 1},
   {"Fnl",                            &Fnl,                           PARAM_DOUBLE, 0, 1},
   {"SavePotentialField",             &SavePotentialField,            PARAM_INT,    0, 1},
+  {"ModeTables",                     &ModeTables,                    PARAM_INT,    0, 0},
   {"FixedAmplitude",                 &FixedAmplitude,                PARAM_INT,    0, 1},
   {"PhaseFlip",                      &PhaseFlip,                     PARAM_INT,    0, 1},
   {"Nmesh",                          &Nmesh,                         PARAM_INT,    0, 1},
@@ -65,6 +66,7 @@ void read_parameterfile(char *fname)
   int errorFlag = 0;
   char *seen = calloc(nt, 1);
 
+  ModeTables = 0;
   lpt_method_param_defaults();
 
   if((fd = fopen(fname, "r")))
@@ -139,6 +141,12 @@ void read_parameterfile(char *fname)
 
   if(lpt_method_validate(fname))
     errorFlag = 1;
+
+  if(ModeTables < 0 || ModeTables > 1)
+    {
+      fprintf(stdout, "Error. ModeTables must be 0 (compute per-mode quantities on the fly) or 1 (precompute tables) in parameter file '%s'.\n", fname);
+      errorFlag = 1;
+    }
 
   if(errorFlag)            /* called on task 0 only: abort all tasks with a non-zero status */
     {

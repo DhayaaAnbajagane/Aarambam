@@ -19,6 +19,61 @@
 
 #define TIMED_DONE_COLUMN 54
 
+
+#ifdef AARAMBAM_PROFILE
+double lpt_prof_time[PROF_NCAT];
+#endif
+
+void lpt_fft(rfftwnd_mpi_plan plan, fftw_real *field)
+{
+  PROF_BEGIN(PROF_FFT)
+  rfftwnd_mpi(plan, 1, field, Workspace, FFTW_NORMAL_ORDER);
+  PROF_END(PROF_FFT)
+}
+
+/* Forward FFT left in transposed order: k-space data are [Local_ny_t][Nmesh (x)][Nmesh/2+1 (z)], with
+ * y = Local_y_start_t + jj. Skips the final all-to-all of the normal-order transform. */
+void lpt_fft_forward_t(fftw_real *field)
+{
+  PROF_BEGIN(PROF_FFT)
+  rfftwnd_mpi(Forward_plan, 1, field, Workspace, FFTW_TRANSPOSED_ORDER);
+  PROF_END(PROF_FFT)
+}
+
+/* Transposed-order k-space data -> normal order (x-slabs), in place: the final step of a normal-order forward
+ * rfftwnd_mpi, so the result is bit-identical to having transformed in normal order. */
+void lpt_transposed_to_normal(fftw_complex *data)
+{
+  int el_size = (sizeof(fftw_complex) / sizeof(TRANSPOSE_EL_TYPE)) * Forward_plan->p_fft->n_after[0];
+  PROF_BEGIN(PROF_FFT)
+  transpose_mpi(Forward_plan->p_transpose_inv, el_size, (TRANSPOSE_EL_TYPE *) data, (TRANSPOSE_EL_TYPE *) Workspace);
+  PROF_END(PROF_FFT)
+}
+
+void lpt_barrier(void)
+{
+  PROF_BEGIN(PROF_WAIT)
+  MPI_Barrier(MPI_COMM_WORLD);
+  PROF_END(PROF_WAIT)
+}
+
+void lpt_prof_report(void)
+{
+#ifdef AARAMBAM_PROFILE
+  const char *name[PROF_NCAT] = {"FFTs", "field build (filters/kernels)", "real-space products",
+                                 "NG accumulation", "memset/memcpy", "barrier wait"};
+  double tmax[PROF_NCAT], tmin[PROF_NCAT];
+  MPI_Reduce(lpt_prof_time, tmax, PROF_NCAT, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
+  MPI_Reduce(lpt_prof_time, tmin, PROF_NCAT, MPI_DOUBLE, MPI_MIN, 0, MPI_COMM_WORLD);
+  if(ThisTask == 0)
+    {
+      printf("\nAARAMBAM_PROFILE (min / max over ranks):\n");
+      for(int c = 0; c < PROF_NCAT; c++)
+        printf("  %-32s %10.3f %10.3f s\n", name[c], tmin[c], tmax[c]);
+    }
+#endif
+}
+
 void print_timed_done(int n) {
   clock_t now = clock();
   double tot = ((double)(now - start_time)) / CLOCKS_PER_SEC;
@@ -81,7 +136,7 @@ int main(int argc, char **argv) {
   if (ThisTask == 0) {read_parameterfile(argv[1]);}
   broadcast_parameters();
 
-  MPI_Barrier(MPI_COMM_WORLD);
+  lpt_barrier();
   set_units();
   initialize_transferfunction(); 
   initialize_powerspectrum(); 
@@ -99,8 +154,9 @@ int main(int argc, char **argv) {
   if(NumPart)
     free(P);
   free_ffts();
-  MPI_Barrier(MPI_COMM_WORLD);
+  lpt_barrier();
   print_spec();
+  lpt_prof_report();
   MPI_Finalize();		/* clean up & finalize MPI */
   exit(0);
 }
@@ -431,11 +487,11 @@ void lpt_displacements_from_potential(fftw_complex *cpot, fftw_complex *cpot_NG,
   maxdisp = 0;
 
   //Trasnform to real space so we can write out the potential
-  rfftwnd_mpi(Inverse_plan, 1, pot, Workspace, FFTW_NORMAL_ORDER);
+  lpt_fft(Inverse_plan, pot);
   if(SavePotentialField==1) write_phi(pot, 0);
   // if(ThisTask == 0) printf("\n coord = 10 \n pot = %lg\n\n", pot[10]);
-  MPI_Barrier(MPI_COMM_WORLD);   
-  rfftwnd_mpi(Forward_plan, 1, pot, Workspace, FFTW_NORMAL_ORDER);
+  lpt_barrier();   
+  lpt_fft(Forward_plan, pot);
 
   nmesh3 = ((uint64_t) Nmesh) * ((uint64_t) Nmesh ) * ((uint64_t) Nmesh);    
 
@@ -467,13 +523,13 @@ void lpt_displacements_from_potential(fftw_complex *cpot, fftw_complex *cpot_NG,
   
   free(cpot_NG);
 
-MPI_Barrier(MPI_COMM_WORLD);
+lpt_barrier();
     
 if (ThisTask == 0) {timed_chars = printf("Writing potential to disc..."); fflush(stdout);}
-rfftwnd_mpi(Inverse_plan, 1, pot, Workspace, FFTW_NORMAL_ORDER);
+lpt_fft(Inverse_plan, pot);
 if(SavePotentialField==1) write_phi(pot, 1);
-MPI_Barrier(MPI_COMM_WORLD);   
-rfftwnd_mpi(Forward_plan, 1, pot, Workspace, FFTW_NORMAL_ORDER);
+lpt_barrier();   
+lpt_fft(Forward_plan, pot);
     
 for(ii = 0; ii < Local_nx; ii++){
     for(j = 0; j < Nmesh; j++){
@@ -489,7 +545,7 @@ for(ii = 0; ii < Local_nx; ii++){
   }
 if (ThisTask == 0) print_timed_done_aligned(timed_chars);
 
-MPI_Barrier(MPI_COMM_WORLD);
+lpt_barrier();
 if (ThisTask == 0) {timed_chars = printf("Computing gradient of non-Gaussian potential..."); fflush(stdout);}
 
 /*****  Now 2LPT ****/
@@ -563,7 +619,7 @@ ASSERT_ALLOC(cdisp[0] && cdisp[1] && cdisp[2]);
   if (ThisTask == 0) print_timed_done_aligned(timed_chars);
 
 
-       MPI_Barrier(MPI_COMM_WORLD);
+       lpt_barrier();
  
       /* Compute displacement gradient */
 
@@ -618,7 +674,7 @@ ASSERT_ALLOC(cdisp[0] && cdisp[1] && cdisp[2]);
 	    }
 
 
-      for(i = 0; i < 6; i++) rfftwnd_mpi(Inverse_plan, 1, digrad[i], Workspace, FFTW_NORMAL_ORDER);
+      for(i = 0; i < 6; i++) lpt_fft(Inverse_plan, digrad[i]);
 
       /* Compute second order source and store it in digrad[3]*/
 
@@ -634,7 +690,7 @@ ASSERT_ALLOC(cdisp[0] && cdisp[1] && cdisp[2]);
                 -digrad[1][coord]*digrad[1][coord]-digrad[2][coord]*digrad[2][coord]-digrad[4][coord]*digrad[4][coord];
 	    }
 
-      rfftwnd_mpi(Forward_plan, 1, digrad[3], Workspace, FFTW_NORMAL_ORDER);
+      lpt_fft(Forward_plan, digrad[3]);
       
       /* The memory allocated for cdigrad[0], [1], and [2] will be used for 2nd order displacements */
       /* Freeing the rest. cdigrad[3] still has 2nd order displacement source, free later */
@@ -712,14 +768,14 @@ ASSERT_ALLOC(cdisp[0] && cdisp[1] && cdisp[2]);
       /* Free cdigrad[3] */
       free(cdigrad[3]);
 
-      MPI_Barrier(MPI_COMM_WORLD);
+      lpt_barrier();
 
       /* Now, both cdisp, and cdisp2 have the ZA and 2nd order displacements */
 
       for(axes = 0; axes < 3; axes++)
 	{
-	  rfftwnd_mpi(Inverse_plan, 1, disp[axes], Workspace, FFTW_NORMAL_ORDER);
-	  rfftwnd_mpi(Inverse_plan, 1, disp2[axes], Workspace, FFTW_NORMAL_ORDER);
+	  lpt_fft(Inverse_plan, disp[axes]);
+	  lpt_fft(Inverse_plan, disp2[axes]);
 
 	  /* now get the plane on the right side from neighbour on the right, 
 	     and send the left plane */
@@ -903,7 +959,7 @@ void initialize_ffts(void)
   int *slab_to_task_local;
   size_t bytes = 0;
 
-  MPI_Barrier(MPI_COMM_WORLD);
+  lpt_barrier();
   
   Inverse_plan = rfftw3d_mpi_create_plan(MPI_COMM_WORLD,
 					 Nmesh, Nmesh, Nmesh, FFTW_COMPLEX_TO_REAL, FFTW_ESTIMATE);
@@ -913,6 +969,8 @@ void initialize_ffts(void)
 
   rfftwnd_mpi_local_sizes(Forward_plan, &Local_nx, &Local_x_start,
 			  &local_ny_after_transpose, &local_y_start_after_transpose, &total_size);
+  Local_ny_t      = local_ny_after_transpose;
+  Local_y_start_t = local_y_start_after_transpose;
 
   Local_nx_table = malloc(sizeof(int) * NTask);
   MPI_Allgather(&Local_nx, 1, MPI_INT, Local_nx_table, 1, MPI_INT, MPI_COMM_WORLD);

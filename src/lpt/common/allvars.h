@@ -71,6 +71,8 @@ extern int      *Local_nx_table;
 extern int      WhichSpectrum;
 extern int      WhichTransfer;
 extern int      SavePotentialField;
+extern int      Local_ny_t, Local_y_start_t;   /* k-space y-slab of FFTW_TRANSPOSED_ORDER output */
+extern int      ModeTables;           /* 0: per-mode quantities computed on the fly (least memory); 1: precomputed per-mode tables (faster, more memory) */
 
 extern FILE     *FdTmp, *FdTmpInput;
 

@@ -9,6 +9,8 @@ struct io_header_1 header1, header;
 int WhichSpectrum;
 int WhichTransfer;  
 int SavePotentialField;
+int ModeTables;
+int Local_ny_t, Local_y_start_t;   /* k-space slab (in y) of transposed-order transforms */
 
 int SphereMode;
 int *Local_nx_table;
