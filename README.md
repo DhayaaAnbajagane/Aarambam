@@ -48,11 +48,13 @@ cd Aarambam
 pip install .
 ```
 
-There are a number of dependencies, particularly due to the 2LPT (2nd order Lagrangian Perturbation Theory) method provided in this package, namely `MPI`, `FFTW2` (NOT `FFTW3`. Using `FFTW2` a legacy dependence from `2LPTIC` days), `GSL` and `OpenMP` (for the Cython extension). The install will generally do its best to find the right compiled objects for these dependencies. `FFTW2` is never searched for automatically, so you must ALWAYS set the following environment variable PRIOR to installation
+There are a number of dependencies, particularly due to the 2LPT (2nd order Lagrangian Perturbation Theory) method provided in this package, namely `MPI`, `FFTW3` (double precision, built WITH its MPI library), `GSL` and `OpenMP` (for the Cython extension). The install will generally do its best to find the right compiled objects for these dependencies. We recommend that you always point it at your `FFTW3` build by setting the following environment variable PRIOR to installation
 
 ```bash
-export Aarambam_FFTW2_ROOT=/path/to/fftw-2.1.5/build   # the --prefix used for FFTW2; contains include/dfftw.h and lib/
+export Aarambam_FFTW3_ROOT=/path/to/fftw-3.3.10/build   # the --prefix used for FFTW3; contains include/fftw3-mpi.h and lib/
 ```
+
+If it is not set, the install looks for `fftw3-mpi.h` under `FFTW3_ROOT`, `FFTW_DIR`, `FFTW_ROOT` and the system paths. (Version 1.0.0 used FFTW2 and `Aarambam_FFTW2_ROOT`; that variable is no longer used.)
 
 If the install is not finding your correct installs of C-compilers, GSL etc. then you can explicitly specify paths with the variables below. On most clusters you will need at least the GSL and MPI ones (otherwise the MPI library is searched for on `LD_LIBRARY_PATH`/`LIBRARY_PATH` and the system paths, and GSL only in `GSL_DIR`/`GSL_ROOT` and the system paths).
 
@@ -62,17 +64,24 @@ export Aarambam_GSL_ROOT=/path/to/gsl           # contains include/gsl/ and lib/
 export Aarambam_OPENMPI_ROOT=/path/to/openmpi   # contains lib/libmpi.so
 ```
 
-If your computing cluster does not provide an install of FFTW2 (most do not since it is old...) then you can install it via the following steps:
+Most computing clusters provide FFTW3, but often without its MPI library (`libfftw3_mpi`), or built against a different MPI than the one you use. In either case (or if there is no FFTW3 at all) you can install it via the following steps:
 
 ```bash
-wget https://www.fftw.org/fftw-2.1.5.tar.gz
-tar -xvzf fftw-2.1.5.tar.gz
-cd fftw-2.1.5; mkdir build;
-./configure --prefix=${PWD}/build --enable-mpi --enable-type-prefix CC={ADD_PATH_TO_MPICC_EXECUTABLE}
-make
+wget https://www.fftw.org/fftw-3.3.10.tar.gz
+tar -xvzf fftw-3.3.10.tar.gz
+cd fftw-3.3.10; mkdir build;
+./configure --prefix=${PWD}/build --enable-mpi --enable-shared --enable-sse2 --enable-avx --enable-avx2 MPICC={ADD_PATH_TO_MPICC_EXECUTABLE}
+make -j 8
 make install
 ```
-You may be able to skip the `CC=` addition if your computing cluster already supplied `mpicc` in an easily findable way. Both flags are required: `--enable-mpi` builds the MPI-parallel FFTs, and `--enable-type-prefix` gives the double-precision libraries and headers their `d` prefix (`drfftw_mpi.h`, `libdrfftw_mpi`, ...), which is what Aarambam includes and links against. The above `make` command will take a while to run (FFTW2 has a lot of libraries to install). FFTW2 is a hard requirement as this piece of LPT code originates from the 2LPTic code, which was written against the FFTW2 MPI interface (FFTW 2.1.5, from 2003, is the last FFTW2 release).
+You may be able to skip the `MPICC=` addition if your computing cluster already supplied `mpicc` in an easily findable way, but it must be the same `mpicc` (i.e. the same MPI) you build Aarambam with. The flags:
+
+* `--enable-mpi` is required: it builds the MPI-parallel FFTs (`fftw3-mpi.h`, `libfftw3_mpi`), which is what Aarambam includes and links against.
+* Keep FFTW's default double precision, i.e. do NOT add `--enable-float` or `--enable-long-double`.
+* `--enable-shared` builds shared libraries; the installed Aarambam executables find them without `LD_LIBRARY_PATH`.
+* `--enable-sse2 --enable-avx --enable-avx2` build FFTW's SIMD kernels, which make the FFTs faster (add `--enable-avx512` on CPUs that support it). FFTW checks at run time which of them the CPU can use.
+
+The `make -j 8` step takes a few minutes. Aarambam plans its FFTs with `FFTW_ESTIMATE`, so the executables never spend time measuring FFT plans: every run starts straight away.
 
 If you have trouble installing this, please contact Dhayaa (details below). I've tested installation at multiple computing clusters now, but there will always be edge-cases:)
 
@@ -144,7 +153,7 @@ Particle IDs are 32-bit by default (up to $2^{31}-1$ particles). Set `export Aar
 `pip install` for larger runs.
 
 Speed vs memory: the `ModeTables` config tag (`make_config_*(..., ModeTables = 0 | 1 | 'auto')`) switches
-between per-mode tables and cached mode fields (`1`, fastest; about 3-4x faster ICs at $192^3$ than v1.1.0 without it) and on-the-fly
+between per-mode tables and cached mode fields (`1`, fastest; about 3-4x faster ICs at $192^3$ than version 1.0.0) and on-the-fly
 computation (`0`, least memory, for very large grids). `'auto'` picks for you from `Nmesh`. See the
 [conventions page](https://aarambam.readthedocs.io/en/latest/conventions.html#speed-and-memory) for the
 memory cost and timings.

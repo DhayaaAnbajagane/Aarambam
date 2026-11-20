@@ -70,20 +70,20 @@ One grid is ``8 Nmesh^3`` bytes summed over ranks: 57 MB at :math:`192^3`, 0.46 
 every size.
 
 Wall times on one 48-core node (Xeon Gold 6248R), with the default kernels (``N_modes = 15``,
-20 binned bins) and ``Nmesh = 3/2 Nsample``:
+20 binned bins), ``Nmesh = 3/2 Nsample`` and FFTW 3.3.10 built with SIMD (see :doc:`installation`):
 
-=========================  =========  ==================  ==================
-run                        before     ``ModeTables 0``    ``ModeTables 1``
-=========================  =========  ==================  ==================
-Basis  192/128, 8 ranks    14.7 s     8.2 s               3.3 s
-Basis  384/256, 32 ranks   35.1 s     20.7 s              9.4 s
-Binned 192/128, 8 ranks    16.6 s     10.1 s              5.9 s
-Binned 384/256, 32 ranks   43.4 s     26.9 s              19.3 s
-=========================  =========  ==================  ==================
+=========================  ===============  ==================  ==================
+run                        before (FFTW2)   ``ModeTables 0``    ``ModeTables 1``
+=========================  ===============  ==================  ==================
+Basis  192/128, 8 ranks    14.7 s           7.9 s               3.2 s
+Basis  384/256, 32 ranks   35.1 s           18.5 s              8.3 s
+Binned 192/128, 8 ranks    16.6 s           8.8 s               5.6 s
+Binned 384/256, 32 ranks   43.4 s           23.3 s              16.6 s
+=========================  ===============  ==================  ==================
 
-(The binned ``ModeTables 1`` column uses the full cache block, the binned
-``ModeTables 0`` column a block of 4.) In every row the rest of the time is mostly FFTs
-(FFTW2). Part of it is waiting: with ``Nmesh = 3/2 Nsample``, a third of the slabs hold no
+("Before" is the code of version 1.0.0, which used FFTW2. The binned ``ModeTables 1`` column uses the
+full cache block, the binned ``ModeTables 0`` column a block of 4.) In every row the rest of the time
+is mostly FFTs. Part of it is waiting: with ``Nmesh = 3/2 Nsample``, a third of the slabs hold no
 sampled modes.
 
 Building with ``-DAARAMBAM_PROFILE`` in the C flags makes both executables print the time spent in
@@ -93,12 +93,12 @@ end of a run.
 Size limits
 -----------
 
-The 2LPT executables use FFTW2 and the Gadget-1 snapshot format, which limit some sizes to
-32-bit integers. They check these limits at startup and stop with a message instead of
-silently overflowing:
+Some sizes in the 2LPT executables and in the Gadget-1 snapshot format are 32-bit integers. The
+executables check these limits at startup and stop with a message instead of silently overflowing:
 
-* Each MPI rank's FFT slab, ``Local_nx * Nmesh * 2 (Nmesh/2 + 1)`` reals, must stay below
-  :math:`2^{31}` (FFTW2's own ``int`` sizes). Use more ranks for large ``Nmesh``.
+* Each MPI rank's grid, about ``Local_nx * Nmesh * 2 (Nmesh/2 + 1)`` reals, must stay below
+  :math:`2^{31}` (the code's grid size and the potential files' header are ``int``), i.e. 16 GB
+  per grid per rank. Use more ranks for large ``Nmesh``.
 * Each rank writes one snapshot file, whose position block (12 bytes per particle) must fit a
   4-byte block marker, i.e. fewer than about 179 million particles per rank.
 * Particle IDs are 32-bit by default, so at most :math:`2^{31}-1` particles in total

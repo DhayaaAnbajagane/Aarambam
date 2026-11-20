@@ -26,17 +26,20 @@ C dependencies
 --------------
 
 The 2LPT (2nd order Lagrangian Perturbation Theory) executables shipped with this package need
-``MPI``, ``FFTW2`` (NOT ``FFTW3``; ``FFTW2`` is a legacy dependence from the ``2LPTic`` days) and
-``GSL``. The Cython extension used by the Legendre decomposition also needs a compiler with
-``OpenMP`` support.
+``MPI``, ``FFTW3`` (double precision, built with its MPI library) and ``GSL``. The Cython
+extension used by the Legendre decomposition also needs a compiler with ``OpenMP`` support.
 
-``FFTW2`` is never searched for automatically, so you must ALWAYS set the following environment
-variable PRIOR to installation. It points to the ``--prefix`` used when building FFTW2, i.e. the
-directory that contains ``include/dfftw.h`` and ``lib/``:
+We recommend that you always point the install at your ``FFTW3`` build by setting the following
+environment variable PRIOR to installation. It is the ``--prefix`` used when building FFTW3, i.e.
+the directory that contains ``include/fftw3-mpi.h`` and ``lib/``:
 
 .. code-block:: bash
 
-   export Aarambam_FFTW2_ROOT=/path/to/fftw-2.1.5/build
+   export Aarambam_FFTW3_ROOT=/path/to/fftw-3.3.10/build
+
+If it is not set, the install looks for ``fftw3-mpi.h`` under ``FFTW3_ROOT``, ``FFTW_DIR``,
+``FFTW_ROOT`` and the system paths. (Version 1.0.0 used FFTW2 and ``Aarambam_FFTW2_ROOT``; that
+variable is no longer used.)
 
 The install will do its best to find the C compiler, GSL and MPI. If it does not find the right
 ones, you can explicitly specify paths with the variables below. On most clusters you will need at
@@ -72,31 +75,38 @@ Running the tests
 ``tests/large/run_large_tests.py`` runs larger rank-independence checks and refuses to start on a
 busy node.
 
-Installing FFTW2
+Installing FFTW3
 ----------------
 
-If your computing cluster does not provide an install of FFTW2 (most do not since it is old...)
-then you can install it via the following steps:
+Most computing clusters provide FFTW3, but often without its MPI library (``libfftw3_mpi``), or
+built against a different MPI than the one you use. In either case (or if there is no FFTW3 at all)
+you can install it via the following steps:
 
 .. code-block:: bash
 
-   wget https://www.fftw.org/fftw-2.1.5.tar.gz
-   tar -xvzf fftw-2.1.5.tar.gz
-   cd fftw-2.1.5; mkdir build;
-   ./configure --prefix=${PWD}/build --enable-mpi --enable-type-prefix CC={ADD_PATH_TO_MPICC_EXECUTABLE}
-   make
+   wget https://www.fftw.org/fftw-3.3.10.tar.gz
+   tar -xvzf fftw-3.3.10.tar.gz
+   cd fftw-3.3.10; mkdir build;
+   ./configure --prefix=${PWD}/build --enable-mpi --enable-shared --enable-sse2 --enable-avx --enable-avx2 MPICC={ADD_PATH_TO_MPICC_EXECUTABLE}
+   make -j 8
    make install
 
-You may be able to skip the ``CC=`` addition if your computing cluster already supplied ``mpicc``
-in an easily findable way. Both flags are required:
+You may be able to skip the ``MPICC=`` addition if your computing cluster already supplied
+``mpicc`` in an easily findable way, but it must be the same ``mpicc`` (i.e. the same MPI) you
+build Aarambam with. The flags:
 
-* ``--enable-mpi`` builds the MPI-parallel FFTs used by the 2LPT code.
-* ``--enable-type-prefix`` gives the double-precision libraries and headers their ``d`` prefix
-  (``drfftw_mpi.h``, ``libdrfftw_mpi``, ...), which is what Aarambam includes and links against.
+* ``--enable-mpi`` is required: it builds the MPI-parallel FFTs (``fftw3-mpi.h``,
+  ``libfftw3_mpi``), which is what Aarambam includes and links against.
+* Keep FFTW's default double precision, i.e. do NOT add ``--enable-float`` or
+  ``--enable-long-double``.
+* ``--enable-shared`` builds shared libraries; the installed Aarambam executables find them without
+  ``LD_LIBRARY_PATH``.
+* ``--enable-sse2 --enable-avx --enable-avx2`` build FFTW's SIMD kernels, which make the FFTs
+  faster (add ``--enable-avx512`` on CPUs that support it). FFTW checks at run time which of them
+  the CPU can use.
 
-The ``make`` command will take a while to run (FFTW2 has a lot of libraries to install). FFTW2 is a
-hard requirement because the LPT code descends from ``2LPTic``, which was written against the FFTW2
-MPI interface (FFTW 2.1.5, from 2003, is the last FFTW2 release).
+The ``make -j 8`` step takes a few minutes. Aarambam plans its FFTs with ``FFTW_ESTIMATE``, so the
+executables never spend time measuring FFT plans: every run starts straight away.
 
 If you have trouble installing this, please contact Dhayaa Anbajagane (dhayaacosmo at gmail dot com).
 I've tested installation at multiple computing clusters now, but there will always be edge-cases :)
