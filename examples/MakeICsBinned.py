@@ -63,8 +63,9 @@ if __name__ == '__main__':
                                          BinnedKernelValuesPath    = outdir + '/BinnedKernel_hybrid_values.txt',
                                          BinnedPNGFilterCode       = 3,
                                          BinnedPNGOutputFilterCode = 3,
-                                         BinnedPNGCacheBlockSize   = 4,
-                                         SavePotentialField = int(True), NWriteoutProcesses = Nprocs)
+                                         BinnedPNGCacheBlockSize   = 'auto', #all bins up to Nmesh 512, 4 above
+                                         SavePotentialField = int(True), NWriteoutProcesses = Nprocs,
+                                         ModeTables = 'auto') #1: per-mode tables (fast, ~1 extra grid); 0: least memory
     
     with open(outdir + '/LPTconfig', 'w') as f: f.write(CONFIG)
 

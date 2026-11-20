@@ -143,6 +143,12 @@ permutation weights and the amplitude convention ($B_\Phi = 6 f_{\rm NL} B_{\rm 
 Particle IDs are 32-bit by default (up to $2^{31}-1$ particles). Set `export Aarambam_64BIT_IDS=ON` before
 `pip install` for larger runs.
 
+Speed vs memory: the `ModeTables` config tag (`make_config_*(..., ModeTables = 0 | 1 | 'auto')`) switches
+between per-mode tables and cached mode fields (`1`, fastest; about 3-4x faster ICs at $192^3$ than v1.1.0 without it) and on-the-fly
+computation (`0`, least memory, for very large grids). `'auto'` picks for you from `Nmesh`. See the
+[conventions page](https://aarambam.readthedocs.io/en/latest/conventions.html#speed-and-memory) for the
+memory cost and timings.
+
 ## Attribution
 
 If you use the legendre-based decomposition code or derivatives of it, please cite both of [Anbajagane & Lee 2025a](https://arxiv.org/abs/2509.02693) and [Anbajagane & Lee 2025b](https://arxiv.org/abs/2509.02695) who introduced and validated the code for a variety of models. If you use the binned bispectrum method, please cite [Anbajagane & Dalal 2026](https://arxiv.org/abs/2607.24939)

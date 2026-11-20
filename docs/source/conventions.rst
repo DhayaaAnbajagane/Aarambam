@@ -39,6 +39,57 @@ Grid sizes
   products (and the Nyquist planes) out of the sampled modes; ``Nmesh = Nsample`` runs
   but is not alias-free.
 
+Speed and memory
+----------------
+
+Two config tags trade memory for speed. Neither changes the ICs beyond rounding, and the
+Python config writers set both to ``'auto'`` by default.
+
+* ``ModeTables`` (both executables, default 0 when absent from a config file).
+
+  * ``0`` computes every per-mode quantity on the fly and uses the least memory.
+  * ``1`` precomputes them once.
+
+    * ``2LPTBinned`` tabulates |k|, the output bin and the in-bin coordinate of every sampled
+      mode (about one extra grid at ``Nmesh = 3/2 Nsample``). The result is bit-identical.
+    * ``2LPTBasis`` additionally builds each of the ``N_modes`` mode fields once and keeps
+      them in real space, instead of rebuilding and transforming one for every mode pair.
+      This halves the FFTs, costs about ``N_modes`` extra grids, and agrees with
+      ``ModeTables 0`` to rounding (:math:`\sim 10^{-16}` relative).
+
+  * ``'auto'`` is 1 for the binned method, and 1 for the modal one when
+    ``Nmesh <= AUTO_FAST_MAX_NMESH`` (512).
+
+* ``BinnedPNGCacheBlockSize`` (binned only): how many filtered real-space fields are kept per
+  block, about that many extra grids. The C code caps it at the number of :math:`k_1` bins. The
+  result does not depend on it. ``'auto'`` is 64 (all bins) up to ``Nmesh = 512`` and 4 above.
+
+One grid is ``8 Nmesh^3`` bytes summed over ranks: 57 MB at :math:`192^3`, 0.46 GB at
+:math:`384^3`, and 8.6 GB at :math:`1024^3`. For a large run where memory is tight, set
+``ModeTables 0`` and a small block size. Where memory allows, ``ModeTables 1`` is faster at
+every size.
+
+Wall times on one 48-core node (Xeon Gold 6248R), with the default kernels (``N_modes = 15``,
+20 binned bins) and ``Nmesh = 3/2 Nsample``:
+
+=========================  =========  ==================  ==================
+run                        before     ``ModeTables 0``    ``ModeTables 1``
+=========================  =========  ==================  ==================
+Basis  192/128, 8 ranks    14.7 s     8.2 s               3.3 s
+Basis  384/256, 32 ranks   35.1 s     20.7 s              9.4 s
+Binned 192/128, 8 ranks    16.6 s     10.1 s              5.9 s
+Binned 384/256, 32 ranks   43.4 s     26.9 s              19.3 s
+=========================  =========  ==================  ==================
+
+(The binned ``ModeTables 1`` column uses the full cache block, the binned
+``ModeTables 0`` column a block of 4.) In every row the rest of the time is mostly FFTs
+(FFTW2). Part of it is waiting: with ``Nmesh = 3/2 Nsample``, a third of the slabs hold no
+sampled modes.
+
+Building with ``-DAARAMBAM_PROFILE`` in the C flags makes both executables print the time spent in
+FFTs, field building, products, accumulation and barriers (minimum and maximum over ranks) at the
+end of a run.
+
 Size limits
 -----------
 
