@@ -1,7 +1,7 @@
 """Config-file templates and writers for the Aarambam 2LPT executables."""
 import os, tempfile, textwrap
 
-__all__ = ['DEFAULT_BASIS_CONFIG', 'DEFAULT_BASIS_INPUTS', 'DEFAULT_RESBASIS_CONFIG', 'DEFAULT_RESBASIS_INPUTS', 'DEFAULT_BINNED_CONFIG', 'DEFAULT_BINNED_INPUTS', 'make_config_basis', 'make_config_resbasis', 'make_config_binned', 'binned_kernel_inputs', 'make_example_config_basis', 'make_example_config_resbasis', 'make_example_config_binned']
+__all__ = ['AUTO_FAST_MAX_NMESH', 'DEFAULT_BASIS_CONFIG', 'DEFAULT_BASIS_INPUTS', 'DEFAULT_RESBASIS_CONFIG', 'DEFAULT_RESBASIS_INPUTS', 'DEFAULT_BINNED_CONFIG', 'DEFAULT_BINNED_INPUTS', 'make_config_basis', 'make_config_resbasis', 'make_config_binned', 'binned_kernel_inputs', 'make_example_config_basis', 'make_example_config_resbasis', 'make_example_config_binned']
 
 
 #The three configs share one template. The modal (Basis/ResBasis) and binned variants differ
@@ -33,6 +33,7 @@ FixedAmplitude                      0
 PhaseFlip                           0
 SphereMode                          0
 SavePotentialField                  %(SavePotentialField)d
+ModeTables                          %(ModeTables)d #1: per-mode tables and cached fields (faster, more memory); 0: least memory
 
 WhichSpectrum                       @SPECTRUM@
 WhichTransfer                       2 #Fixed to 2 because we always want a tabulated Transfer function (from CAMB)
@@ -68,7 +69,7 @@ _BINNED_TABLES = ("FileWithBinnedK1Edges               %(BinnedK1EdgesPath)s\n"
                   "BinnedPNGOutputFilter               %(BinnedPNGOutputFilterCode)d   #1,2,3 for constant/linear/cubic\n"
                   "BinnedPNGCoordinate                 2                               #1,2   for k/log(k). WE ONLY IMPLEMENT LOG(k) FOR NOW\n"
                   "BinnedPNGUseInternalSymmetry        1                               #No reason to turn-off. Uses symmetry between k1, k2\n"
-                  "BinnedPNGCacheBlockSize             %(BinnedPNGCacheBlockSize)d #Cache to speed-up code, but increases memory usage by a factor of the block size")
+                  "BinnedPNGCacheBlockSize             %(BinnedPNGCacheBlockSize)d #Filtered fields kept in memory per block: fewer FFTs, ~that many extra grids")
 
 _OSCILLATION = ("\nA_res               %(Pk_A_res).17g\n"
                 "w_res               %(Pk_w_res).17g\n"
@@ -93,7 +94,8 @@ DEFAULT_BASIS_INPUTS = dict(Nmesh = 256, Nsample = 256, Nmax = 256, Lbox = 512, 
                             TransferPath = os.path.dirname(__file__) + "/defaults/TransferFunctionConverted.dat",
                             AlphaPath    = os.path.dirname(__file__) + "/defaults/AlphaTable.dat",
                             AiPath       = os.path.dirname(__file__) + "/defaults/AiTable.dat",
-                            SavePotentialField = True, NWriteoutProcesses = 1
+                            SavePotentialField = True, NWriteoutProcesses = 1,
+                            ModeTables = 'auto'
                             )
 
 
@@ -113,14 +115,37 @@ DEFAULT_BINNED_INPUTS = dict(Nmesh = 256, Nsample = 256, Nmax = 256, Lbox = 512,
                              BinnedKernelValuesPath = os.path.dirname(__file__) + "/defaults/BinnedKernel_hybrid_values.txt",
                              BinnedPNGFilterCode       = 3,
                              BinnedPNGOutputFilterCode = 3,
-                             BinnedPNGCacheBlockSize   = 4,
-                             SavePotentialField = True, NWriteoutProcesses = 1
+                             BinnedPNGCacheBlockSize   = 'auto',
+                             SavePotentialField = True, NWriteoutProcesses = 1,
+                             ModeTables = 'auto'
                             )
+
+
+#Speed/memory options set to 'auto' take their fast (memory-hungry) value for Nmesh up to this, and their
+#low-memory value above it. See "Speed and memory" in docs/source/conventions.rst.
+AUTO_FAST_MAX_NMESH = 512
+
+
+def _resolve_auto(value, Nmesh, fast, lean, name):
+    """An integer option, or ``'auto'``: ``fast`` if ``Nmesh <= AUTO_FAST_MAX_NMESH``, else ``lean``."""
+    if isinstance(value, str):
+        if value != 'auto':
+            raise ValueError(f"{name} must be an integer or 'auto', got {value!r}")
+        return fast if Nmesh <= AUTO_FAST_MAX_NMESH else lean
+    return int(value)
+
+
+def _resolve_mode_tables(ModeTables, Nmesh, lean = 0):
+    """ModeTables 0/1, or 'auto' (1 up to AUTO_FAST_MAX_NMESH, ``lean`` above)."""
+    ModeTables = _resolve_auto(ModeTables, Nmesh, 1, lean, 'ModeTables')
+    if ModeTables not in (0, 1):
+        raise ValueError(f"ModeTables must be 0, 1 or 'auto', got {ModeTables!r}")
+    return ModeTables
 
 
 def make_config_basis(Nmesh, Nsample, Nmax, Lbox, FileBase, OutputDir, GlassFile, GlassTileFac,
                       seed, Om, Ode, h, sigma8, n_s, z_ini, Fnl, N_modes, TransferPath,
-                      AlphaPath, AiPath, SavePotentialField, NWriteoutProcesses):
+                      AlphaPath, AiPath, SavePotentialField, NWriteoutProcesses, ModeTables = 'auto'):
     """
     Generate a basis configuration file string for initial condition generation
     with the standard basis method.
@@ -183,6 +208,12 @@ def make_config_basis(Nmesh, Nsample, Nmax, Lbox, FileBase, OutputDir, GlassFile
     NWriteoutProcesses : int
         Written as ``NumFilesWrittenInParallel``. Kept for config compatibility: the C code
         writes all files from task 0 and does not use it. Default 1.
+    ModeTables : {0, 1, 'auto'}, optional
+        Speed/memory switch of the 2LPT code. ``1`` keeps all ``N_modes`` mode fields in
+        real space and tabulates the per-mode kernel values (about ``N_modes`` extra grids
+        of ``8 Nmesh^3`` bytes, half the FFTs): the fast setting. ``0`` rebuilds the fields
+        for every mode pair and uses the least memory. Both give the same ICs to rounding.
+        ``'auto'`` (default) picks 1 for ``Nmesh <= AUTO_FAST_MAX_NMESH`` (512) and 0 above.
 
     Returns
     -------
@@ -204,13 +235,14 @@ def make_config_basis(Nmesh, Nsample, Nmax, Lbox, FileBase, OutputDir, GlassFile
     ... )
     >>> print(cfg)  # prints the beginning of the config file
     """
+    ModeTables = _resolve_mode_tables(ModeTables, Nmesh)
     return textwrap.dedent(DEFAULT_BASIS_CONFIG % locals())
 
 
 def make_config_resbasis(Nmesh, Nsample, Nmax, Lbox, FileBase, OutputDir, GlassFile, GlassTileFac,
                          seed, Om, Ode, h, sigma8, n_s, z_ini, Fnl, N_modes, TransferPath,
                          AlphaPath, AiPath, SavePotentialField, NWriteoutProcesses,
-                         Pk_A_res, Pk_w_res, Pk_phi_res, Pk_mode):
+                         Pk_A_res, Pk_w_res, Pk_phi_res, Pk_mode, ModeTables = 'auto'):
 
     """
     Generate a basis configuration file string for initial condition generation
@@ -286,6 +318,8 @@ def make_config_resbasis(Nmesh, Nsample, Nmax, Lbox, FileBase, OutputDir, GlassF
             0 - No oscillations
             1 - Oscillations in :math:`k`.
             2 - Oscillations in :math:`\\log k`.
+    ModeTables : {0, 1, 'auto'}, optional
+        Speed/memory switch of the 2LPT code; see ``make_config_basis``.
 
     Returns
     -------
@@ -309,6 +343,7 @@ def make_config_resbasis(Nmesh, Nsample, Nmax, Lbox, FileBase, OutputDir, GlassF
     >>> print(cfg)  # prints the beginning of the config file
     """
 
+    ModeTables = _resolve_mode_tables(ModeTables, Nmesh)
     return textwrap.dedent(DEFAULT_RESBASIS_CONFIG % locals())
 
 
@@ -316,7 +351,7 @@ def make_config_binned(Nmesh, Nsample, Nmax, Lbox, FileBase, OutputDir, GlassFil
                        seed, Om, Ode, h, sigma8, n_s, z_ini, Fnl, TransferPath,
                        BinnedK1EdgesPath, BinnedK2EdgesPath, BinnedK3EdgesPath, BinnedKernelValuesPath,
                        BinnedPNGFilterCode, BinnedPNGOutputFilterCode, BinnedPNGCacheBlockSize,
-                       SavePotentialField, NWriteoutProcesses):
+                       SavePotentialField, NWriteoutProcesses, ModeTables = 'auto'):
     """
     Generate a configuration string for the binned-PNG initial-condition generator.
 
@@ -380,15 +415,24 @@ def make_config_binned(Nmesh, Nsample, Nmax, Lbox, FileBase, OutputDir, GlassFil
     BinnedPNGOutputFilterCode : int
         Cell-local interpolation code on the output ``k3`` leg:
         ``1`` for constant, ``2`` for linear, or ``3`` for cubic.
-    BinnedPNGCacheBlockSize : int
+    BinnedPNGCacheBlockSize : int or 'auto'
         Number of filtered k1 (and k2) real-space basis fields kept in memory per block
         when the k1 <-> k2 symmetry is used; 0 disables the blocked path. Larger values
-        cut repeated FFTs at the cost of roughly that many extra grids of memory.
+        cut repeated FFTs at the cost of roughly that many extra grids of memory (the C
+        code caps it at the number of k1 bins); the result does not depend on it.
+        ``'auto'`` (default) is 64, i.e. all bins, for ``Nmesh <= AUTO_FAST_MAX_NMESH``
+        and 4 above.
     SavePotentialField : int or bool
         Whether to save the Gaussian and non-Gaussian potential fields.
     NWriteoutProcesses : int
         Written as ``NumFilesWrittenInParallel``. Kept for config compatibility: the C code
         writes all files from task 0 and does not use it. Default 1.
+    ModeTables : {0, 1, 'auto'}, optional
+        Speed/memory switch of the 2LPT code. ``1`` tabulates |k|, the output bin and
+        the in-bin coordinate of every sampled mode once (56 bytes per sampled mode, about
+        one extra grid at ``Nmesh = 3/2 Nsample``): the fast setting. ``0`` recomputes them
+        for every bin pair. The result is bit-identical. ``'auto'`` (default) is 1 at every
+        ``Nmesh``; the binned memory/speed trade-off is ``BinnedPNGCacheBlockSize``.
 
     Returns
     -------
@@ -409,11 +453,13 @@ def make_config_binned(Nmesh, Nsample, Nmax, Lbox, FileBase, OutputDir, GlassFil
     ...     BinnedK3EdgesPath = 'BinnedKernel_k3_edges.txt',
     ...     BinnedKernelValuesPath = 'BinnedKernel_hybrid_values.txt',
     ...     BinnedPNGFilterCode = 3, BinnedPNGOutputFilterCode = 3,
-    ...     BinnedPNGCacheBlockSize = 4,
+    ...     BinnedPNGCacheBlockSize = 'auto', ModeTables = 'auto',
     ...     SavePotentialField = True, NWriteoutProcesses = 1,
     ... )
     """
     _check_binned_codes(BinnedKernelValuesPath, BinnedPNGFilterCode, BinnedPNGOutputFilterCode)
+    ModeTables = _resolve_mode_tables(ModeTables, Nmesh, lean = 1)      #the binned tables cost ~1 grid
+    BinnedPNGCacheBlockSize = _resolve_auto(BinnedPNGCacheBlockSize, Nmesh, 64, 4, 'BinnedPNGCacheBlockSize')
     return textwrap.dedent(DEFAULT_BINNED_CONFIG % locals())
 
 

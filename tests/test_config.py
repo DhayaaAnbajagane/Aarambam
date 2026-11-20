@@ -36,6 +36,23 @@ def test_example_configs(am, method):
         assert cfg['WhichSpectrum'] == '0'
 
 
+@pytest.mark.parametrize('method', ['basis', 'resbasis', 'binned'])
+def test_speed_options_auto(am, method):
+    d = dict(getattr(am.utils, f'DEFAULT_{method.upper()}_INPUTS'))
+    write = getattr(am.utils, f'make_config_{method}')
+    small = values(write(**dict(d, Nmesh=192)))
+    large = values(write(**dict(d, Nmesh=1024)))
+    assert (small['ModeTables'], large['ModeTables']) == ('1', '1' if method == 'binned' else '0')
+    assert values(write(**dict(d, Nmesh=1024, ModeTables=1)))['ModeTables'] == '1'
+    assert values(write(**dict(d, Nmesh=192, ModeTables=0)))['ModeTables'] == '0'
+    if method == 'binned':
+        assert (small['BinnedPNGCacheBlockSize'], large['BinnedPNGCacheBlockSize']) == ('64', '4')
+        assert values(write(**dict(d, BinnedPNGCacheBlockSize=7)))['BinnedPNGCacheBlockSize'] == '7'
+    for bad in (2, 'fast'):
+        with pytest.raises(ValueError):
+            write(**dict(d, ModeTables=bad))
+
+
 def test_floats_round_trip(am):
     d = dict(am.utils.DEFAULT_BINNED_INPUTS); d.update(Fnl=1e-7, Om=0.30891234567891234, sigma8=0.8)
     cfg = values(am.utils.make_config_binned(**d))
