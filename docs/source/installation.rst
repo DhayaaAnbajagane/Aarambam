@@ -110,13 +110,27 @@ build Aarambam with. The flags:
 
 * ``--enable-mpi`` is required: it builds the MPI-parallel FFTs (``fftw3-mpi.h``,
   ``libfftw3_mpi``), which is what Aarambam includes and links against.
-* Keep FFTW's default double precision, i.e. do NOT add ``--enable-float`` or
+* Keep FFTW's default double precision in this build, i.e. do NOT add ``--enable-float`` or
   ``--enable-long-double``.
 * ``--enable-shared`` builds shared libraries; the installed Aarambam executables find them without
   ``LD_LIBRARY_PATH``.
 * ``--enable-sse2 --enable-avx --enable-avx2`` build FFTW's SIMD kernels, which make the FFTs
   faster (add ``--enable-avx512`` on CPUs that support it). FFTW checks at run time which of them
   the CPU can use.
+
+Optionally, build FFTW a second time in single precision, into the same prefix, for the
+``NGPrecision float`` option (see :doc:`performance`). From a fresh copy of the source:
+
+.. code-block:: bash
+
+   mkdir float_build; tar -xvzf fftw-3.3.10.tar.gz -C float_build; cd float_build/fftw-3.3.10
+   ./configure --prefix={THE_SAME_PREFIX_AS_ABOVE} --enable-float --enable-shared --enable-sse --enable-sse2 --enable-avx --enable-avx2
+   make -j 8
+   make install
+
+This one needs no ``--enable-mpi`` (the code does its own single-precision distributed FFT).
+``--enable-float`` builds ``libfftw3f`` next to ``libfftw3``; the Aarambam install finds it there
+and enables the option (without it, ``NGPrecision float`` stops with a message).
 
 The ``make -j 8`` step takes a few minutes. The first run with a given grid size and number of ranks
 measures the FFT plans once and keeps them (the ``FFTWWisdomDir`` tag, see :doc:`conventions`), so

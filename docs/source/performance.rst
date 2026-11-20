@@ -28,6 +28,10 @@ and leaving ``FFTWWisdomDir`` at its default. On one 48-core node, the binned me
 :math:`384^3` / ``Nsample 256`` on 32 ranks then takes 10.9 s, against 21.4 s with
 ``ModeTables 0`` and the ``fftw`` backend, and 43.4 s for version 1.0.0.
 
+If a relative precision of about :math:`10^{-6}` on the non-Gaussian term is enough, add
+``NGPrecision float`` (``NGPrecision = 'float'``): binned 24% and basis 9% faster at
+:math:`192^3` on 8 ranks, with half the memory for that stage (see `Single precision`_).
+
 The options
 -----------
 
@@ -45,6 +49,8 @@ option                          gain                                     cost
                                                                          to ~30 s at :math:`1024^3`)
 ``Aarambam_NATIVE=ON``          a few per cent                           build option; the executables then run
                                                                          only on CPUs like the build machine's
+``NGPrecision float``           binned 15-24%, basis 0-9% at 192^3       NG term to ~1e-6 relative; a second,
+                                (more at larger grids for that stage)    single-precision FFTW build
 ==============================  =======================================  ========================================
 
 One grid is ``8 Nmesh^3`` bytes summed over all ranks: 57 MB at :math:`192^3`, 0.46 GB at
@@ -67,6 +73,40 @@ lean ones above. Set them explicitly when you know your memory allows more (see
   and ``--enable-avx512`` where available), as in :doc:`installation`.
 * **Aarambam_NATIVE**: see :doc:`installation`. Only worth it when all the nodes you run on have
   the same CPU type.
+* **NGPrecision**: see `Single precision`_ below.
+
+Single precision
+----------------
+
+``NGPrecision float`` runs the non-Gaussian stage's real-space fields, their products and their
+FFTs in single precision (always with the band FFT), and keeps everything else in double: the
+Gaussian potential, the k-space mode recursion of the basis method, the accumulated non-Gaussian
+term and the 2LPT stage. The default is ``double``. Measured against ``double`` (tests at
+:math:`32^3`-:math:`48^3`, and a standalone copy of the binned stage at :math:`192^3` and
+:math:`384^3`):
+
+* the non-Gaussian term agrees to 3-4e-7 (binned) and up to 1.3e-6 (basis, whose sum over mode
+  pairs cancels more) relative rms; the Gaussian part is unchanged. For :math:`f_{\rm NL} = 100`
+  the term is about 1% of the potential, so the potential changes by ~1e-8 relative, below the
+  float32 rounding of the particle positions in the snapshot.
+* wall times at :math:`192^3` / ``Nsample 128`` (fastest settings otherwise):
+
+  =====================  ==============  ==============
+  run                    double          float
+  =====================  ==============  ==============
+  Binned, 8 ranks        3.27 s          2.49 s (-24%)
+  Basis, 8 ranks         2.26 s          2.05 s (-9%)
+  Binned, 48 ranks       1.49 s          1.27 s (-15%)
+  Basis, 48 ranks        1.06 s          no gain
+  =====================  ==============  ==============
+
+  The stage itself is about 40% faster (45% at 48 ranks, 41% at :math:`384^3`); the rest of a run
+  (Gaussian setup, 2LPT, start-up) does not change, so the gain is largest where the non-Gaussian
+  stage dominates: the binned method, few ranks, large grids.
+
+It needs FFTW built a second time with ``--enable-float`` (see :doc:`installation`). The
+single-precision FFT plans are kept next to the double ones (``fftw3f_wisdom_*.txt`` in
+``FFTWWisdomDir``).
 
 Number of ranks
 ---------------

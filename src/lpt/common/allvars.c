@@ -17,6 +17,7 @@ int SavePotentialField;
 int ModeTables;
 char FFTWWisdomDir[500];
 char FFTBackend[20];
+char NGPrecision[20];
 
 int SphereMode;
 int *Local_nx_table;

@@ -48,7 +48,21 @@ static inline ptrdiff_t lpt_kz_end(void)
   return (Nsample / 2 + 1 < Nmesh / 2) ? Nsample / 2 + 1 : Nmesh / 2;
 }
 
+/* NGPrecision float: the non-Gaussian stage's real-space fields, products and their FFTs in single precision, on float
+ * grids from lpt_alloc_grid_f (same element count, half the bytes), always with the band FFT. The layouts are those
+ * above; the accumulated NG term stays double and lpt_band_to_normal moves it in double. */
+extern int NGFloat;
+
+typedef struct
+{
+  float re, im;
+}
+lpt_complexf;
+
 void *lpt_alloc_grid(void);                     /* one grid of TotalSizePlusAdditional reals, FFT-aligned */
+void *lpt_alloc_grid_f(void);                   /* the same number of floats */
+void  lpt_fftf_forward_band(float *field);
+void  lpt_fftf_inverse_band(float *field);
 void  lpt_fft(fftw_plan plan, lpt_real *field);
 void  lpt_fft_forward_band(lpt_real *field);
 void  lpt_fft_inverse_band(lpt_real *field);

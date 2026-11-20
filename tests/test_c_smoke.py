@@ -157,6 +157,54 @@ def test_fft_backend_band_matches_fftw(am, lpt_binaries, tmp_path, method):
         assert np.abs(a - b).max() <= 1e-12 * np.abs(a).max(), f
 
 
+def run_float(lpt_binaries, method, cfg, np_):
+    r = run(lpt_binaries, method, cfg, np_)
+    if 'built without single-precision FFTW' in r.stdout:
+        pytest.skip('executables built without libfftw3f (NGPrecision float)')
+    return r
+
+
+@pytest.mark.parametrize('method', ['basis', 'binned'])
+def test_ng_precision_float_matches_double(am, lpt_binaries, tmp_path, method):
+    """NGPrecision float: the NG term (Nongauss - Gauss potential) agrees with NGPrecision double to 1e-5 (measured:
+    ~4e-7 binned, ~1e-6 basis), the Gaussian part is unchanged, and the float run is rank independent."""
+    ng, gauss = {}, {}
+    for prec, np_ in (('double', 2), ('float', 2), ('float', 1)):
+        d = tmp_path / f'{prec}{np_}'; d.mkdir()
+        r = run_float(lpt_binaries, method, write_config(am, method, d, Nmesh=48, NGPrecision=prec), np_)
+        assert r.returncode == 0, r.stdout[-2000:]
+        assert ('NGPrecision float:' in r.stdout) == (prec == 'float')
+        gauss[prec, np_] = potential(str(d), 'Gauss')
+        ng[prec, np_] = potential(str(d), 'Nongauss') - gauss[prec, np_]
+    np.testing.assert_array_equal(gauss['double', 2], gauss['float', 2])
+    a, b = ng['double', 2], ng['float', 2]
+    assert np.abs(a - b).max() <= 1e-5 * np.abs(a).max()
+    assert np.sqrt(np.mean((a - b) ** 2) / np.mean(a ** 2)) <= 1e-5
+    np.testing.assert_allclose(ng['float', 1], b, rtol=0, atol=1e-6 * np.abs(a).max())
+
+
+def test_float_wisdom_file(am, lpt_binaries, tmp_path, monkeypatch):
+    """NGPrecision float keeps its single-precision plans in fftw3f_wisdom_*.txt next to the double ones."""
+    wisdom_dir = tmp_path / 'plans'
+    monkeypatch.delenv('AARAMBAM_FFTW_WISDOM_DIR', raising=False)
+    logs = []
+    for name in ('first', 'second'):
+        d = tmp_path / name; d.mkdir()
+        r = run_float(lpt_binaries, 'binned', write_config(am, 'binned', d, FFTWWisdomDir=wisdom_dir,
+                                                           NGPrecision='float'), 2)
+        assert r.returncode == 0, r.stdout[-2000:]
+        logs.append(r.stdout)
+    assert len(list(wisdom_dir.glob('fftw3f_wisdom_*.txt'))) == 1
+    assert 'Single-precision FFT plans measured' in logs[0]
+    assert 'Single-precision FFT plans read from' in logs[1]
+
+
+def test_bad_ng_precision_aborts(am, lpt_binaries, tmp_path):
+    cfg = write_config(am, 'binned', tmp_path, NGPrecision='half')
+    r = run(lpt_binaries, 'binned', cfg, 2)
+    assert r.returncode != 0 and "NGPrecision 'half'" in r.stdout
+
+
 def test_bad_fft_backend_aborts(am, lpt_binaries, tmp_path):
     cfg = write_config(am, 'binned', tmp_path, FFTBackend='cufft')
     r = run(lpt_binaries, 'binned', cfg, 2)

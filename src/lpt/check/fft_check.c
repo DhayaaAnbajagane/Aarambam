@@ -8,8 +8,11 @@
  *   3. inverse:               band_fft_inverse of a k-space grid with modes in and out of the band against
  *                             FFTW3-MPI's c2r of the same grid with the out-of-band modes removed
  *
+ * and the same three for the single-precision transform (band_fftf, NGPrecision float) against the double results,
+ * plus band_fftf_to_slab_double against band_fft_to_slab (the same data movement: must agree exactly).
+ *
  * Usage: mpirun -np P 2LPTFFTCheck N Nsample [measure]       (N even; measure: FFTW_MEASURE plans, else ESTIMATE)
- * Prints the errors relative to the largest value and exits with 1 if one exceeds 1e-12. */
+ * Prints the errors relative to the largest value and exits with 1 if one exceeds 1e-12 (double) or 1e-5 (float). */
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -18,7 +21,8 @@
 #include <fftw3-mpi.h>
 #include "band_fft.h"
 
-#define TOL 1e-12
+#define TOL   1e-12
+#define TOL_F 1e-5      /* single precision: rounding ~1e-7 */
 
 static int N, Nsample, kz_end;
 
@@ -73,14 +77,35 @@ static void exact_transform(ptrdiff_t x, ptrdiff_t y, ptrdiff_t z, double *re, d
       }
 }
 
-static int report(const char *what, double err, double scale, int rank)
+static int report(const char *what, double err, double scale, int rank, double tol)
 {
   double e = err / scale, emax;
 
   MPI_Allreduce(&e, &emax, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
   if(rank == 0)
-    printf("  %-28s max|err| / max = %.2e  %s\n", what, emax, emax <= TOL ? "ok" : "FAIL");
-  return emax <= TOL;
+    printf("  %-34s max|err| / max = %.2e  %s\n", what, emax, emax <= tol ? "ok" : "FAIL");
+  return emax <= tol;
+}
+
+static void fill_waves(double *fd, float *ff, ptrdiff_t nx, ptrdiff_t x0, int nzc)
+{
+  for(ptrdiff_t x = 0; x < nx; x++)
+    for(ptrdiff_t y = 0; y < N; y++)
+      for(ptrdiff_t z = 0; z < N; z++)
+        {
+          double v = 0;
+          for(int m = 0; m < NWAVE; m++)
+            {
+              long long phase = ((long long) wave_k[m][0] * (x0 + x) + (long long) wave_k[m][1] * y +
+                                 (long long) wave_k[m][2] * z) % N;
+
+              v += wave_a[m] * cos(2 * M_PI * (double) phase / N + wave_phi[m]);
+            }
+          if(fd)
+            fd[((x * N) + y) * 2 * nzc + z] = v;
+          if(ff)
+            ff[((x * N) + y) * 2 * nzc + z] = (float) v;
+        }
 }
 
 int main(int argc, char **argv)
@@ -129,7 +154,7 @@ int main(int argc, char **argv)
   fftw_plan     pb = fftw_mpi_plan_dft_c2r_3d(N, N, N, cg, g, MPI_COMM_WORLD, flags);
   const int     ny = band_fft_rows(b), nkz = band_fft_nz(b);
   const int    *ky = band_fft_row_y(b);
-  double        err, scale, v;
+  double        err, scale;
 
   if(rank == 0)
     printf("2LPTFFTCheck: N = %d, Nsample = %d, %d ranks, %s plans; band: kz < %d, %d rows of ky on rank 0\n", N,
@@ -137,20 +162,7 @@ int main(int argc, char **argv)
 
   /* 1. forward, plane waves, against the exact transform */
   set_waves();
-  for(ptrdiff_t x = 0; x < nx; x++)
-    for(ptrdiff_t y = 0; y < N; y++)
-      for(ptrdiff_t z = 0; z < N; z++)
-        {
-          v = 0;
-          for(int m = 0; m < NWAVE; m++)
-            {
-              long long phase = ((long long) wave_k[m][0] * (x0 + x) + (long long) wave_k[m][1] * y +
-                                 (long long) wave_k[m][2] * z) % N;
-
-              v += wave_a[m] * cos(2 * M_PI * (double) phase / N + wave_phi[m]);
-            }
-          f[((x * N) + y) * 2 * nzc + z] = v;
-        }
+  fill_waves(f, NULL, nx, x0, nzc);
   band_fft_forward(b, f);
   err   = 0;
   scale = 0.5 * (double) N * N * N * wave_a[NWAVE - 1];
@@ -164,7 +176,7 @@ int main(int argc, char **argv)
           exact_transform(x, ky[q], z, &re, &im);
           err = fmax(err, hypot((*a)[0] - re, (*a)[1] - im));
         }
-  ok &= report("forward, plane waves", err, scale, rank);
+  ok &= report("forward, plane waves", err, scale, rank, TOL);
 
   /* 2. forward, random field, against FFTW3-MPI (slab layout) */
   for(ptrdiff_t x = 0; x < nx; x++)
@@ -186,7 +198,7 @@ int main(int argc, char **argv)
         err = INFINITY;                                  /* outside the band: exactly zero */
     }
   MPI_Allreduce(MPI_IN_PLACE, &scale, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
-  ok &= report("forward, random field", err, scale, rank);
+  ok &= report("forward, random field", err, scale, rank, TOL);
 
   /* 3. inverse: band_fft_inverse of the full spectrum (cf) against FFTW's c2r of its band part (cg) */
   memcpy(cf, cg, sizeof(fftw_complex) * nx * N * nzc);
@@ -206,7 +218,109 @@ int main(int argc, char **argv)
           err   = fmax(err, fabs(f[i] - g[i]));
         }
   MPI_Allreduce(MPI_IN_PLACE, &scale, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
-  ok &= report("inverse", err, scale, rank);
+  ok &= report("inverse", err, scale, rank, TOL);
+
+#ifndef AARAMBAM_NO_FLOAT
+  /* the same in single precision, against the exact transform and the double results */
+  band_fftf *bf = band_fftf_create(N, kz_end, rows, (int) nx, (int) x0, MPI_COMM_WORLD, flags);
+
+  if(!bf || band_fftf_rows(bf) != ny || band_fftf_nz(bf) != nkz)
+    {
+      if(rank == 0)
+        printf("band_fftf_create failed or has another layout\n");
+      MPI_Finalize();
+      return 1;
+    }
+
+  float         *ff  = fftwf_alloc_real(2 * local);
+  fftwf_complex *cff = (fftwf_complex *) ff;
+
+  /* 4. float forward, plane waves */
+  fill_waves(NULL, ff, nx, x0, nzc);
+  band_fftf_forward(bf, ff);
+  err   = 0;
+  scale = 0.5 * (double) N * N * N * wave_a[NWAVE - 1];
+  for(ptrdiff_t x = 0; x < N; x++)
+    for(int q = 0; q < ny; q++)
+      for(int z = 0; z < nkz; z++)
+        {
+          double re, im;
+          fftwf_complex *a = cff + (x * ny + q) * nkz + z;
+
+          exact_transform(x, ky[q], z, &re, &im);
+          err = fmax(err, hypot((*a)[0] - re, (*a)[1] - im));
+        }
+  ok &= report("float forward, plane waves", err, scale, rank, TOL_F);
+
+  /* 5. float forward + to_slab, random field, against FFTW3-MPI in double */
+  for(ptrdiff_t x = 0; x < nx; x++)
+    for(ptrdiff_t y = 0; y < N; y++)
+      for(ptrdiff_t z = 0; z < N; z++)
+        {
+          double h = hash_value(x0 + x, y, z);
+
+          g[((x * N) + y) * 2 * nzc + z]  = h;
+          ff[((x * N) + y) * 2 * nzc + z] = (float) h;
+        }
+  band_fftf_forward(bf, ff);
+  band_fftf_to_slab(bf, cff);
+  fftw_execute(pf);
+  err = scale = 0;
+  for(ptrdiff_t i = 0; i < nx * N * nzc; i++)
+    {
+      int y = (int) ((i / nzc) % N), z = (int) (i % nzc);
+
+      scale = fmax(scale, hypot(cg[i][0], cg[i][1]));
+      if(rows[y] && z < nkz)
+        err = fmax(err, hypot(cff[i][0] - cg[i][0], cff[i][1] - cg[i][1]));
+      else if(cff[i][0] != 0 || cff[i][1] != 0)
+        err = INFINITY;
+    }
+  MPI_Allreduce(MPI_IN_PLACE, &scale, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
+  ok &= report("float forward, random field", err, scale, rank, TOL_F);
+
+  /* 6. float inverse of the full spectrum against FFTW's double c2r of its band part */
+  for(ptrdiff_t i = 0; i < nx * N * nzc; i++)
+    {
+      cff[i][0] = (float) cg[i][0];
+      cff[i][1] = (float) cg[i][1];
+      if(!rows[(i / nzc) % N] || i % nzc >= nkz)
+        cg[i][0] = cg[i][1] = 0;
+    }
+  band_fftf_inverse(bf, ff);
+  fftw_execute(pb);
+  err = scale = 0;
+  for(ptrdiff_t x = 0; x < nx; x++)
+    for(ptrdiff_t y = 0; y < N; y++)
+      for(ptrdiff_t z = 0; z < N; z++)
+        {
+          ptrdiff_t i = ((x * N) + y) * 2 * nzc + z;
+
+          scale = fmax(scale, fabs(g[i]));
+          err   = fmax(err, fabs(ff[i] - g[i]));
+        }
+  MPI_Allreduce(MPI_IN_PLACE, &scale, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
+  ok &= report("float inverse", err, scale, rank, TOL_F);
+
+  /* 7. band_fftf_to_slab_double: the double band->slab movement with the float transform's layout */
+  for(ptrdiff_t x = 0; x < nx; x++)
+    for(ptrdiff_t y = 0; y < N; y++)
+      for(ptrdiff_t z = 0; z < N; z++)
+        f[((x * N) + y) * 2 * nzc + z] = hash_value(x0 + x, y, z);
+  band_fft_forward(b, f);
+  memcpy(cg, cf, sizeof(fftw_complex) * local);
+  band_fft_to_slab(b, cf);
+  band_fftf_to_slab_double(bf, cg);
+  err = 0;
+  scale = 1;
+  for(ptrdiff_t i = 0; i < nx * N * nzc; i++)
+    if(cf[i][0] != cg[i][0] || cf[i][1] != cg[i][1])
+      err = INFINITY;
+  ok &= report("float layout, double to_slab", err, scale, rank, 0);
+
+  band_fftf_destroy(bf);
+  fftwf_free(ff);
+#endif
 
   if(rank == 0)
     printf("%s\n", ok ? "PASS" : "FAIL");

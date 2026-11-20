@@ -36,6 +36,7 @@ SavePotentialField                  %(SavePotentialField)d
 ModeTables                          %(ModeTables)d #1: per-mode tables and cached fields (faster, more memory); 0: least memory
 FFTWWisdomDir                       %(FFTWWisdomDir)s #FFT plans: auto (measured once, kept in ~/.cache/aarambam), a directory, or none
 FFTBackend                          %(FFTBackend)s #FFTs of the non-Gaussian term: fftw (FFTW3-MPI) or band (band-limited, faster)
+NGPrecision                         %(NGPrecision)s #non-Gaussian term's fields and FFTs: double, or float (faster, ~1e-6 relative)
 
 WhichSpectrum                       @SPECTRUM@
 WhichTransfer                       2 #Fixed to 2 because we always want a tabulated Transfer function (from CAMB)
@@ -97,7 +98,8 @@ DEFAULT_BASIS_INPUTS = dict(Nmesh = 256, Nsample = 256, Nmax = 256, Lbox = 512, 
                             AlphaPath    = os.path.dirname(__file__) + "/defaults/AlphaTable.dat",
                             AiPath       = os.path.dirname(__file__) + "/defaults/AiTable.dat",
                             SavePotentialField = True, NWriteoutProcesses = 1,
-                            ModeTables = 'auto', FFTWWisdomDir = 'auto', FFTBackend = 'fftw'
+                            ModeTables = 'auto', FFTWWisdomDir = 'auto', FFTBackend = 'fftw',
+                            NGPrecision = 'double'
                             )
 
 
@@ -119,7 +121,8 @@ DEFAULT_BINNED_INPUTS = dict(Nmesh = 256, Nsample = 256, Nmax = 256, Lbox = 512,
                              BinnedPNGOutputFilterCode = 3,
                              BinnedPNGCacheBlockSize   = 'auto',
                              SavePotentialField = True, NWriteoutProcesses = 1,
-                             ModeTables = 'auto', FFTWWisdomDir = 'auto', FFTBackend = 'fftw'
+                             ModeTables = 'auto', FFTWWisdomDir = 'auto', FFTBackend = 'fftw',
+                             NGPrecision = 'double'
                             )
 
 
@@ -148,7 +151,7 @@ def _resolve_mode_tables(ModeTables, Nmesh, lean = 0):
 def make_config_basis(Nmesh, Nsample, Nmax, Lbox, FileBase, OutputDir, GlassFile, GlassTileFac,
                       seed, Om, Ode, h, sigma8, n_s, z_ini, Fnl, N_modes, TransferPath,
                       AlphaPath, AiPath, SavePotentialField, NWriteoutProcesses, ModeTables = 'auto',
-                      FFTWWisdomDir = 'auto', FFTBackend = 'fftw'):
+                      FFTWWisdomDir = 'auto', FFTBackend = 'fftw', NGPrecision = 'double'):
     """
     Generate a basis configuration file string for initial condition generation
     with the standard basis method.
@@ -232,6 +235,13 @@ def make_config_basis(Nmesh, Nsample, Nmax, Lbox, FileBase, OutputDir, GlassFile
         that is sampled (``|k| <= Nsample/2 + 1`` per axis) and spreads it evenly over the ranks:
         faster when ``Nmesh > Nsample``, the same ICs to rounding. It keeps one communication
         buffer of about ``(Nsample / Nmesh)^2`` of a grid per rank (0.44 for ``Nmesh = 3/2 Nsample``).
+    NGPrecision : {'double', 'float'}, optional
+        Precision of the non-Gaussian term's real-space fields, their products and their FFTs.
+        ``'double'`` (default). ``'float'``: single precision, always with the band FFT; about 40%
+        faster for that stage and half its memory. The Gaussian potential, the accumulated
+        non-Gaussian term and the 2LPT stage stay double; the non-Gaussian term then agrees with
+        ``'double'`` to ~4e-7 (binned) and ~1e-6 (basis) relative. Needs FFTW3 also built in single
+        precision (``--enable-float``, see the installation page).
 
     Returns
     -------
@@ -261,7 +271,7 @@ def make_config_resbasis(Nmesh, Nsample, Nmax, Lbox, FileBase, OutputDir, GlassF
                          seed, Om, Ode, h, sigma8, n_s, z_ini, Fnl, N_modes, TransferPath,
                          AlphaPath, AiPath, SavePotentialField, NWriteoutProcesses,
                          Pk_A_res, Pk_w_res, Pk_phi_res, Pk_mode, ModeTables = 'auto',
-                         FFTWWisdomDir = 'auto', FFTBackend = 'fftw'):
+                         FFTWWisdomDir = 'auto', FFTBackend = 'fftw', NGPrecision = 'double'):
 
     """
     Generate a basis configuration file string for initial condition generation
@@ -343,6 +353,8 @@ def make_config_resbasis(Nmesh, Nsample, Nmax, Lbox, FileBase, OutputDir, GlassF
         FFT plan directory of the 2LPT code; see ``make_config_basis``.
     FFTBackend : {'fftw', 'band'}, optional
         FFTs of the non-Gaussian term; see ``make_config_basis``.
+    NGPrecision : {'double', 'float'}, optional
+        Precision of the non-Gaussian stage; see ``make_config_basis``.
 
     Returns
     -------
@@ -375,7 +387,7 @@ def make_config_binned(Nmesh, Nsample, Nmax, Lbox, FileBase, OutputDir, GlassFil
                        BinnedK1EdgesPath, BinnedK2EdgesPath, BinnedK3EdgesPath, BinnedKernelValuesPath,
                        BinnedPNGFilterCode, BinnedPNGOutputFilterCode, BinnedPNGCacheBlockSize,
                        SavePotentialField, NWriteoutProcesses, ModeTables = 'auto',
-                       FFTWWisdomDir = 'auto', FFTBackend = 'fftw'):
+                       FFTWWisdomDir = 'auto', FFTBackend = 'fftw', NGPrecision = 'double'):
     """
     Generate a configuration string for the binned-PNG initial-condition generator.
 
@@ -461,6 +473,8 @@ def make_config_binned(Nmesh, Nsample, Nmax, Lbox, FileBase, OutputDir, GlassFil
         FFT plan directory of the 2LPT code; see ``make_config_basis``.
     FFTBackend : {'fftw', 'band'}, optional
         FFTs of the non-Gaussian term; see ``make_config_basis``.
+    NGPrecision : {'double', 'float'}, optional
+        Precision of the non-Gaussian stage; see ``make_config_basis``.
 
     Returns
     -------

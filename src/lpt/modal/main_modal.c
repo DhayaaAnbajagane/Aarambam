@@ -104,77 +104,6 @@ static inline double modal_legendre_x(double kmag1, double kmin_ns, double kmax_
   return -1 + 2 * (kmag_ns - kmin_ns)/(kmax_ns - kmin_ns);
 }
 
-/* Mode field N in Fourier space (normal x-slab layout), written to the in-band modes of out:
- *   N <= 3:  out = k^{(4 - n_s)/3 (N - 3)} k^{4 - n_s} phi;
- *   N >= 4:  r[2] = P_{N-1}(x) k^{2 - n_s} phi by the Legendre recursion from r[0] = P_{N-3}, r[1] = P_{N-2}
- *            (set from gsl when restart), and out = r[2] - X0_{N-1} k^{2 - n_s} phi.
- * After an N >= 4 step the caller rotates r (modal_rotate) so that r[0], r[1] hold P_{N-2}, P_{N-1}. */
-static void modal_build_field(unsigned int N, int restart, lpt_complex *cpot, lpt_complex *r[3], lpt_complex *out,
-                              double (*X0Table)[2], double kmin_ns, double kmax_ns)
-{
-  PROF_BEGIN(PROF_FIELD)
-  ptrdiff_t   ii, i, j, k, kend = lpt_kz_end();
-  uint64_t    coord;
-  double      kmag2, kmag1, kmag, Pl, pk;
-  long double fnl_fac;
-  double      np = ((double) N) - 1;     //For doing legendre calculations later
-
-  for(ii = 0; ii < Local_nx; ii++)
-    {
-      i = ii + Local_x_start;
-      if(!lpt_axis_in_band(i))
-        continue;
-
-      for(j = 0; j < Nmesh; j++)
-        {
-          if(!lpt_axis_in_band(j))
-            continue;
-
-          for(k = 0; k <= kend; k++)
-            {
-              coord = (ii * Nmesh + j) * (Nmesh / 2 + 1) + k;
-              if(!modal_mode_in_band(i, j, k, &kmag2, &kmag1))
-                continue;
-
-              if(N <= 3)
-                {
-                  //including 1/P1(k) term here
-                  fnl_fac = pow(kmag1, (4 - PrimordialIndex)/3 * (N - 3.)) * pow(kmag1, 4 - PrimordialIndex);
-
-                  out[coord].re = fnl_fac * cpot[coord].re;
-                  out[coord].im = fnl_fac * cpot[coord].im;
-                  continue;
-                }
-
-              kmag = modal_legendre_x(kmag1, kmin_ns, kmax_ns);
-
-              //Use 2 - n_s instad of 4 - n_s since you implicitly account for the 1/k^2 factor
-              //in switching from S(k1, k2, k3) --> B(k1, k2, k3).
-              pk = pow(kmag1, (2 - PrimordialIndex));
-
-              if(restart)
-                {
-                  Pl = gsl_sf_legendre_Pl(N - 1 - 2, kmag) * pk;
-                  r[0][coord].re = cpot[coord].re * Pl;
-                  r[0][coord].im = cpot[coord].im * Pl;
-
-                  Pl = gsl_sf_legendre_Pl(N - 1 - 1, kmag) * pk;
-                  r[1][coord].re = cpot[coord].re * Pl;
-                  r[1][coord].im = cpot[coord].im * Pl;
-                }
-
-              r[2][coord].re = ( (2*np - 1) * kmag * r[1][coord].re - (np - 1) * r[0][coord].re ) / np ;
-              r[2][coord].im = ( (2*np - 1) * kmag * r[1][coord].im - (np - 1) * r[0][coord].im ) / np ;
-
-              Pl = X0Table[N - 1][0] * pk;
-              out[coord].re = r[2][coord].re - cpot[coord].re * Pl;
-              out[coord].im = r[2][coord].im - cpot[coord].im * Pl;
-            }
-        }
-    }
-  PROF_END(PROF_FIELD)
-}
-
 /* Advance the recursion buffers after an N >= 4 step: (P_{N-3}, P_{N-2}, P_{N-1}) -> (P_{N-2}, P_{N-1}, free). Only
  * in-band modes are ever read or written, and each step overwrites r[2] there, so no copy or clearing is needed. */
 static inline void modal_rotate(lpt_complex *r[3])
@@ -299,26 +228,47 @@ static void modal_build_mode_list(ModalModeList *L, double kmin_ns, double kmax_
 }
 
 
+/* ---- the NG stage, for NGPrecision double (_d) and float (_f): modal_ng_impl.h ---- */
+
+#define NGR      lpt_real
+#define NGC      lpt_complex
+#define NG(n)    n##_d
+#define NG_ALLOC lpt_alloc_grid
+#define NG_FWD   lpt_fft_forward_band
+#define NG_INV   lpt_fft_inverse_band
+#include "modal_ng_impl.h"
+#undef NGR
+#undef NGC
+#undef NG
+#undef NG_ALLOC
+#undef NG_FWD
+#undef NG_INV
+
+#ifndef AARAMBAM_NO_FLOAT
+#define NGR      float
+#define NGC      lpt_complexf
+#define NG(n)    n##_f
+#define NG_ALLOC lpt_alloc_grid_f
+#define NG_FWD   lpt_fftf_forward_band
+#define NG_INV   lpt_fftf_inverse_band
+#include "modal_ng_impl.h"
+#undef NGR
+#undef NGC
+#undef NG
+#undef NG_ALLOC
+#undef NG_FWD
+#undef NG_INV
+#endif
+
+
 /* ---- the NG potential ---- */
 
 void displacement_fields(void)
 {
-  ptrdiff_t     i, j, k, ii;     /* 64-bit grid indices, as in the shared core */
-  int           ksum;
   double        Beta;
   lpt_complex  *cpot;            /* Gaussian potential */
   lpt_complex  *cpot_NG;         /* non-Gaussian term, accumulated in the band k-space layout */
-  lpt_complex  *c_tmp;           /* product of two mode fields (Fourier space after the forward FFT) */
-  lpt_real     *p_tmp;           /* the same array in real space */
-  unsigned int  N, N_i, N_j, N_k;
-  double        kmag, kmag2, kmag1;
-  long double   fnl_fac;
   unsigned int  bytes = 0;
-  uint64_t      coord;
-
-  //DHAYAA: For computing temporary fields
-  lpt_complex *(cfields[8]);
-  lpt_real    *(fields[8]);
 
   //Nmax sets how many modes we build our basis approximation fore.
   //If it is lower than Nsample then we can't use the Legendre modes.
@@ -449,362 +399,16 @@ void displacement_fields(void)
 
   /**** NON-LOCAL PRIMORDIAL POTENTIAL **************/
 
-  /* The NG potential is sum_{N_i <= N_j} FFT[g_i g_j](k3) K_{ij}(k3) over the real-space mode fields g_N.
-   * ModeTables 0 rebuilds and inverse-transforms g_j for every pair (least memory). ModeTables 1 builds each g_N
-   * once and keeps all N_modes of them in real space, and tabulates the per-mode values of K_{ij}: about N_modes
-   * extra grids, half the FFTs. The two agree to rounding (the g_j of pairs with N_i >= 5 are recursed from 4
-   * instead of from N_i). */
-  lpt_real    **gcache = NULL;
-  ModalModeList ML     = {0, 0, NULL, NULL};
-
-  //We'll use these fields to compute temporary terms of interest to us
-  for(N = 0; N < 8; N++)
-    {
-      cfields[N] = NULL;
-      fields[N]  = NULL;
-      if(ModeTables && N >= 3)          /* the g_i / g_j work grids are only used without the cache */
-        continue;
-
-      cfields[N] = (lpt_complex *) lpt_alloc_grid();
-      fields[N]  = (lpt_real *) cfields[N];
-      ASSERT_ALLOC(cfields[N]);
-    }
-
-  c_tmp = (lpt_complex *) lpt_alloc_grid();
-  p_tmp = (lpt_real *) c_tmp;
-  ASSERT_ALLOC(c_tmp);
-
   cpot_NG = (lpt_complex *) lpt_alloc_grid();
   ASSERT_ALLOC(cpot_NG);
-
-  if(ModeTables)
-    {
-      gcache = malloc(N_modes * sizeof(lpt_real *));
-      ASSERT_ALLOC(gcache);
-      for(N = 0; N < N_modes; N++)
-        {
-          gcache[N] = (lpt_real *) lpt_alloc_grid();
-          ASSERT_ALLOC(gcache[N]);
-        }
-
-      if(ThisTask == 0)
-        printf("  ModeTables 1: caching %d real-space mode fields (%.2f GB over all ranks).\n", N_modes,
-               N_modes * (double) sizeof(lpt_real) * TotalSizePlusAdditional * NTask / 1e9);
-    }
-
-  lpt_barrier();
-
-  /* first, clean the array */
-  for(N = 0; N < 8; N++)
-    if(cfields[N])
-      memset(cfields[N], 0, sizeof(lpt_real) * TotalSizePlusAdditional);
-  memset(c_tmp, 0, sizeof(lpt_real) * TotalSizePlusAdditional);
   memset(cpot_NG, 0, sizeof(lpt_real) * TotalSizePlusAdditional);
 
-  lpt_barrier();
-
-  lpt_complex *ri[3] = {cfields[0], cfields[1], cfields[2]};   /* recursion buffers of g_i */
-
-  if(ModeTables)
-    {
-      /* build every mode field once, in order, and keep it in real space */
-      for(N = 0; N < N_modes; N++)
-        {
-          memset(gcache[N], 0, sizeof(lpt_real) * TotalSizePlusAdditional);
-          modal_build_field(N, N == 4, cpot, ri, (lpt_complex *) gcache[N], X0Table, kmin_ns, kmax_ns);
-          if(N >= 4)
-            modal_rotate(ri);
-          lpt_barrier();
-
-          lpt_fft_inverse_band(gcache[N]);
-          lpt_barrier();
-        }
-
-      modal_build_mode_list(&ML, kmin_ns, kmax_ns);
-    }
-
-  /* Loop over the mode pairs (N_i <= N_j) */
-  for(N_i = 0; N_i < N_modes; N_i++)
-    {
-      lpt_real *gi, *gj;
-
-      if(ModeTables)
-        gi = gcache[N_i];
-      else
-        {
-          //Generate the first field in fourier space
-          //zero the out-of-band modes: the previous FFT left this grid in real space
-          memset(cfields[3], 0, sizeof(lpt_real) * TotalSizePlusAdditional);
-          modal_build_field(N_i, N_i == 4, cpot, ri, cfields[3], X0Table, kmin_ns, kmax_ns);
-          if(N_i >= 4)
-            modal_rotate(ri);     //so the next iteration continues the recursion
-          lpt_barrier();
-
-          lpt_fft_inverse_band(fields[3]);
-          lpt_barrier();
-          gi = fields[3];
-        }
-
-      lpt_complex *rj[3] = {cfields[4], cfields[5], cfields[6]};   /* recursion buffers of g_j (restarted at N_i) */
-
-      for(N_j = N_i; N_j < N_modes; N_j++)
-        {
-          //Routine that determines if we can skip the FFTs assuming
-          //the coefficients are zero for all these objects.
-          ksum = 0;
-          for(N_k = N_j; N_k < N_modes; N_k++)
-            if(fabs(AlphaTable[N_i][N_j][N_k]) > 0)
-              ksum = 1;
-
-          if(ModeTables)
-            gj = gcache[N_j];
-          else
-            {
-              /* g_j is needed for this pair, and for N_j >= 4 also to carry the recursion to a later pair */
-              int needed = ksum;
-
-              for(unsigned int M = N_j + 1; M < N_modes && N_j >= 4 && !needed; M++)
-                for(N_k = M; N_k < N_modes; N_k++)
-                  if(fabs(AlphaTable[N_i][M][N_k]) > 0)
-                    needed = 1;
-
-              if(needed)
-                {
-                  //Generate the 2nd field, also in fourier space
-                  //zero the out-of-band modes: the previous FFT left this grid in real space
-                  memset(cfields[7], 0, sizeof(lpt_real) * TotalSizePlusAdditional);
-                  modal_build_field(N_j, (N_j == 4) || ((N_i >= 4) && (N_i == N_j)), cpot, rj, cfields[7], X0Table,
-                                    kmin_ns, kmax_ns);
-                  if(N_j >= 4)
-                    modal_rotate(rj);
-                  lpt_barrier();
-                }
-              gj = fields[7];
-            }
-
-          if(ThisTask == 0)
-            {
-              printf("Computing combination %d, %d ....", N_i, N_j);
-              fflush(stdout);
-            }
-
-          if(ksum == 0.0)
-            {
-              if(ThisTask == 0)
-                {
-                  int print_size = 0;
-                  if(N_i >= 10)
-                    print_size += 1;
-                  if(N_j >= 10)
-                    print_size += 1;
-                  print_timed_done(23 - print_size);
-                }
-              continue;
-            }
-
-          if(!ModeTables)
-            {
-              lpt_fft_inverse_band(fields[7]);
-              lpt_barrier();
-            }
-
-          //Multiply terms in realspace [\phi gi] x [\phi gj]
-          PROF_BEGIN(PROF_MULT)
-          for(i = 0; i < Local_nx; i++)
-            for(j = 0; j < Nmesh; j++)
-              {
-                for(k = 0; k < Nmesh; k++)
-                  {
-                    coord        = (i * Nmesh + j) * (2 * (Nmesh / 2 + 1)) + k;
-                    p_tmp[coord] = gi[coord] * gj[coord];
-                  }
-
-                for(k = Nmesh; k < 2 * (Nmesh / 2 + 1); k++)      /* row padding (no full-grid clear needed) */
-                  p_tmp[(i * Nmesh + j) * (2 * (Nmesh / 2 + 1)) + k] = 0;
-              }
-          PROF_END(PROF_MULT)
-          lpt_barrier();
-
-          lpt_fft_forward_band(p_tmp);
-          lpt_barrier();
-
-          //Add the g3(k) kernel. This can be summed linearly for fixed gi and gj.
-          PROF_BEGIN(PROF_ACCUM)
-          const double *alpha = AlphaTable[N_i][N_j];
-
-          if(ModeTables)
-            {
-              for(long long m = 0; m < ML.n; m++)
-                {
-                  const double *v = ML.v + m * ML.nt;
-
-                  fnl_fac = modal_k3_factor(alpha, N_j, v[0], 0, v[1], v + 2, v + 6, X0Table);
-                  coord   = ML.coord[m];
-                  cpot_NG[coord].re += (double) (fnl_fac * c_tmp[coord].re);
-                  cpot_NG[coord].im += (double) (fnl_fac * c_tmp[coord].im);
-                }
-            }
-          else
-            {
-              for(ii = 0; ii < Band_ny; ii++)             /* band layout: rows of y */
-                {
-                  j = Band_y[ii];
-                  if(!lpt_axis_in_band(j))
-                    continue;
-
-                  for(i = 0; i < Nmesh; i++)
-                    {
-                      if(!lpt_axis_in_band(i))
-                        continue;
-
-                      for(k = 0; k <= lpt_kz_end(); k++)
-                        {
-                          coord = lpt_band_coord(ii, i, k);
-                          if(!modal_mode_in_band(i, j, k, &kmag2, &kmag1))
-                            continue;
-
-                          kmag    = modal_legendre_x(kmag1, kmin_ns, kmax_ns);
-                          fnl_fac = modal_k3_factor(alpha, N_j, kmag, kmag1, kmag2, NULL, NULL, X0Table);
-
-                          cpot_NG[coord].re += (double) (fnl_fac * c_tmp[coord].re);
-                          cpot_NG[coord].im += (double) (fnl_fac * c_tmp[coord].im);
-                        }
-                    }
-                }
-            }
-          PROF_END(PROF_ACCUM)
-
-          if(ThisTask == 0)
-            {
-              int print_size = 0;
-              if(N_i >= 10)
-                print_size += 1;
-              if(N_j >= 10)
-                print_size += 1;
-              print_timed_done(23 - print_size);
-            }
-          lpt_barrier();
-        }
-    } //Close the Ni,Nj,Nk loop
-
-
-  /**** Extra templates cancelling the divergent (0,1,2) term ****/
-
-  //Only the pairs (0, 1) and (0, 2) carry a t_012 term, so the other pairs N_i, N_j <= 3 are not computed.
-
-  //Free the g_i / g_j work fields (2..7), since we won't use them anymore
-  for(N = 2; N < 8; N++)
-    free(cfields[N]);
-  free(ML.coord);
-  free(ML.v);
-
-  if(N_modes >= 3 && t_012 != 0)
-    {
-      lpt_real *g0, *gj;
-
-      if(ModeTables)
-        g0 = gcache[0];
-      else
-        {
-          //Generate the first field in fourier space
-          //zero the out-of-band modes: the previous FFT left this grid in real space
-          memset(cfields[0], 0, sizeof(lpt_real) * TotalSizePlusAdditional);
-          modal_build_field(0, 0, cpot, ri, cfields[0], X0Table, kmin_ns, kmax_ns);
-          lpt_barrier();
-
-          lpt_fft_inverse_band(fields[0]);
-          lpt_barrier();
-          g0 = fields[0];
-        }
-
-      for(N_j = 1; N_j <= 2; N_j++)
-        {
-          if(ModeTables)
-            gj = gcache[N_j];
-          else
-            {
-              //Generate the 2nd field, also in fourier space
-              //zero the out-of-band modes: the previous FFT left this grid in real space
-              memset(cfields[1], 0, sizeof(lpt_real) * TotalSizePlusAdditional);
-              modal_build_field(N_j, 0, cpot, ri, cfields[1], X0Table, kmin_ns, kmax_ns);
-              lpt_barrier();
-
-              lpt_fft_inverse_band(fields[1]);
-              lpt_barrier();
-              gj = fields[1];
-            }
-
-          //Multiply terms in realspace [\phi gi] x [\phi gj]
-          for(i = 0; i < Local_nx; i++)
-            for(j = 0; j < Nmesh; j++)
-              {
-                for(k = 0; k < Nmesh; k++)
-                  {
-                    coord        = (i * Nmesh + j) * (2 * (Nmesh / 2 + 1)) + k;
-                    p_tmp[coord] = g0[coord] * gj[coord];
-                  }
-
-                for(k = Nmesh; k < 2 * (Nmesh / 2 + 1); k++)      /* row padding (no full-grid clear needed) */
-                  p_tmp[(i * Nmesh + j) * (2 * (Nmesh / 2 + 1)) + k] = 0;
-              }
-          lpt_barrier();
-
-          lpt_fft_forward_band(p_tmp);
-          lpt_barrier();
-
-          if(ThisTask == 0)
-            {
-              printf("Computing Beta combination %d, %d ....", 0, N_j);
-              fflush(stdout);
-            }
-
-          for(ii = 0; ii < Band_ny; ii++)             /* band layout: rows of y */
-            {
-              j = Band_y[ii];
-              if(!lpt_axis_in_band(j))
-                continue;
-
-              for(i = 0; i < Nmesh; i++)
-                {
-                  if(!lpt_axis_in_band(i))
-                    continue;
-
-                  for(k = 0; k <= lpt_kz_end(); k++)
-                    {
-                      coord = lpt_band_coord(ii, i, k);
-                      if(!modal_mode_in_band(i, j, k, &kmag2, &kmag1))
-                        continue;
-
-                      fnl_fac = 0;
-
-                      //The t_012 piece (cancels the divergent (0,1,2) term).
-                      if(N_j == 1)      //Subtract from the original kernel
-                        fnl_fac += -AlphaTable[0][1][2] * t_012 * pow(kmag1, (4 - PrimordialIndex)/3 * (2 - 3.0));
-                      else              //Now add the t_012 piece
-                        fnl_fac +=  AlphaTable[0][1][2] * t_012 * pow(kmag1, (4 - PrimordialIndex)/3 * (1 - 3.0));
-
-                      cpot_NG[coord].re += (double) (fnl_fac * c_tmp[coord].re);
-                      cpot_NG[coord].im += (double) (fnl_fac * c_tmp[coord].im);
-                    }
-                }
-            }
-
-          if(ThisTask == 0)
-            print_timed_done(18);
-          lpt_barrier();
-        }
-    } //Close the Beta loop
-
-  free(c_tmp);
-  for(N = 0; N < 2; N++)
-    free(cfields[N]);
-
-  if(gcache)
-    {
-      for(N = 0; N < N_modes; N++)
-        free(gcache[N]);
-      free(gcache);
-    }
+#ifndef AARAMBAM_NO_FLOAT
+  if(NGFloat)
+    modal_ng_stage_f(cpot, cpot_NG, AlphaTable, X0Table, t_012, kmin_ns, kmax_ns);
+  else
+#endif
+    modal_ng_stage_d(cpot, cpot_NG, AlphaTable, X0Table, t_012, kmin_ns, kmax_ns);
 
   lpt_barrier();
 

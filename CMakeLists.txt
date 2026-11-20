@@ -100,6 +100,17 @@ if(NOT FFTW3_MPI_LIBRARY OR NOT FFTW3_LIBRARY)
 endif()
 get_filename_component(FFTW3_LIB_DIR ${FFTW3_LIBRARY} DIRECTORY)
 message(STATUS "Aarambam: FFTW3 ${FFTW3_MPI_LIBRARY}")
+# Single-precision FFTW (libfftw3f, the same prefix, built with --enable-float) for NGPrecision float. Optional:
+# without it the executables are built without float support and NGPrecision float stops with a message.
+find_library(FFTW3F_LIBRARY NAMES fftw3f HINTS ${_FFTW3_PREFIX} PATH_SUFFIXES lib lib64 NO_DEFAULT_PATH)
+if(FFTW3F_LIBRARY)
+  message(STATUS "Aarambam: single-precision FFTW ${FFTW3F_LIBRARY} (NGPrecision float available)")
+  set(FFTW3F_LINK ${FFTW3F_LIBRARY})
+else()
+  message(WARNING "Aarambam: no libfftw3f under ${_FFTW3_PREFIX}: building without NGPrecision float. To enable it, "
+                  "build FFTW3 once more with --enable-float into the same prefix (see the installation docs).")
+  set(FFTW3F_LINK "")
+endif()
 
 # MPI
 if(DEFINED ENV{Aarambam_OPENMPI_ROOT})
@@ -159,6 +170,9 @@ set(LPT_DEFINITIONS
 if(NOT Aarambam_64BIT_IDS)
   list(APPEND LPT_DEFINITIONS NO64BITID=1)
 endif()
+if(NOT FFTW3F_LIBRARY)
+  list(APPEND LPT_DEFINITIONS AARAMBAM_NO_FLOAT=1)
+endif()
 set(LPT_INCLUDE_DIRS ${LPT_DIR}/common ${LPT_DIR}/common/nrsrc ${GSL_INCLUDE_DIR} ${FFTW3_INCLUDE_DIR})
 
 # Code shared by all methods, compiled once
@@ -171,7 +185,7 @@ function(aarambam_lpt_executable name method_dir)
   target_include_directories(${name} PRIVATE ${method_dir} ${LPT_INCLUDE_DIRS})
   target_compile_definitions(${name} PRIVATE ${LPT_DEFINITIONS})
   target_link_directories(${name} PRIVATE ${OPENMPI_LIB_DIR} ${GSL_LIB_DIR} ${FFTW3_LIB_DIR})
-  target_link_libraries(${name} PRIVATE ${FFTW3_MPI_LIBRARY} ${FFTW3_LIBRARY} gsl gslcblas m mpi)
+  target_link_libraries(${name} PRIVATE ${FFTW3_MPI_LIBRARY} ${FFTW3_LIBRARY} ${FFTW3F_LINK} gsl gslcblas m mpi)
   # Installed binaries must find libmpi / libgsl / libfftw3 without LD_LIBRARY_PATH
   set_target_properties(${name} PROPERTIES INSTALL_RPATH "${OPENMPI_LIB_DIR};${GSL_LIB_DIR};${FFTW3_LIB_DIR}")
   install(TARGETS ${name} RUNTIME DESTINATION Aarambam/bin)
@@ -186,8 +200,9 @@ aarambam_lpt_executable(2LPTBinned ${LPT_DIR}/binned
 # Check of the band FFT backend against FFTW3-MPI (tests/test_c_smoke.py runs it on 1-7 ranks)
 add_executable(2LPTFFTCheck ${LPT_DIR}/check/fft_check.c ${LPT_DIR}/common/band_fft.c)
 target_include_directories(2LPTFFTCheck PRIVATE ${LPT_DIR}/common ${FFTW3_INCLUDE_DIR})
+target_compile_definitions(2LPTFFTCheck PRIVATE ${LPT_DEFINITIONS})
 target_link_directories(2LPTFFTCheck PRIVATE ${OPENMPI_LIB_DIR} ${FFTW3_LIB_DIR})
-target_link_libraries(2LPTFFTCheck PRIVATE ${FFTW3_MPI_LIBRARY} ${FFTW3_LIBRARY} m mpi)
+target_link_libraries(2LPTFFTCheck PRIVATE ${FFTW3_MPI_LIBRARY} ${FFTW3_LIBRARY} ${FFTW3F_LINK} m mpi)
 set_target_properties(2LPTFFTCheck PROPERTIES INSTALL_RPATH "${OPENMPI_LIB_DIR};${FFTW3_LIB_DIR}")
 install(TARGETS 2LPTFFTCheck RUNTIME DESTINATION Aarambam/bin)
 

@@ -16,7 +16,11 @@
  *   band_fft_to_slab(b, g)    band layout -> complex slab layout, zero outside the band
  *
  * All in place, unnormalised (as FFTW) and collective. A grid needs room for band_fft_local_size(b) complex numbers
- * (both layouts) and SIMD alignment (fftw_malloc, or posix_memalign to 64 bytes). */
+ * (both layouts) and SIMD alignment (fftw_malloc, or posix_memalign to 64 bytes).
+ *
+ * band_fftf_* is the same in single precision (float grids, FFTW's fftwf_* serial transforms; not built with
+ * AARAMBAM_NO_FLOAT). band_fftf_to_slab_double moves a double grid in the band layout of a float transform to the
+ * slab layout, in double precision. */
 #ifndef AARAMBAM_BAND_FFT_H
 #define AARAMBAM_BAND_FFT_H
 
@@ -40,5 +44,23 @@ int        band_fft_rows(const band_fft *b);         /* band rows on this rank (
 const int *band_fft_row_y(const band_fft *b);        /* their ky, increasing */
 int        band_fft_nz(const band_fft *b);           /* nkz */
 size_t     band_fft_buffer_bytes(const band_fft *b); /* the communication buffer on this rank */
+
+#ifndef AARAMBAM_NO_FLOAT
+typedef struct band_fftf band_fftf;
+
+band_fftf *band_fftf_create(int N, int kz_end, const int *row_in_band, int nx, int x0, MPI_Comm comm, unsigned flags);
+void       band_fftf_destroy(band_fftf *b);
+
+void       band_fftf_forward(band_fftf *b, float *f);
+void       band_fftf_inverse(band_fftf *b, float *f);
+void       band_fftf_to_slab(band_fftf *b, fftwf_complex *g);
+void       band_fftf_to_slab_double(band_fftf *b, fftw_complex *g);
+
+ptrdiff_t  band_fftf_local_size(const band_fftf *b);
+int        band_fftf_rows(const band_fftf *b);
+const int *band_fftf_row_y(const band_fftf *b);
+int        band_fftf_nz(const band_fftf *b);
+size_t     band_fftf_buffer_bytes(const band_fftf *b);
+#endif
 
 #endif

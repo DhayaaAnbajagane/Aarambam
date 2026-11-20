@@ -156,6 +156,14 @@ has not been timed there, nor on larger grids. ``2LPTFFTCheck`` (installed next 
 executables) compares the two backends on the ranks it is started on, e.g.
 ``mpirun -np 2 2LPTFFTCheck 48 32``; the tests run it on 1 to 7 ranks.
 
+Single precision
+~~~~~~~~~~~~~~~~
+
+``NGPrecision float`` (both executables; ``make_config_*(..., NGPrecision = 'double' | 'float')``,
+default ``double``) computes the non-Gaussian stage's real-space fields, products and FFTs in
+single precision; see :doc:`performance` for what stays double, the measured precision (the
+non-Gaussian term to ~4e-7 binned and ~1e-6 basis, relative) and the timings.
+
 Size limits
 -----------
 

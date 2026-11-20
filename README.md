@@ -77,9 +77,20 @@ make install
 You may be able to skip the `MPICC=` addition if your computing cluster already supplied `mpicc` in an easily findable way, but it must be the same `mpicc` (i.e. the same MPI) you build Aarambam with. The flags:
 
 * `--enable-mpi` is required: it builds the MPI-parallel FFTs (`fftw3-mpi.h`, `libfftw3_mpi`), which is what Aarambam includes and links against.
-* Keep FFTW's default double precision, i.e. do NOT add `--enable-float` or `--enable-long-double`.
+* Keep FFTW's default double precision in this build, i.e. do NOT add `--enable-float` or `--enable-long-double`.
 * `--enable-shared` builds shared libraries; the installed Aarambam executables find them without `LD_LIBRARY_PATH`.
 * `--enable-sse2 --enable-avx --enable-avx2` build FFTW's SIMD kernels, which make the FFTs faster (add `--enable-avx512` on CPUs that support it). FFTW checks at run time which of them the CPU can use.
+
+Optionally, for the faster single-precision non-Gaussian stage (`NGPrecision = 'float'`, see the
+[Running faster page](https://aarambam.readthedocs.io/en/latest/performance.html)), build FFTW a second time with
+`--enable-float`, from a fresh copy of the source and into the same prefix (no `--enable-mpi` needed):
+
+```bash
+mkdir float_build; tar -xvzf fftw-3.3.10.tar.gz -C float_build; cd float_build/fftw-3.3.10
+./configure --prefix={THE_SAME_PREFIX_AS_ABOVE} --enable-float --enable-shared --enable-sse --enable-sse2 --enable-avx --enable-avx2
+make -j 8
+make install
+```
 
 The `make -j 8` step takes a few minutes. The first run with a given grid size and number of ranks measures the FFT plans once and keeps them (see `FFTWWisdomDir` below), so later runs start straight away.
 
@@ -156,7 +167,9 @@ Running faster: with enough memory, `ModeTables = 1`, `BinnedPNGCacheBlockSize =
 `FFTBackend = 'band'` are the fastest settings (binned at $384^3$: 10.9 s, against 21.4 s with `ModeTables = 0` and
 the default `fftw` backend). The
 [Running faster page](https://aarambam.readthedocs.io/en/latest/performance.html) lists every speed option with its
-gain and its cost; the paragraphs below summarise them.
+gain and its cost; the paragraphs below summarise them. `NGPrecision = 'float'` (default `'double'`) computes the
+non-Gaussian stage in single precision: binned ~24% faster at $192^3$, the non-Gaussian term to ~1e-6 relative; it
+needs FFTW also built with `--enable-float` (see the installation docs).
 
 Speed vs memory: the `ModeTables` config tag (`make_config_*(..., ModeTables = 0 | 1 | 'auto')`) switches
 between per-mode tables and cached mode fields (`1`, fastest; about 3-4x faster ICs at $192^3$ than version 1.0.0) and on-the-fly

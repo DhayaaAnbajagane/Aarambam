@@ -17,7 +17,11 @@ int      *Band_y;
 int       Band_nz;
 ptrdiff_t Band_sy, Band_sx;
 
-static band_fft *Band;              /* FFTBackend band; NULL for fftw */
+static band_fft *Band;              /* FFTBackend band (NGPrecision double); NULL otherwise */
+int              NGFloat;           /* NGPrecision float */
+#ifndef AARAMBAM_NO_FLOAT
+static band_fftf *BandF;            /* NGPrecision float: the single-precision band FFT */
+#endif
 
 static int lpt_plan_alignment;      /* fftw_alignment_of() of the grid the plans were made on */
 
@@ -36,12 +40,31 @@ void *lpt_alloc_grid(void)
   return p;
 }
 
+/* One grid of TotalSizePlusAdditional floats (NGPrecision float: the non-Gaussian stage's grids), FFT-aligned. */
+void *lpt_alloc_grid_f(void)
+{
+  void *p = NULL;
+
+  if(posix_memalign(&p, 64, sizeof(float) * (size_t) TotalSizePlusAdditional))
+    return NULL;
+  return p;
+}
+
 static void lpt_check_alignment(const void *field)
 {
   if(fftw_alignment_of((double *) field) != lpt_plan_alignment)
     {
       printf("Task %d: grid passed to an FFT is not allocated with lpt_alloc_grid()\n", ThisTask);
       FatalError(1116);
+    }
+}
+
+static void lpt_no_double_band(void)
+{
+  if(NGFloat)
+    {
+      printf("Task %d: double-precision band FFT called with NGPrecision float\n", ThisTask);
+      FatalError(1123);
     }
 }
 
@@ -64,6 +87,7 @@ void lpt_fft(fftw_plan plan, lpt_real *field)
  * FFTW_MPI_TRANSPOSED_OUT), which skips the final all-to-all of the normal-order transform. band: band_fft. */
 void lpt_fft_forward_band(lpt_real *field)
 {
+  lpt_no_double_band();
   PROF_BEGIN(PROF_FFT)
   lpt_check_alignment(field);
   if(Band)
@@ -77,6 +101,7 @@ void lpt_fft_forward_band(lpt_real *field)
  * which only reads the band. */
 void lpt_fft_inverse_band(lpt_real *field)
 {
+  lpt_no_double_band();
   if(!Band)
     {
       lpt_fft(Inverse_plan, field);
@@ -88,11 +113,47 @@ void lpt_fft_inverse_band(lpt_real *field)
   PROF_END(PROF_FFT)
 }
 
-/* Band layout -> normal layout, in place. fftw: a transpose. band: an all-to-all of the band, zero elsewhere. */
+/* Single precision (NGPrecision float): the same as lpt_fft_forward_band / lpt_fft_inverse_band on float grids from
+ * lpt_alloc_grid_f, always with the band FFT. */
+void lpt_fftf_forward_band(float *field)
+{
+#ifndef AARAMBAM_NO_FLOAT
+  PROF_BEGIN(PROF_FFT)
+  if(fftwf_alignment_of(field) != 0)
+    FatalError(1116);
+  band_fftf_forward(BandF, field);
+  PROF_END(PROF_FFT)
+#else
+  (void) field;
+  FatalError(1122);
+#endif
+}
+
+void lpt_fftf_inverse_band(float *field)
+{
+#ifndef AARAMBAM_NO_FLOAT
+  PROF_BEGIN(PROF_FFT)
+  if(fftwf_alignment_of(field) != 0)
+    FatalError(1116);
+  band_fftf_inverse(BandF, field);
+  PROF_END(PROF_FFT)
+#else
+  (void) field;
+  FatalError(1122);
+#endif
+}
+
+/* Band layout -> normal layout of a double grid, in place. fftw: a transpose. band: an all-to-all of the band, zero
+ * elsewhere (NGPrecision float: the band layout of the float transform, moved in double precision). */
 void lpt_band_to_normal(lpt_complex *data)
 {
   PROF_BEGIN(PROF_FFT)
   lpt_check_alignment(data);
+#ifndef AARAMBAM_NO_FLOAT
+  if(BandF)
+    band_fftf_to_slab_double(BandF, (fftw_complex *) data);
+  else
+#endif
   if(Band)
     band_fft_to_slab(Band, (fftw_complex *) data);
   else
@@ -226,6 +287,97 @@ static void lpt_save_wisdom(const char *path)
 }
 
 
+#ifndef AARAMBAM_NO_FLOAT
+/* Single-precision plans (NGPrecision float) are kept in their own file next to the double one,
+ * <dir>/fftw3f_wisdom_<cpu>.txt. FFTW's MPI wisdom functions exist only for double, so the broadcast and the gather
+ * are done here with the wisdom as a string. */
+static void lpt_float_wisdom_path(char *fpath, size_t n, const char *path)
+{
+  const char *tag = strstr(path, "/fftw3_wisdom_");
+
+  snprintf(fpath, n, "%.*s/fftw3f_wisdom_%s", (int) (tag - path), path, tag + strlen("/fftw3_wisdom_"));
+}
+
+static void lpt_float_wisdom_load(const char *fpath, char **before, int *loaded)
+{
+  char *s = NULL;
+  int   len = 0;
+
+  if(ThisTask == 0)
+    {
+      *loaded = fftwf_import_wisdom_from_filename(fpath);
+      *before = fftwf_export_wisdom_to_string();
+      s       = *before;
+      len     = s ? (int) strlen(s) + 1 : 0;
+    }
+  MPI_Bcast(&len, 1, MPI_INT, 0, MPI_COMM_WORLD);
+  if(len == 0)
+    return;
+  if(ThisTask != 0)
+    s = malloc(len);
+  MPI_Bcast(s, len, MPI_CHAR, 0, MPI_COMM_WORLD);
+  if(ThisTask != 0)
+    {
+      fftwf_import_wisdom_from_string(s);
+      free(s);
+    }
+}
+
+static void lpt_float_wisdom_keep(const char *fpath, char *before, int loaded, double tplan)
+{
+  char *mine = fftwf_export_wisdom_to_string(), *all = NULL, tmp[LPT_WISDOM_PATH_LEN + 32];
+  int   len  = mine ? (int) strlen(mine) + 1 : 1, *lens = NULL, *offs = NULL, total = 0;
+
+  if(ThisTask == 0)
+    {
+      lens = malloc(sizeof(int) * NTask);
+      offs = malloc(sizeof(int) * NTask);
+    }
+  MPI_Gather(&len, 1, MPI_INT, lens, 1, MPI_INT, 0, MPI_COMM_WORLD);
+  if(ThisTask == 0)
+    {
+      for(int r = 0; r < NTask; r++)
+        {
+          offs[r] = total;
+          total += lens[r];
+        }
+      all = malloc(total);
+    }
+  MPI_Gatherv(mine ? mine : "", len, MPI_CHAR, all, lens, offs, MPI_CHAR, 0, MPI_COMM_WORLD);
+  free(mine);
+
+  if(ThisTask == 0)
+    {
+      for(int r = 1; r < NTask; r++)
+        if(lens[r] > 1)
+          fftwf_import_wisdom_from_string(all + offs[r]);
+
+      char *after = fftwf_export_wisdom_to_string();
+
+      if(!before || !after || strcmp(before, after) != 0)
+        {
+          fftwf_import_wisdom_from_filename(fpath);
+          snprintf(tmp, sizeof(tmp), "%s.tmp.%ld", fpath, (long) getpid());
+          if(!fftwf_export_wisdom_to_filename(tmp) || rename(tmp, fpath) != 0)
+            {
+              remove(tmp);
+              printf("\nCould not write the single-precision FFT plans to %s.\n", fpath);
+            }
+          else
+            printf("\nSingle-precision FFT plans measured in %.1f s and saved to %s\n", tplan, fpath);
+        }
+      else
+        printf("\nSingle-precision FFT plans read from %s%s\n", fpath, loaded ? "" : " (no file)");
+      free(after);
+      free(before);
+      free(lens);
+      free(offs);
+      free(all);
+    }
+}
+#endif
+
+
 /* ---- setup ---- */
 
 /* FFTW3-MPI plans of the in-place Nmesh^3 transforms (slab-decomposed in x), the slab sizes, the FFTs of the
@@ -244,7 +396,11 @@ void initialize_ffts(void)
   char      wisdom_path[LPT_WISDOM_PATH_LEN], *wisdom_before = NULL;
   double    tplan;
   const int nzc = Nmesh / 2 + 1;     /* complex z length of the r2c layout */
-  const int band = strcmp(FFTBackend, "band") == 0;
+  int       band = strcmp(FFTBackend, "band") == 0;
+#ifndef AARAMBAM_NO_FLOAT
+  char      fwisdom_path[LPT_WISDOM_PATH_LEN + 8], *fwisdom_before = NULL;     /* single-precision plans */
+  int       floaded = 0;
+#endif
 
   if(!band && strcmp(FFTBackend, "fftw") != 0)
     {
@@ -253,6 +409,26 @@ void initialize_ffts(void)
       fflush(stdout);
       FatalError(1120);
     }
+  NGFloat = strcmp(NGPrecision, "float") == 0;
+  if(!NGFloat && strcmp(NGPrecision, "double") != 0)
+    {
+      if(ThisTask == 0)
+        printf("\nNGPrecision '%s': must be double or float.\n", NGPrecision);
+      fflush(stdout);
+      FatalError(1122);
+    }
+#ifdef AARAMBAM_NO_FLOAT
+  if(NGFloat)
+    {
+      if(ThisTask == 0)
+        printf("\nNGPrecision float: these executables were built without single-precision FFTW (libfftw3f). Build "
+               "FFTW once more with --enable-float into the same prefix and reinstall, or use NGPrecision double.\n");
+      fflush(stdout);
+      FatalError(1122);
+    }
+#endif
+  if(NGFloat && !band && ThisTask == 0)
+    printf("\nNGPrecision float: the non-Gaussian FFTs use the band FFT (FFTBackend fftw applies to double only).\n");
 
   MPI_Barrier(MPI_COMM_WORLD);
 
@@ -301,12 +477,57 @@ void initialize_ffts(void)
           wisdom_before = fftw_export_wisdom_to_string();
         }
       fftw_mpi_broadcast_wisdom(MPI_COMM_WORLD);
+#ifndef AARAMBAM_NO_FLOAT
+      if(NGFloat)
+        {
+          if(ThisTask == 0)
+            lpt_float_wisdom_path(fwisdom_path, sizeof(fwisdom_path), wisdom_path);
+          lpt_float_wisdom_load(fwisdom_path, &fwisdom_before, &floaded);
+        }
+#endif
     }
   flags = use_wisdom ? FFTW_MEASURE : FFTW_ESTIMATE;
   tplan = MPI_Wtime();
 
   /* band layout */
   total_size = (2 * alloc_c > alloc_t) ? 2 * (long long) alloc_c : (long long) alloc_t;   /* in reals */
+#ifndef AARAMBAM_NO_FLOAT
+  if(NGFloat)
+    {
+      int   *row_in_band = malloc(sizeof(int) * Nmesh), nrows = 0;
+      double buf_mb, buf_max;
+
+      for(i = 0; i < Nmesh; i++)
+        nrows += (row_in_band[i] = lpt_axis_in_band(i));
+      BandF = band_fftf_create(Nmesh, (int) lpt_kz_end(), row_in_band, Local_nx, Local_x_start, MPI_COMM_WORLD,
+                               flags);
+      free(row_in_band);
+      if(!BandF)
+        {
+          if(ThisTask == 0)
+            printf("\nNGPrecision float: the transfers per rank exceed 2^31 numbers or a plan failed; run with more "
+                   "MPI ranks.\n");
+          fflush(stdout);
+          FatalError(1121);
+        }
+      Band_ny = band_fftf_rows(BandF);
+      Band_nz = band_fftf_nz(BandF);
+      Band_sy = Band_nz;
+      Band_sx = (ptrdiff_t) Band_ny * Band_nz;
+      Band_y  = malloc(sizeof(int) * (Band_ny > 0 ? Band_ny : 1));
+      memcpy(Band_y, band_fftf_row_y(BandF), sizeof(int) * Band_ny);
+      if(2 * (long long) band_fftf_local_size(BandF) > total_size)
+        total_size = 2 * (long long) band_fftf_local_size(BandF);
+      band = 1;      /* no FFTW transposed plans either */
+
+      buf_mb = band_fftf_buffer_bytes(BandF) / 1048576.0;
+      MPI_Reduce(&buf_mb, &buf_max, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
+      if(ThisTask == 0)
+        printf("\nNGPrecision float: band FFT with %d of %d rows of ky, %d of %d planes of kz; communication buffer "
+               "%.1f MB per rank\n", nrows, Nmesh, Band_nz, nzc, buf_max);
+    }
+  else
+#endif
   if(band)
     {
       int   *row_in_band = malloc(sizeof(int) * Nmesh), nrows = 0;
@@ -413,6 +634,10 @@ void initialize_ffts(void)
           free(wisdom_before);
           free(wisdom_after);
         }
+#ifndef AARAMBAM_NO_FLOAT
+      if(NGFloat)
+        lpt_float_wisdom_keep(fwisdom_path, fwisdom_before, floaded, tplan);
+#endif
     }
 }
 
@@ -428,5 +653,9 @@ void free_ffts(void)
     fftw_destroy_plan(Transpose_plan);
   band_fft_destroy(Band);
   Band = NULL;
+#ifndef AARAMBAM_NO_FLOAT
+  band_fftf_destroy(BandF);
+  BandF = NULL;
+#endif
   fftw_mpi_cleanup();
 }

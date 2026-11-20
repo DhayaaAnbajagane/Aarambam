@@ -26,6 +26,7 @@ static const struct lpt_param common_params[] = {
   {"ModeTables",                     &ModeTables,                    PARAM_INT,    0, 0},
   {"FFTWWisdomDir",                  FFTWWisdomDir,                  PARAM_STRING, sizeof(FFTWWisdomDir), 0},
   {"FFTBackend",                     FFTBackend,                     PARAM_STRING, sizeof(FFTBackend),    0},
+  {"NGPrecision",                    NGPrecision,                    PARAM_STRING, sizeof(NGPrecision),   0},
   {"FixedAmplitude",                 &FixedAmplitude,                PARAM_INT,    0, 1},
   {"PhaseFlip",                      &PhaseFlip,                     PARAM_INT,    0, 1},
   {"Nmesh",                          &Nmesh,                         PARAM_INT,    0, 1},
@@ -71,6 +72,7 @@ void read_parameterfile(char *fname)
   ModeTables = 0;
   strcpy(FFTWWisdomDir, "auto");
   strcpy(FFTBackend, "fftw");
+  strcpy(NGPrecision, "double");
   lpt_method_param_defaults();
 
   if((fd = fopen(fname, "r")))
