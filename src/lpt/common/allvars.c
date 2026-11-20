@@ -1,5 +1,10 @@
-/* Definitions of the global variables declared in allvars.h. */
+/* Definitions of the global variables declared in allvars.h (and of the profiling timers). */
 #include "allvars.h"
+#include "lpt_prof.h"
+
+#ifdef AARAMBAM_PROFILE
+double lpt_prof_time[PROF_NCAT];
+#endif
 
 clock_t start_time;
 clock_t previous_time;
@@ -10,8 +15,7 @@ int WhichSpectrum;
 int WhichTransfer;
 int SavePotentialField;
 int ModeTables;
-char FFTWWisdomFile[500];
-int Local_ny_t, Local_y_start_t;   /* k-space slab (in y) of transposed-order transforms */
+char FFTWWisdomDir[500];
 
 int SphereMode;
 int *Local_nx_table;

@@ -95,16 +95,18 @@ FFT plans
 ~~~~~~~~~
 
 FFTW can measure which FFT algorithm is fastest for a given grid size and number of ranks
-(``FFTW_MEASURE``) and store the result as "wisdom". The ``FFTWWisdomFile`` tag (both
-executables) controls this:
+(``FFTW_MEASURE``) and store the result as "wisdom". The first run with a given ``Nmesh``, number
+of ranks and CPU model measures its plans, which takes about 2 s at :math:`192^3` and 30 s at
+:math:`1024^3`, and saves them in a wisdom file, one per CPU model. Every later run with the same grid
+and rank count reads them back and starts at once. The ``FFTWWisdomDir`` tag (both executables)
+says where the files are kept:
 
-* ``auto`` (the default, also when the tag is absent): the first run with a given ``Nmesh``, number
-  of ranks and CPU model measures its plans, which takes about 2 s at :math:`192^3` and 30 s at
-  :math:`1024^3`, and saves them in ``~/.cache/aarambam/`` (or ``$XDG_CACHE_HOME/aarambam/``),
-  one file per CPU model. Every later run with the same grid and rank count reads them back and
-  starts at once. The ``AARAMBAM_FFTW_WISDOM`` environment variable overrides the location (a file,
-  or ``none``).
-* a path: use that wisdom file instead.
+* a directory path: that directory. It is created if needed; if it cannot be created or written,
+  the run stops with an error.
+* ``auto`` (the default, also when the tag is absent): ``$XDG_CACHE_HOME/aarambam/`` or
+  ``~/.cache/aarambam/``, or the ``AARAMBAM_FFTW_WISDOM_DIR`` environment variable when it is set
+  (a directory, or ``none``). If the default directory cannot be created, the run plans with
+  ``FFTW_ESTIMATE`` instead.
 * ``none``: plan with ``FFTW_ESTIMATE``, no measuring and no file.
 
 Measured plans make each FFT 7% (at :math:`1024^3`) to 27% (at :math:`192^3`) faster. They can

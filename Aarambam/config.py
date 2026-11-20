@@ -34,7 +34,7 @@ PhaseFlip                           0
 SphereMode                          0
 SavePotentialField                  %(SavePotentialField)d
 ModeTables                          %(ModeTables)d #1: per-mode tables and cached fields (faster, more memory); 0: least memory
-FFTWWisdomFile                      %(FFTWWisdomFile)s #FFT plans: auto (measured once, kept in ~/.cache/aarambam), a file, or none
+FFTWWisdomDir                       %(FFTWWisdomDir)s #FFT plans: auto (measured once, kept in ~/.cache/aarambam), a directory, or none
 
 WhichSpectrum                       @SPECTRUM@
 WhichTransfer                       2 #Fixed to 2 because we always want a tabulated Transfer function (from CAMB)
@@ -96,7 +96,7 @@ DEFAULT_BASIS_INPUTS = dict(Nmesh = 256, Nsample = 256, Nmax = 256, Lbox = 512, 
                             AlphaPath    = os.path.dirname(__file__) + "/defaults/AlphaTable.dat",
                             AiPath       = os.path.dirname(__file__) + "/defaults/AiTable.dat",
                             SavePotentialField = True, NWriteoutProcesses = 1,
-                            ModeTables = 'auto', FFTWWisdomFile = 'auto'
+                            ModeTables = 'auto', FFTWWisdomDir = 'auto'
                             )
 
 
@@ -118,7 +118,7 @@ DEFAULT_BINNED_INPUTS = dict(Nmesh = 256, Nsample = 256, Nmax = 256, Lbox = 512,
                              BinnedPNGOutputFilterCode = 3,
                              BinnedPNGCacheBlockSize   = 'auto',
                              SavePotentialField = True, NWriteoutProcesses = 1,
-                             ModeTables = 'auto', FFTWWisdomFile = 'auto'
+                             ModeTables = 'auto', FFTWWisdomDir = 'auto'
                             )
 
 
@@ -147,7 +147,7 @@ def _resolve_mode_tables(ModeTables, Nmesh, lean = 0):
 def make_config_basis(Nmesh, Nsample, Nmax, Lbox, FileBase, OutputDir, GlassFile, GlassTileFac,
                       seed, Om, Ode, h, sigma8, n_s, z_ini, Fnl, N_modes, TransferPath,
                       AlphaPath, AiPath, SavePotentialField, NWriteoutProcesses, ModeTables = 'auto',
-                      FFTWWisdomFile = 'auto'):
+                      FFTWWisdomDir = 'auto'):
     """
     Generate a basis configuration file string for initial condition generation
     with the standard basis method.
@@ -216,12 +216,13 @@ def make_config_basis(Nmesh, Nsample, Nmax, Lbox, FileBase, OutputDir, GlassFile
         of ``8 Nmesh^3`` bytes, half the FFTs): the fast setting. ``0`` rebuilds the fields
         for every mode pair and uses the least memory. Both give the same ICs to rounding.
         ``'auto'`` (default) picks 1 for ``Nmesh <= AUTO_FAST_MAX_NMESH`` (512) and 0 above.
-    FFTWWisdomFile : str, optional
-        Where the 2LPT code keeps its FFT plans. ``'auto'`` (default): the plans are measured
-        (``FFTW_MEASURE``) the first time a grid size and rank count are run, and stored in
-        ``~/.cache/aarambam`` (or ``$XDG_CACHE_HOME/aarambam``; the ``AARAMBAM_FFTW_WISDOM``
-        environment variable overrides this), so later runs reuse them at no cost. A path uses that
-        file instead. ``'none'`` plans with ``FFTW_ESTIMATE`` (no measuring and no file; the results
+    FFTWWisdomDir : str, optional
+        Directory in which the 2LPT code keeps its FFT plans: they are measured (``FFTW_MEASURE``)
+        the first time a grid size and rank count are run, and later runs read them back at no cost.
+        A path: that directory (created if needed; the run stops with an error if it cannot be
+        created or written). ``'auto'`` (default): ``$XDG_CACHE_HOME/aarambam`` or
+        ``~/.cache/aarambam`` (the ``AARAMBAM_FFTW_WISDOM_DIR`` environment variable, if set, takes
+        its place). ``'none'``: plan with ``FFTW_ESTIMATE``, no measuring and no file (the results
         are then bit-for-bit reproducible across rank counts).
 
     Returns
@@ -252,7 +253,7 @@ def make_config_resbasis(Nmesh, Nsample, Nmax, Lbox, FileBase, OutputDir, GlassF
                          seed, Om, Ode, h, sigma8, n_s, z_ini, Fnl, N_modes, TransferPath,
                          AlphaPath, AiPath, SavePotentialField, NWriteoutProcesses,
                          Pk_A_res, Pk_w_res, Pk_phi_res, Pk_mode, ModeTables = 'auto',
-                         FFTWWisdomFile = 'auto'):
+                         FFTWWisdomDir = 'auto'):
 
     """
     Generate a basis configuration file string for initial condition generation
@@ -330,8 +331,8 @@ def make_config_resbasis(Nmesh, Nsample, Nmax, Lbox, FileBase, OutputDir, GlassF
             2 - Oscillations in :math:`\\log k`.
     ModeTables : {0, 1, 'auto'}, optional
         Speed/memory switch of the 2LPT code; see ``make_config_basis``.
-    FFTWWisdomFile : str, optional
-        FFT plan file of the 2LPT code; see ``make_config_basis``.
+    FFTWWisdomDir : str, optional
+        FFT plan directory of the 2LPT code; see ``make_config_basis``.
 
     Returns
     -------
@@ -364,7 +365,7 @@ def make_config_binned(Nmesh, Nsample, Nmax, Lbox, FileBase, OutputDir, GlassFil
                        BinnedK1EdgesPath, BinnedK2EdgesPath, BinnedK3EdgesPath, BinnedKernelValuesPath,
                        BinnedPNGFilterCode, BinnedPNGOutputFilterCode, BinnedPNGCacheBlockSize,
                        SavePotentialField, NWriteoutProcesses, ModeTables = 'auto',
-                       FFTWWisdomFile = 'auto'):
+                       FFTWWisdomDir = 'auto'):
     """
     Generate a configuration string for the binned-PNG initial-condition generator.
 
@@ -446,8 +447,8 @@ def make_config_binned(Nmesh, Nsample, Nmax, Lbox, FileBase, OutputDir, GlassFil
         one extra grid at ``Nmesh = 3/2 Nsample``): the fast setting. ``0`` recomputes them
         for every bin pair. The result is bit-identical. ``'auto'`` (default) is 1 at every
         ``Nmesh``; the binned memory/speed trade-off is ``BinnedPNGCacheBlockSize``.
-    FFTWWisdomFile : str, optional
-        FFT plan file of the 2LPT code; see ``make_config_basis``.
+    FFTWWisdomDir : str, optional
+        FFT plan directory of the 2LPT code; see ``make_config_basis``.
 
     Returns
     -------

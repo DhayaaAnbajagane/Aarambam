@@ -140,7 +140,7 @@ typedef struct
 BpngModeList;
 
 static BpngModeList BML  = {0, NULL, NULL, NULL, NULL};   /* normal layout: input filter build */
-static BpngModeList BMLT = {0, NULL, NULL, NULL, NULL};   /* transposed layout: NG accumulation */
+static BpngModeList BMLT = {0, NULL, NULL, NULL, NULL};   /* band layout: NG accumulation */
 
 
 /* ---- kernel table: cell indexing, reading and broadcasting ---- */
@@ -821,7 +821,7 @@ static double bpng_output_k3_pair_coefficient_u(int ia, int ib, int ic, double u
 
 static void bpng_build_mode_list_layout(BpngModeList *L, int transposed)
 {
-  ptrdiff_t ii, j, k, i, n0 = transposed ? Local_ny_t : Local_nx;
+  ptrdiff_t ii, j, k, i, n0 = transposed ? Band_ny : Local_nx, nz = transposed ? Band_nz : Nmesh / 2 + 1;
   double    kx, ky, kz, kmag;
   long long pass, n = 0, ntot = 0;
 
@@ -841,10 +841,10 @@ static void bpng_build_mode_list_layout(BpngModeList *L, int transposed)
 
       for(ii = 0; ii < n0; ii++)
         for(j = 0; j < Nmesh; j++)
-          for(k = 0; k <= Nmesh / 2; k++)
+          for(k = 0; k <= lpt_kz_end(); k++)
             {
-              /* normal: ii = local x, j = y; transposed: ii = local y, j = x */
-              ptrdiff_t ix = transposed ? j : ii + Local_x_start, iy = transposed ? ii + Local_y_start_t : j;
+              /* normal: ii = local x, j = y; band layout: ii = band row (y), j = x */
+              ptrdiff_t ix = transposed ? j : ii + Local_x_start, iy = transposed ? Band_y[ii] : j;
 
               i    = ix;
               kx   = (i < Nmesh / 2) ? i * 2 * PI / Box : -(Nmesh - i) * 2 * PI / Box;
@@ -857,7 +857,7 @@ static void bpng_build_mode_list_layout(BpngModeList *L, int transposed)
 
               if(pass == 1)
                 {
-                  L->coord[n] = (ii * Nmesh + j) * (Nmesh / 2 + 1) + k;
+                  L->coord[n] = (ii * Nmesh + j) * nz + k;
                   L->kmag[n]  = kmag;
                   L->ic[n]    = bpng_find_bin(BPNG.edges[2], BPNG.nk[2], kmag);
                   L->u[n]     = (L->ic[n] < 0 || BPNG.coeff_count <= 1) ? 0.0 : bpng_u_in_bin_axis(2, L->ic[n], kmag);
@@ -938,7 +938,7 @@ static void bpng_fill_cached_real_field(lpt_real *field, lpt_complex *src, int a
 {
   bpng_build_input_filtered_field((lpt_complex *) field, src, axis, node);
   lpt_barrier();
-  lpt_fft(Inverse_plan, field);
+  lpt_fft_inverse_band(field);
   lpt_barrier();
 }
 
@@ -1021,8 +1021,8 @@ static void bpng_compute_non_gaussian_potential_symmetric_blocked(
     }
 }
 
-/* out += Fnl K_ab(k3) conv(k3). conv is a transposed-order forward FFT; out is accumulated in the same
- * transposed layout. */
+/* out += Fnl K_ab(k3) conv(k3). conv is a forward FFT in the band layout (lpt_fft.h); out is accumulated in the
+ * same layout. */
 static void bpng_accumulate_hybrid_convolution(lpt_complex *conv, lpt_complex *out,
                                                int ia, int ib, int use_symmetry)
 {
@@ -1051,9 +1051,9 @@ static void bpng_accumulate_hybrid_convolution(lpt_complex *conv, lpt_complex *o
     }
   else
     {
-      for(jj = 0; jj < Local_ny_t; jj++)          /* transposed layout: [y (local)][x][z] */
+      for(jj = 0; jj < Band_ny; jj++)             /* band layout: [y row][x][z] */
         {
-          j = jj + Local_y_start_t;
+          j = Band_y[jj];
           if(!lpt_axis_in_band(j))
             continue;
 
@@ -1064,7 +1064,7 @@ static void bpng_accumulate_hybrid_convolution(lpt_complex *conv, lpt_complex *o
 
               for(k = 0; k <= lpt_kz_end(); k++)
                 {
-                  coord = (jj * Nmesh + i) * (Nmesh / 2 + 1) + k;
+                  coord = (jj * Nmesh + i) * Band_nz + k;
 
                   kx   = (i < Nmesh / 2) ? i * 2 * PI / Box : -(Nmesh - i) * 2 * PI / Box;
                   ky   = (j < Nmesh / 2) ? j * 2 * PI / Box : -(Nmesh - j) * 2 * PI / Box;
@@ -1105,7 +1105,7 @@ static void bpng_convolve_and_accumulate_hybrid(
   bpng_multiply_real_fields(p_tmp, field_a_real, field_b_real);
   lpt_barrier();
 
-  lpt_fft_forward_t(p_tmp);
+  lpt_fft_forward_band(p_tmp);
   lpt_barrier();
 
   bpng_accumulate_hybrid_convolution(c_tmp, out, ia, ib, use_symmetry);
@@ -1195,7 +1195,7 @@ static void bpng_compute_non_gaussian_potential(lpt_complex *cpot, lpt_complex *
 
       bpng_build_input_filtered_field(cf1, cpot, 0, ia);
       lpt_barrier();
-      lpt_fft(Inverse_plan, f1);
+      lpt_fft_inverse_band(f1);
       lpt_barrier();
 
       ib_start = (use_symmetry ? ia : 0);
@@ -1211,7 +1211,7 @@ static void bpng_compute_non_gaussian_potential(lpt_complex *cpot, lpt_complex *
             {
               bpng_build_input_filtered_field(cf2, cpot, 1, ib);
               lpt_barrier();
-              lpt_fft(Inverse_plan, f2);
+              lpt_fft_inverse_band(f2);
               lpt_barrier();
 
               bpng_convolve_and_accumulate_hybrid(cf1, f1, cf2, f2, c_tmp, p_tmp,
@@ -1242,7 +1242,7 @@ void displacement_fields(void)
 {
   double        Beta;
   lpt_complex  *cpot;           /* Gaussian potential */
-  lpt_complex  *cpot_NG;        /* non-Gaussian term, accumulated in the transposed k-space layout */
+  lpt_complex  *cpot_NG;        /* non-Gaussian term, accumulated in the band k-space layout */
   uint64_t      bytes = 0;
 
   /* The binned-kernel implementation no longer reads modal AlphaTable or X0Table.
@@ -1270,9 +1270,9 @@ void displacement_fields(void)
   bpng_compute_non_gaussian_potential(cpot, cpot_NG);
   lpt_barrier();
 
-  /* cpot_NG was accumulated in the transposed k-space layout (see bpng_accumulate_hybrid_convolution):
+  /* cpot_NG was accumulated in the band k-space layout (see bpng_accumulate_hybrid_convolution):
    * transpose it back to the normal x-slab layout used below. */
-  lpt_transposed_to_normal(cpot_NG);
+  lpt_band_to_normal(cpot_NG);
 
   lpt_barrier();
 

@@ -79,9 +79,8 @@ extern int      *Local_nx_table;
 extern int      WhichSpectrum;
 extern int      WhichTransfer;
 extern int      SavePotentialField;
-extern int      Local_ny_t, Local_y_start_t;   /* k-space y-slab of FFTW_MPI_TRANSPOSED_OUT output */
 extern int      ModeTables;          /* 0: per-mode quantities on the fly (least memory); 1: precomputed tables (faster) */
-extern char     FFTWWisdomFile[500]; /* FFT plan file: "auto" (cache directory), a path, or "none" (FFTW_ESTIMATE) */
+extern char     FFTWWisdomDir[500];  /* FFT plan directory: "auto" (cache directory), a path, or "none" */
 
 extern FILE     *FdTmp, *FdTmpInput;
 

@@ -115,8 +115,9 @@ build Aarambam with. The flags:
   faster (add ``--enable-avx512`` on CPUs that support it). FFTW checks at run time which of them
   the CPU can use.
 
-The ``make -j 8`` step takes a few minutes. Aarambam plans its FFTs with ``FFTW_ESTIMATE``, so the
-executables never spend time measuring FFT plans: every run starts straight away.
+The ``make -j 8`` step takes a few minutes. The first run with a given grid size and number of ranks
+measures the FFT plans once and keeps them (the ``FFTWWisdomDir`` tag, see :doc:`conventions`), so
+later runs start straight away.
 
 If you have trouble installing this, please contact Dhayaa Anbajagane (dhayaacosmo at gmail dot com).
 I've tested installation at multiple computing clusters now, but there will always be edge-cases :)

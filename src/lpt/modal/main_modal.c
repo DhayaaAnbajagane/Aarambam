@@ -223,7 +223,7 @@ static inline long double modal_k3_factor(const double *alpha, unsigned int N_j,
   return fnl_fac;
 }
 
-/* ModeTables 1: the in-band modes of the transposed k-space layout (where the NG potential is accumulated), with
+/* ModeTables 1: the in-band modes of the band k-space layout (lpt_fft.h; where the NG potential is accumulated), with
  * a row of per-mode values  [x, k^2, k^{(4-n_s)/3 (N-3)} for N = 0..3, P_l(x)/k^2 for l = 0..N_modes-3]. */
 typedef struct
 {
@@ -246,9 +246,9 @@ static void modal_build_mode_list(ModalModeList *L, double kmin_ns, double kmax_
   for(int pass = 0; pass < 2; pass++)          /* pass 0 counts, pass 1 fills */
     {
       L->n = 0;
-      for(ii = 0; ii < Local_ny_t; ii++)
+      for(ii = 0; ii < Band_ny; ii++)
         {
-          j = ii + Local_y_start_t;
+          j = Band_y[ii];
           if(!lpt_axis_in_band(j))
             continue;
 
@@ -267,7 +267,7 @@ static void modal_build_mode_list(ModalModeList *L, double kmin_ns, double kmax_
                       kmag = modal_legendre_x(kmag1, kmin_ns, kmax_ns);
                       v    = L->v + L->n * L->nt;
 
-                      L->coord[L->n] = (ii * Nmesh + i) * (Nmesh / 2 + 1) + k;
+                      L->coord[L->n] = (ii * Nmesh + i) * Band_nz + k;
                       v[0] = kmag;
                       v[1] = kmag2;
                       for(N_k = 0; N_k <= 3; N_k++)
@@ -307,7 +307,7 @@ void displacement_fields(void)
   int           ksum;
   double        Beta;
   lpt_complex  *cpot;            /* Gaussian potential */
-  lpt_complex  *cpot_NG;         /* non-Gaussian term, accumulated in the transposed k-space layout */
+  lpt_complex  *cpot_NG;         /* non-Gaussian term, accumulated in the band k-space layout */
   lpt_complex  *c_tmp;           /* product of two mode fields (Fourier space after the forward FFT) */
   lpt_real     *p_tmp;           /* the same array in real space */
   unsigned int  N, N_i, N_j, N_k;
@@ -516,7 +516,7 @@ void displacement_fields(void)
             modal_rotate(ri);
           lpt_barrier();
 
-          lpt_fft(Inverse_plan, gcache[N]);
+          lpt_fft_inverse_band(gcache[N]);
           lpt_barrier();
         }
 
@@ -540,7 +540,7 @@ void displacement_fields(void)
             modal_rotate(ri);     //so the next iteration continues the recursion
           lpt_barrier();
 
-          lpt_fft(Inverse_plan, fields[3]);
+          lpt_fft_inverse_band(fields[3]);
           lpt_barrier();
           gi = fields[3];
         }
@@ -604,7 +604,7 @@ void displacement_fields(void)
 
           if(!ModeTables)
             {
-              lpt_fft(Inverse_plan, fields[7]);
+              lpt_fft_inverse_band(fields[7]);
               lpt_barrier();
             }
 
@@ -625,7 +625,7 @@ void displacement_fields(void)
           PROF_END(PROF_MULT)
           lpt_barrier();
 
-          lpt_fft_forward_t(p_tmp);
+          lpt_fft_forward_band(p_tmp);
           lpt_barrier();
 
           //Add the g3(k) kernel. This can be summed linearly for fixed gi and gj.
@@ -646,9 +646,9 @@ void displacement_fields(void)
             }
           else
             {
-              for(ii = 0; ii < Local_ny_t; ii++)          /* transposed layout: [y (local)][x][z] */
+              for(ii = 0; ii < Band_ny; ii++)             /* band layout: [y row][x][z] */
                 {
-                  j = ii + Local_y_start_t;
+                  j = Band_y[ii];
                   if(!lpt_axis_in_band(j))
                     continue;
 
@@ -659,7 +659,7 @@ void displacement_fields(void)
 
                       for(k = 0; k <= lpt_kz_end(); k++)
                         {
-                          coord = (ii * Nmesh + i) * (Nmesh / 2 + 1) + k;
+                          coord = (ii * Nmesh + i) * Band_nz + k;
                           if(!modal_mode_in_band(i, j, k, &kmag2, &kmag1))
                             continue;
 
@@ -712,7 +712,7 @@ void displacement_fields(void)
           modal_build_field(0, 0, cpot, ri, cfields[0], X0Table, kmin_ns, kmax_ns);
           lpt_barrier();
 
-          lpt_fft(Inverse_plan, fields[0]);
+          lpt_fft_inverse_band(fields[0]);
           lpt_barrier();
           g0 = fields[0];
         }
@@ -729,7 +729,7 @@ void displacement_fields(void)
               modal_build_field(N_j, 0, cpot, ri, cfields[1], X0Table, kmin_ns, kmax_ns);
               lpt_barrier();
 
-              lpt_fft(Inverse_plan, fields[1]);
+              lpt_fft_inverse_band(fields[1]);
               lpt_barrier();
               gj = fields[1];
             }
@@ -749,7 +749,7 @@ void displacement_fields(void)
               }
           lpt_barrier();
 
-          lpt_fft_forward_t(p_tmp);
+          lpt_fft_forward_band(p_tmp);
           lpt_barrier();
 
           if(ThisTask == 0)
@@ -758,9 +758,9 @@ void displacement_fields(void)
               fflush(stdout);
             }
 
-          for(ii = 0; ii < Local_ny_t; ii++)          /* transposed layout: [y (local)][x][z] */
+          for(ii = 0; ii < Band_ny; ii++)             /* band layout: [y row][x][z] */
             {
-              j = ii + Local_y_start_t;
+              j = Band_y[ii];
               if(!lpt_axis_in_band(j))
                 continue;
 
@@ -771,7 +771,7 @@ void displacement_fields(void)
 
                   for(k = 0; k <= lpt_kz_end(); k++)
                     {
-                      coord = (ii * Nmesh + i) * (Nmesh / 2 + 1) + k;
+                      coord = (ii * Nmesh + i) * Band_nz + k;
                       if(!modal_mode_in_band(i, j, k, &kmag2, &kmag1))
                         continue;
 
@@ -811,8 +811,8 @@ void displacement_fields(void)
 
   /**** Add the NG potential to the Gaussian one, then the displacements ****/
 
-  //cpot_NG was accumulated in the transposed k-space layout: transpose it back to the normal x-slab layout
-  lpt_transposed_to_normal(cpot_NG);
+  //cpot_NG was accumulated in the band k-space layout: transpose it back to the normal x-slab layout
+  lpt_band_to_normal(cpot_NG);
 
   free(AlphaTable);
   free(X0Table);

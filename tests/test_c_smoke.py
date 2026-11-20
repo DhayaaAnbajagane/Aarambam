@@ -20,7 +20,7 @@ DT    = np.dtype([('ind', 'i4'), ('pot', 'f8')])
 def write_config(am, method, out, **extra):
     d = dict(getattr(am.utils, f'DEFAULT_{method.upper()}_INPUTS'))
     d.update(Nmesh=N, Nsample=N, Nmax=N, OutputDir=str(out), GlassTileFac=1, NWriteoutProcesses=1,
-             SavePotentialField=1, FFTWWisdomFile='none')      #FFTW_ESTIMATE plans: bit-exact comparisons below
+             SavePotentialField=1, FFTWWisdomDir='none')      #FFTW_ESTIMATE plans: bit-exact comparisons below
     if method == 'binned':
         d.update(BinnedPNGCacheBlockSize=4)
     d.update(extra)
@@ -101,24 +101,34 @@ def test_mode_tables_agree(am, lpt_binaries, tmp_path, method):
 
 
 def test_fftw_wisdom_file(am, lpt_binaries, tmp_path, monkeypatch):
-    """FFTWWisdomFile 'auto' (here redirected by AARAMBAM_FFTW_WISDOM): the first run measures the FFT plans and
-    saves them, later runs read them back. Runs that read the same file use the same plans (bit-identical); the
-    measuring run (each rank tunes its own local plans) and FFTW_ESTIMATE plans agree with them to rounding."""
-    wisdom = tmp_path / 'plans' / 'wisdom.txt'
-    monkeypatch.setenv('AARAMBAM_FFTW_WISDOM', str(wisdom))
+    """FFTWWisdomDir: the first run measures the FFT plans and saves them in the directory, later runs read them
+    back. Runs that read the same file use the same plans (bit-identical); the measuring run (each rank tunes its
+    own local plans) and FFTW_ESTIMATE plans agree with them to rounding."""
+    wisdom_dir = tmp_path / 'plans' / 'sub'
+    monkeypatch.delenv('AARAMBAM_FFTW_WISDOM_DIR', raising=False)
     pot, logs = {}, {}
-    for name, tag in (('first', 'auto'), ('second', 'auto'), ('third', 'auto'), ('estimate', 'none')):
+    for name, tag in (('first', wisdom_dir), ('second', wisdom_dir), ('third', wisdom_dir), ('estimate', 'none')):
         d = tmp_path / name; d.mkdir()
-        r = run(lpt_binaries, 'binned', write_config(am, 'binned', d, FFTWWisdomFile=tag), 2)
+        r = run(lpt_binaries, 'binned', write_config(am, 'binned', d, FFTWWisdomDir=tag), 2)
         assert r.returncode == 0, r.stdout[-2000:]
         pot[name], logs[name] = potential(str(d), 'Nongauss'), r.stdout
-    assert wisdom.exists()
+    files = list(wisdom_dir.glob('fftw3_wisdom_*.txt'))
+    assert len(files) == 1
+    wisdom = files[0]
     assert 'FFT plans measured' in logs['first'] and 'saved to ' + str(wisdom) in logs['first']
     assert 'FFT plans read from ' + str(wisdom) in logs['second'] and 'FFT plans read from' in logs['third']
     assert 'FFT plans' not in logs['estimate']
     np.testing.assert_array_equal(pot['second'], pot['third'])          #same plans from the same file
     for name in ('first', 'second'):
         np.testing.assert_allclose(pot[name], pot['estimate'], rtol=0, atol=1e-12 * np.abs(pot['estimate']).max())
+
+
+def test_unusable_wisdom_dir_aborts(am, lpt_binaries, tmp_path):
+    blocker = tmp_path / 'a_file'
+    blocker.write_text('not a directory')
+    cfg = write_config(am, 'binned', tmp_path, FFTWWisdomDir=str(blocker / 'plans'))
+    r = run(lpt_binaries, 'binned', cfg, 2)
+    assert r.returncode != 0 and 'cannot be created or is not writable' in r.stdout
 
 
 @pytest.mark.parametrize('method', ['basis', 'binned'])

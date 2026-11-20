@@ -81,7 +81,7 @@ You may be able to skip the `MPICC=` addition if your computing cluster already 
 * `--enable-shared` builds shared libraries; the installed Aarambam executables find them without `LD_LIBRARY_PATH`.
 * `--enable-sse2 --enable-avx --enable-avx2` build FFTW's SIMD kernels, which make the FFTs faster (add `--enable-avx512` on CPUs that support it). FFTW checks at run time which of them the CPU can use.
 
-The `make -j 8` step takes a few minutes. Aarambam plans its FFTs with `FFTW_ESTIMATE`, so the executables never spend time measuring FFT plans: every run starts straight away.
+The `make -j 8` step takes a few minutes. The first run with a given grid size and number of ranks measures the FFT plans once and keeps them (see `FFTWWisdomDir` below), so later runs start straight away.
 
 If you have trouble installing this, please contact Dhayaa (details below). I've tested installation at multiple computing clusters now, but there will always be edge-cases:)
 
@@ -158,10 +158,10 @@ computation (`0`, least memory, for very large grids). `'auto'` picks for you fr
 [conventions page](https://aarambam.readthedocs.io/en/latest/conventions.html#speed-and-memory) for the
 memory cost and timings.
 
-FFT plans: by default (`FFTWWisdomFile = 'auto'`) the first run with a given grid size and number of ranks
-measures the fastest FFT plans (a few seconds to ~30 s at $1024^3$) and keeps them in `~/.cache/aarambam/`;
-later runs read them back and start at once. Set `FFTWWisdomFile = 'none'` for un-measured plans (bit-for-bit
-reproducible across rank counts) or to a path to keep the plans elsewhere.
+FFT plans: the first run with a given grid size and number of ranks measures the fastest FFT plans (a few
+seconds to ~30 s at $1024^3$) and keeps them in the directory `FFTWWisdomDir` (default `'auto'`:
+`~/.cache/aarambam/`); later runs read them back and start at once. Set `FFTWWisdomDir` to a directory of your
+own to keep them elsewhere, or to `'none'` for un-measured plans (bit-for-bit reproducible across rank counts).
 
 ## Attribution
 
