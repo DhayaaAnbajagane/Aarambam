@@ -123,6 +123,46 @@ def test_fftw_wisdom_file(am, lpt_binaries, tmp_path, monkeypatch):
         np.testing.assert_allclose(pot[name], pot['estimate'], rtol=0, atol=1e-12 * np.abs(pot['estimate']).max())
 
 
+# (ranks, Nmesh, Nsample[, measure]): Nmesh = Nsample, Nmesh = 3/2 Nsample, uneven slabs (40 on 3 ranks), a rank
+# without a slab (24 on 7 ranks: slabs of 4), measured plans
+FFT_CHECK_CASES = [(1, 32, 32), (2, 32, 32), (2, 48, 32), (2, 48, 32, 'measure'), (3, 40, 26), (7, 24, 16)]
+
+
+@pytest.mark.parametrize('case', FFT_CHECK_CASES, ids=lambda c: '-'.join(map(str, c)))
+def test_fft_backends_agree(lpt_binaries, case):
+    """2LPTFFTCheck: the band FFT backend (forward, inverse, band -> slab layout) against FFTW3-MPI and against the
+    exact transform of plane waves, to 1e-12 of the largest value."""
+    exe = os.path.join(lpt_binaries.dir, '2LPTFFTCheck')
+    if not os.path.isfile(exe):
+        pytest.skip('2LPTFFTCheck not built')
+    env = dict(os.environ, OMP_NUM_THREADS='1')
+    env.setdefault('OMPI_MCA_btl_vader_single_copy_mechanism', 'none')
+    r = subprocess.run([lpt_binaries.mpirun, '--oversubscribe', '-np', str(case[0]), exe] + [str(c) for c in case[1:]],
+                       capture_output=True, text=True, env=env, timeout=300)
+    assert r.returncode == 0 and 'PASS' in r.stdout, r.stdout[-2000:]
+
+
+@pytest.mark.parametrize('method', ['basis', 'binned'])
+def test_fft_backend_band_matches_fftw(am, lpt_binaries, tmp_path, method):
+    """FFTBackend band gives the ICs of FFTBackend fftw to rounding, on 2 ranks with Nmesh 48 > Nsample 32."""
+    pot = {}
+    for backend in ('fftw', 'band'):
+        d = tmp_path / backend; d.mkdir()
+        r = run(lpt_binaries, method, write_config(am, method, d, Nmesh=48, FFTBackend=backend), 2)
+        assert r.returncode == 0, r.stdout[-2000:]
+        assert ('FFTBackend band:' in r.stdout) == (backend == 'band')
+        pot[backend] = {f: potential(str(d), f) for f in ('Gauss', 'Nongauss')}
+    for f in ('Gauss', 'Nongauss'):
+        a, b = pot['fftw'][f], pot['band'][f]
+        assert np.abs(a - b).max() <= 1e-12 * np.abs(a).max(), f
+
+
+def test_bad_fft_backend_aborts(am, lpt_binaries, tmp_path):
+    cfg = write_config(am, 'binned', tmp_path, FFTBackend='cufft')
+    r = run(lpt_binaries, 'binned', cfg, 2)
+    assert r.returncode != 0 and "FFTBackend 'cufft'" in r.stdout
+
+
 def test_unusable_wisdom_dir_aborts(am, lpt_binaries, tmp_path):
     blocker = tmp_path / 'a_file'
     blocker.write_text('not a directory')

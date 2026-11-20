@@ -3,10 +3,13 @@
  *
  * Layouts. Real grids and "normal" k-space grids are x-slabs: real [Local_nx][Nmesh][2 (Nmesh/2+1)], complex
  * [Local_nx][Nmesh][Nmesh/2+1], x = Local_x_start + ii. The non-Gaussian stage works on the sampled band of k-space
- * (|kx|, |ky|, kz <= Nsample/2 + 1, see lpt_axis_in_band) and uses a "band" k-space layout: Band_ny rows per rank,
- * row jj holding ky = Band_y[jj], each row [Nmesh (x)][Band_nz (kz)]:
+ * (|kx|, |ky|, kz <= Nsample/2 + 1, see lpt_axis_in_band) and uses a "band" k-space layout: Band_ny rows of ky per
+ * rank, row jj holding ky = Band_y[jj] for all kx and kz < Band_nz, at
  *
- *     coord = (jj * Nmesh + i) * Band_nz + k,   x = i,  y = Band_y[jj],  z = k  (k < Band_nz)
+ *     coord = lpt_band_coord(jj, i, k) = jj * Band_sy + i * Band_sx + k,   x = i,  y = Band_y[jj],  z = k
+ *
+ * FFTBackend fftw: FFTW3-MPI's transposed output, [y (Band_ny = FFTW's y-slab)][x][z (Band_nz = Nmesh/2+1)].
+ * FFTBackend band: band_fft.c's layout, [x][y (Band_ny = an even share of the in-band rows)][z (Band_nz = kz_end+1)].
  *
  * The API (all in place, unnormalised, collective):
  *     lpt_fft(Forward_plan | Inverse_plan, f)   full r2c / c2r, normal layout (FFTW3-MPI, any backend)
@@ -23,7 +26,13 @@
 
 extern int  Band_ny;     /* rows of the band layout on this rank */
 extern int *Band_y;      /* their ky indices */
-extern int  Band_nz;     /* complex kz length of a band row */
+extern int  Band_nz;     /* kz stored per (x, y) */
+extern ptrdiff_t Band_sy, Band_sx;   /* strides of a row and of x */
+
+static inline ptrdiff_t lpt_band_coord(ptrdiff_t jj, ptrdiff_t i, ptrdiff_t k)
+{
+  return jj * Band_sy + i * Band_sx + k;
+}
 
 /* Conservative band test on one grid axis: an index magnitude above Nsample / 2 + 1 is outside the sampled band
  * for either SphereMode, so k-space loops can skip whole planes and rows before their exact per-mode test. */

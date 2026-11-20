@@ -163,6 +163,12 @@ seconds to ~30 s at $1024^3$) and keeps them in the directory `FFTWWisdomDir` (d
 `~/.cache/aarambam/`); later runs read them back and start at once. Set `FFTWWisdomDir` to a directory of your
 own to keep them elsewhere, or to `'none'` for un-measured plans (bit-for-bit reproducible across rank counts).
 
+FFT backend: `FFTBackend = 'band'` (`make_config_*(..., FFTBackend = 'band')`, default `'fftw'`) does the FFTs of the
+non-Gaussian term with the code's own band-limited slab FFT, which transforms and communicates only the sampled part
+of k-space and spreads it evenly over the ranks: 14-16% faster ICs for the basis method and 22-25% for the binned one
+at $192^3$-$384^3$ with `Nmesh = 3/2 Nsample`, the same ICs to rounding. See the
+[conventions page](https://aarambam.readthedocs.io/en/latest/conventions.html#fft-backends).
+
 ## Attribution
 
 If you use the legendre-based decomposition code or derivatives of it, please cite both of [Anbajagane & Lee 2025a](https://arxiv.org/abs/2509.02693) and [Anbajagane & Lee 2025b](https://arxiv.org/abs/2509.02695) who introduced and validated the code for a variety of models. If you use the binned bispectrum method, please cite [Anbajagane & Dalal 2026](https://arxiv.org/abs/2607.24939)

@@ -35,6 +35,7 @@ SphereMode                          0
 SavePotentialField                  %(SavePotentialField)d
 ModeTables                          %(ModeTables)d #1: per-mode tables and cached fields (faster, more memory); 0: least memory
 FFTWWisdomDir                       %(FFTWWisdomDir)s #FFT plans: auto (measured once, kept in ~/.cache/aarambam), a directory, or none
+FFTBackend                          %(FFTBackend)s #FFTs of the non-Gaussian term: fftw (FFTW3-MPI) or band (band-limited, faster)
 
 WhichSpectrum                       @SPECTRUM@
 WhichTransfer                       2 #Fixed to 2 because we always want a tabulated Transfer function (from CAMB)
@@ -96,7 +97,7 @@ DEFAULT_BASIS_INPUTS = dict(Nmesh = 256, Nsample = 256, Nmax = 256, Lbox = 512, 
                             AlphaPath    = os.path.dirname(__file__) + "/defaults/AlphaTable.dat",
                             AiPath       = os.path.dirname(__file__) + "/defaults/AiTable.dat",
                             SavePotentialField = True, NWriteoutProcesses = 1,
-                            ModeTables = 'auto', FFTWWisdomDir = 'auto'
+                            ModeTables = 'auto', FFTWWisdomDir = 'auto', FFTBackend = 'fftw'
                             )
 
 
@@ -118,7 +119,7 @@ DEFAULT_BINNED_INPUTS = dict(Nmesh = 256, Nsample = 256, Nmax = 256, Lbox = 512,
                              BinnedPNGOutputFilterCode = 3,
                              BinnedPNGCacheBlockSize   = 'auto',
                              SavePotentialField = True, NWriteoutProcesses = 1,
-                             ModeTables = 'auto', FFTWWisdomDir = 'auto'
+                             ModeTables = 'auto', FFTWWisdomDir = 'auto', FFTBackend = 'fftw'
                             )
 
 
@@ -147,7 +148,7 @@ def _resolve_mode_tables(ModeTables, Nmesh, lean = 0):
 def make_config_basis(Nmesh, Nsample, Nmax, Lbox, FileBase, OutputDir, GlassFile, GlassTileFac,
                       seed, Om, Ode, h, sigma8, n_s, z_ini, Fnl, N_modes, TransferPath,
                       AlphaPath, AiPath, SavePotentialField, NWriteoutProcesses, ModeTables = 'auto',
-                      FFTWWisdomDir = 'auto'):
+                      FFTWWisdomDir = 'auto', FFTBackend = 'fftw'):
     """
     Generate a basis configuration file string for initial condition generation
     with the standard basis method.
@@ -224,6 +225,13 @@ def make_config_basis(Nmesh, Nsample, Nmax, Lbox, FileBase, OutputDir, GlassFile
         ``~/.cache/aarambam`` (the ``AARAMBAM_FFTW_WISDOM_DIR`` environment variable, if set, takes
         its place). ``'none'``: plan with ``FFTW_ESTIMATE``, no measuring and no file (the results
         are then bit-for-bit reproducible across rank counts).
+    FFTBackend : {'fftw', 'band'}, optional
+        FFTs of the non-Gaussian term. ``'fftw'`` (default): FFTW3's MPI transforms of the full
+        grid. ``'band'``: the 2LPT code's own slab FFT (``src/lpt/common/band_fft.c``, built on
+        FFTW3's serial transforms), which transforms and communicates only the band of k-space
+        that is sampled (``|k| <= Nsample/2 + 1`` per axis) and spreads it evenly over the ranks:
+        faster when ``Nmesh > Nsample``, the same ICs to rounding. It keeps one communication
+        buffer of about ``(Nsample / Nmesh)^2`` of a grid per rank (0.44 for ``Nmesh = 3/2 Nsample``).
 
     Returns
     -------
@@ -253,7 +261,7 @@ def make_config_resbasis(Nmesh, Nsample, Nmax, Lbox, FileBase, OutputDir, GlassF
                          seed, Om, Ode, h, sigma8, n_s, z_ini, Fnl, N_modes, TransferPath,
                          AlphaPath, AiPath, SavePotentialField, NWriteoutProcesses,
                          Pk_A_res, Pk_w_res, Pk_phi_res, Pk_mode, ModeTables = 'auto',
-                         FFTWWisdomDir = 'auto'):
+                         FFTWWisdomDir = 'auto', FFTBackend = 'fftw'):
 
     """
     Generate a basis configuration file string for initial condition generation
@@ -333,6 +341,8 @@ def make_config_resbasis(Nmesh, Nsample, Nmax, Lbox, FileBase, OutputDir, GlassF
         Speed/memory switch of the 2LPT code; see ``make_config_basis``.
     FFTWWisdomDir : str, optional
         FFT plan directory of the 2LPT code; see ``make_config_basis``.
+    FFTBackend : {'fftw', 'band'}, optional
+        FFTs of the non-Gaussian term; see ``make_config_basis``.
 
     Returns
     -------
@@ -365,7 +375,7 @@ def make_config_binned(Nmesh, Nsample, Nmax, Lbox, FileBase, OutputDir, GlassFil
                        BinnedK1EdgesPath, BinnedK2EdgesPath, BinnedK3EdgesPath, BinnedKernelValuesPath,
                        BinnedPNGFilterCode, BinnedPNGOutputFilterCode, BinnedPNGCacheBlockSize,
                        SavePotentialField, NWriteoutProcesses, ModeTables = 'auto',
-                       FFTWWisdomDir = 'auto'):
+                       FFTWWisdomDir = 'auto', FFTBackend = 'fftw'):
     """
     Generate a configuration string for the binned-PNG initial-condition generator.
 
@@ -449,6 +459,8 @@ def make_config_binned(Nmesh, Nsample, Nmax, Lbox, FileBase, OutputDir, GlassFil
         ``Nmesh``; the binned memory/speed trade-off is ``BinnedPNGCacheBlockSize``.
     FFTWWisdomDir : str, optional
         FFT plan directory of the 2LPT code; see ``make_config_basis``.
+    FFTBackend : {'fftw', 'band'}, optional
+        FFTs of the non-Gaussian term; see ``make_config_basis``.
 
     Returns
     -------

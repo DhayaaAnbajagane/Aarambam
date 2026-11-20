@@ -267,7 +267,7 @@ static void modal_build_mode_list(ModalModeList *L, double kmin_ns, double kmax_
                       kmag = modal_legendre_x(kmag1, kmin_ns, kmax_ns);
                       v    = L->v + L->n * L->nt;
 
-                      L->coord[L->n] = (ii * Nmesh + i) * Band_nz + k;
+                      L->coord[L->n] = lpt_band_coord(ii, i, k);
                       v[0] = kmag;
                       v[1] = kmag2;
                       for(N_k = 0; N_k <= 3; N_k++)
@@ -646,7 +646,7 @@ void displacement_fields(void)
             }
           else
             {
-              for(ii = 0; ii < Band_ny; ii++)             /* band layout: [y row][x][z] */
+              for(ii = 0; ii < Band_ny; ii++)             /* band layout: rows of y */
                 {
                   j = Band_y[ii];
                   if(!lpt_axis_in_band(j))
@@ -659,7 +659,7 @@ void displacement_fields(void)
 
                       for(k = 0; k <= lpt_kz_end(); k++)
                         {
-                          coord = (ii * Nmesh + i) * Band_nz + k;
+                          coord = lpt_band_coord(ii, i, k);
                           if(!modal_mode_in_band(i, j, k, &kmag2, &kmag1))
                             continue;
 
@@ -758,7 +758,7 @@ void displacement_fields(void)
               fflush(stdout);
             }
 
-          for(ii = 0; ii < Band_ny; ii++)             /* band layout: [y row][x][z] */
+          for(ii = 0; ii < Band_ny; ii++)             /* band layout: rows of y */
             {
               j = Band_y[ii];
               if(!lpt_axis_in_band(j))
@@ -771,7 +771,7 @@ void displacement_fields(void)
 
                   for(k = 0; k <= lpt_kz_end(); k++)
                     {
-                      coord = (ii * Nmesh + i) * Band_nz + k;
+                      coord = lpt_band_coord(ii, i, k);
                       if(!modal_mode_in_band(i, j, k, &kmag2, &kmag1))
                         continue;
 

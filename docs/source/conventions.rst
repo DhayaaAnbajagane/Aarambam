@@ -85,7 +85,7 @@ Binned 384/256, 32 ranks   43.4 s           21.4 s              14.5 s
 ("Before" is the code of version 1.0.0, which used FFTW2. The binned ``ModeTables 1`` column uses the
 full cache block, the binned ``ModeTables 0`` column a block of 4.) In every row the rest of the time
 is mostly FFTs. Part of it is waiting: with ``Nmesh = 3/2 Nsample``, a third of the slabs hold no
-sampled modes.
+sampled modes. The ``band`` FFT backend (see `FFT backends`_) removes most of that wait.
 
 Building with ``-DAARAMBAM_PROFILE`` in the C flags makes both executables print the time spent in
 FFTs, field building, products, accumulation and barriers (minimum and maximum over ranks) at the
@@ -117,6 +117,44 @@ the same wisdom file use the same plans. The log says whether the plans were mea
 Building with ``Aarambam_NATIVE=ON`` (see :doc:`installation`) compiles for the build machine's
 CPU (AVX2 / AVX-512 and fused multiply-adds). That gains a few per cent at most, and the
 executables then only run on CPUs with the same instruction sets.
+
+FFT backends
+~~~~~~~~~~~~
+
+The non-Gaussian term needs many FFTs of grids of which only the sampled band of k-space matters
+(:math:`|k_x|, |k_y|, k_z \le` ``Nsample/2 + 1`` in grid units). The ``FFTBackend`` tag (both
+executables; ``make_config_*(..., FFTBackend = 'fftw' | 'band')``) chooses how they are done:
+
+* ``fftw`` (the default, also when the tag is absent): FFTW3's MPI transforms of the whole grid.
+* ``band``: the 2LPT code's own slab FFT (``src/lpt/common/band_fft.c``), built on FFTW3's serial
+  transforms and one ``MPI_Alltoallv``. It transforms in y and x and communicates only the band,
+  4/9 of the grid for ``Nmesh = 3/2 Nsample``, and gives every rank an equal share of the band, so
+  no rank waits on the others. It keeps one communication buffer of about
+  :math:`(N_{\rm sample}/N_{\rm mesh})^2` of a grid per rank (0.44 for ``Nmesh = 3/2 Nsample``).
+
+Both give the same ICs to rounding. With ``FFTWWisdomDir none`` (``FFTW_ESTIMATE`` plans) they are
+bit-for-bit identical, since both run the same serial FFTW kernels on every line of the grid; with
+measured plans they agree to :math:`\sim 10^{-16}`. Run times on one 48-core node, with plans read
+from a wisdom file:
+
+==========================================  ========  ========  =====
+run                                         ``fftw``  ``band``  saved
+==========================================  ========  ========  =====
+Basis  192/128, 8 ranks, ``ModeTables 0``   7.4 s     6.3 s     15%
+Basis  192/128, 8 ranks, ``ModeTables 1``   2.8 s     2.4 s     14%
+Basis  384/256, 32 ranks, ``ModeTables 0``  17.8 s    15.3 s    14%
+Basis  384/256, 32 ranks, ``ModeTables 1``  7.8 s     6.5 s     16%
+Binned 192/128, 8 ranks, ``ModeTables 0``   7.4 s     5.7 s     23%
+Binned 192/128, 8 ranks, ``ModeTables 1``   4.3 s     3.4 s     22%
+Binned 384/256, 32 ranks, ``ModeTables 0``  21.4 s    16.2 s    24%
+Binned 384/256, 32 ranks, ``ModeTables 1``  14.5 s    10.9 s    25%
+==========================================  ========  ========  =====
+
+(The binned rows use the cache blocks of the speed table above.) These are single-node timings at
+up to :math:`384^3`; across nodes the band backend sends less data than FFTW's transforms, but it
+has not been timed there, nor on larger grids. ``2LPTFFTCheck`` (installed next to the
+executables) compares the two backends on the ranks it is started on, e.g.
+``mpirun -np 2 2LPTFFTCheck 48 32``; the tests run it on 1 to 7 ranks.
 
 Size limits
 -----------

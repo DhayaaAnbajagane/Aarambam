@@ -131,6 +131,7 @@ set(LPT_COMMON_SRC
   ${LPT_DIR}/common/power.c
   ${LPT_DIR}/common/lpt_core.c
   ${LPT_DIR}/common/lpt_fft.c
+  ${LPT_DIR}/common/band_fft.c
   ${LPT_DIR}/common/save.c
   ${LPT_DIR}/common/read_glass.c
   ${LPT_DIR}/common/nrsrc/nrutil.c
@@ -181,6 +182,14 @@ aarambam_lpt_executable(2LPTBasis ${LPT_DIR}/modal
   ${LPT_DIR}/modal/main_modal.c ${LPT_DIR}/modal/params_modal.c)
 aarambam_lpt_executable(2LPTBinned ${LPT_DIR}/binned
   ${LPT_DIR}/binned/main.c ${LPT_DIR}/binned/params_binned.c)
+
+# Check of the band FFT backend against FFTW3-MPI (tests/test_c_smoke.py runs it on 1-7 ranks)
+add_executable(2LPTFFTCheck ${LPT_DIR}/check/fft_check.c ${LPT_DIR}/common/band_fft.c)
+target_include_directories(2LPTFFTCheck PRIVATE ${LPT_DIR}/common ${FFTW3_INCLUDE_DIR})
+target_link_directories(2LPTFFTCheck PRIVATE ${OPENMPI_LIB_DIR} ${FFTW3_LIB_DIR})
+target_link_libraries(2LPTFFTCheck PRIVATE ${FFTW3_MPI_LIBRARY} ${FFTW3_LIBRARY} m mpi)
+set_target_properties(2LPTFFTCheck PROPERTIES INSTALL_RPATH "${OPENMPI_LIB_DIR};${FFTW3_LIB_DIR}")
+install(TARGETS 2LPTFFTCheck RUNTIME DESTINATION Aarambam/bin)
 
 # ─── CMB-BEST Python Extension ──────────────────────────────────────────────
 

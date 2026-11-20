@@ -81,6 +81,7 @@ extern int      WhichTransfer;
 extern int      SavePotentialField;
 extern int      ModeTables;          /* 0: per-mode quantities on the fly (least memory); 1: precomputed tables (faster) */
 extern char     FFTWWisdomDir[500];  /* FFT plan directory: "auto" (cache directory), a path, or "none" */
+extern char     FFTBackend[20];      /* FFTs of the non-Gaussian stage: "fftw" (FFTW3-MPI) or "band" (band_fft.c) */
 
 extern FILE     *FdTmp, *FdTmpInput;
 

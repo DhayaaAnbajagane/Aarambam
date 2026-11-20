@@ -72,7 +72,9 @@ example AVX-512 code on AMD nodes), so leave it off when login and compute nodes
 
 The C sources of the 2LPT executables live in ``src/lpt`` (``common/`` shared by both methods,
 ``modal/`` and ``binned/``). They are compiled into ``Aarambam/bin/2LPTBasis`` and
-``Aarambam/bin/2LPTBinned`` and are not shipped in the wheel.
+``Aarambam/bin/2LPTBinned`` and are not shipped in the wheel. ``Aarambam/bin/2LPTFFTCheck``
+(``src/lpt/check/``) checks the ``band`` FFT backend against FFTW3-MPI on the ranks it is started
+on, e.g. ``mpirun -np 2 2LPTFFTCheck 48 32`` (grid size, ``Nsample``); the tests run it.
 
 Running the tests
 -----------------
@@ -80,10 +82,11 @@ Running the tests
 .. code-block:: bash
 
    python -m pytest tests                                                   # tests marked mpi skip without the executables
-   AARAMBAM_LPT_BIN=/path/to/Aarambam/bin python -m pytest tests -m mpi     # 32^3 runs, ~10 s
+   AARAMBAM_LPT_BIN=/path/to/Aarambam/bin python -m pytest tests -m mpi     # 32^3 runs, ~1 min
 
-``tests/large/run_large_tests.py`` runs larger rank-independence checks and refuses to start on a
-busy node.
+``AARAMBAM_MPIRUN=/path/to/mpirun`` selects the ``mpirun`` of the MPI the executables were built
+with, if the first one on ``PATH`` is another. ``tests/large/run_large_tests.py`` runs larger
+rank-independence checks and refuses to start on a busy node.
 
 Installing FFTW3
 ----------------

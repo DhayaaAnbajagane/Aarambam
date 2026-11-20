@@ -821,7 +821,7 @@ static double bpng_output_k3_pair_coefficient_u(int ia, int ib, int ic, double u
 
 static void bpng_build_mode_list_layout(BpngModeList *L, int transposed)
 {
-  ptrdiff_t ii, j, k, i, n0 = transposed ? Band_ny : Local_nx, nz = transposed ? Band_nz : Nmesh / 2 + 1;
+  ptrdiff_t ii, j, k, i, n0 = transposed ? Band_ny : Local_nx;
   double    kx, ky, kz, kmag;
   long long pass, n = 0, ntot = 0;
 
@@ -857,7 +857,7 @@ static void bpng_build_mode_list_layout(BpngModeList *L, int transposed)
 
               if(pass == 1)
                 {
-                  L->coord[n] = (ii * Nmesh + j) * nz + k;
+                  L->coord[n] = transposed ? lpt_band_coord(ii, j, k) : (ii * Nmesh + j) * (Nmesh / 2 + 1) + k;
                   L->kmag[n]  = kmag;
                   L->ic[n]    = bpng_find_bin(BPNG.edges[2], BPNG.nk[2], kmag);
                   L->u[n]     = (L->ic[n] < 0 || BPNG.coeff_count <= 1) ? 0.0 : bpng_u_in_bin_axis(2, L->ic[n], kmag);
@@ -1051,7 +1051,7 @@ static void bpng_accumulate_hybrid_convolution(lpt_complex *conv, lpt_complex *o
     }
   else
     {
-      for(jj = 0; jj < Band_ny; jj++)             /* band layout: [y row][x][z] */
+      for(jj = 0; jj < Band_ny; jj++)             /* band layout: rows of y */
         {
           j = Band_y[jj];
           if(!lpt_axis_in_band(j))
@@ -1064,7 +1064,7 @@ static void bpng_accumulate_hybrid_convolution(lpt_complex *conv, lpt_complex *o
 
               for(k = 0; k <= lpt_kz_end(); k++)
                 {
-                  coord = (jj * Nmesh + i) * Band_nz + k;
+                  coord = lpt_band_coord(jj, i, k);
 
                   kx   = (i < Nmesh / 2) ? i * 2 * PI / Box : -(Nmesh - i) * 2 * PI / Box;
                   ky   = (j < Nmesh / 2) ? j * 2 * PI / Box : -(Nmesh - j) * 2 * PI / Box;
