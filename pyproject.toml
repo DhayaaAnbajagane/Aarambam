@@ -11,7 +11,7 @@ name = "Aarambam"
 version = "1.1.0"
 description = "Aarambam: 2LPT + basis tools"
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 license = "GPL-3.0-or-later"
 license-files = ["LICENSE"]
 authors = [{ name = "Dhayaa" }]
