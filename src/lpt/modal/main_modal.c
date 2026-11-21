@@ -13,35 +13,13 @@
 #include <gsl/gsl_spline.h>
 #include "allvars.h"
 #include "proto.h"
-#include <signal.h>
-#include <assert.h>
 
 #include "lpt_core.h"
 
 
 void print_setup(void)
 {
-  char pstr[79];
-
-  for(int i = 0; i < 79; i++)
-    pstr[i] = '*';
-  printf("%s\n", pstr);
-
-  char exec[] = "Aarambam-2LPT-Basis";
-
-  pstr[0] = '*';
-  for(int i = 1; i < 79/2 - 9; i++)
-    pstr[i] = ' ';
-  sprintf(&pstr[79/2 - 10], "%s", exec);
-  for(int i = 79/2 + 10; i < 78; i++)
-    pstr[i] = ' ';
-  pstr[78] = '*';
-  printf("%s\n", pstr);
-
-  for(int i = 0; i < 79; i++)
-    pstr[i] = '*';
-  printf("%s\n", pstr);
-  printf("\n");
+  lpt_print_banner("Aarambam-2LPT-Basis");
 
   printf("      Box = %.2e   Nmesh = %d   Nsample = %d   Nmax = %d\n", Box, Nmesh, Nsample, Nmax);
   printf("                       Nglass = %d    GlassTileFac = %d\n\n", Nglass, GlassTileFac);
@@ -55,9 +33,9 @@ void print_setup(void)
   printf("   FixedAmplitude = %d    PhaseFlip = % d   SphereMode = %d    Seed = %d\n",
          FixedAmplitude, PhaseFlip, SphereMode, Seed);
 
-  for(int i = 0; i < 79; i++)
-    pstr[i] = '*';
-  printf("\n%s\n\n", pstr);
+  printf("\n");
+  lpt_print_rule();
+  printf("\n");
   return;
 }
 
@@ -134,7 +112,7 @@ static inline long double modal_k3_factor(const double *alpha, unsigned int N_j,
         fnl_fac += alpha[N_k] * (pw ? pw[N_k] : pow(kmag1, (4 - PrimordialIndex)/3 * (N_k - 3.)));
       else
         {
-          //Fill in missing modes if start at N_k != 0
+          /* start of the recursion: P_{N-3}, P_{N-2} */
           if((N_k == 4) || ((N_j >= 4) && (N_j == N_k)))
             {
               a = plk2 ? plk2[N_k - 1 - 2] : gsl_sf_legendre_Pl(N_k - 1 - 2, kmag)/kmag2;
@@ -270,24 +248,30 @@ void displacement_fields(void)
   lpt_complex  *cpot_NG;         /* non-Gaussian term, accumulated in the band k-space layout */
   unsigned int  bytes = 0;
 
-  //Nmax sets how many modes we build our basis approximation fore.
-  //If it is lower than Nsample then we can't use the Legendre modes.
-  //E.g., we can build up to k = 20 but only use up to k = 5 in the grid.
-  assert(Nmax >= Nsample);
+  /* the basis is built up to Nmax, so it must cover the sampled modes (Nsample) */
+  if(Nmax < Nsample)
+    {
+      if(ThisTask == 0)
+        printf("Nmax (%d) must be at least Nsample (%d).\n", Nmax, Nsample);
+      FatalError(9118);
+    }
 
-  //Some hyperparams
+  /* the Legendre argument maps k^{(4-n_s)/3} over [kmin, kmax] onto [-1, 1] */
   double kmin = 2 * PI / Box;
   double kmax = 2 * PI / Box * Nmax;
 
   double kmin_ns = pow(kmin, (4 - PrimordialIndex)/3);
   double kmax_ns = pow(kmax, (4 - PrimordialIndex)/3);
 
-  MPI_Bcast(&SavePotentialField, 1, MPI_INT, 0, MPI_COMM_WORLD);
-
 
   /**** alpha_{ijk} and X0 tables (read on task 0, broadcast) ****/
 
   double (*AlphaTable)[N_modes][N_modes] = malloc(sizeof(double) * N_modes * N_modes * N_modes);
+  if(!AlphaTable)
+    {
+      printf("Failed to allocate AlphaTable on task %d\n", ThisTask);
+      FatalError(101);
+    }
   memset(AlphaTable, 0, N_modes * N_modes * N_modes * sizeof(double));
 
   if(ThisTask == 0)
@@ -324,10 +308,8 @@ void displacement_fields(void)
       fclose(fd);
     }
 
-  // Broadcast the full AlphaTable to all tasks
   MPI_Bcast(AlphaTable, N_modes * N_modes * N_modes, MPI_DOUBLE, 0, MPI_COMM_WORLD);
 
-  // Allocate heap memory for X0Table
   double (*X0Table)[2] = malloc(sizeof(double) * N_modes * 2);
   if(X0Table == NULL)
     {
@@ -336,7 +318,6 @@ void displacement_fields(void)
     }
   memset(X0Table, 0, N_modes * 2 * sizeof(double));
 
-  // Only Task 0 reads from file
   if(ThisTask == 0)
     {
       FILE *fd;
@@ -372,7 +353,6 @@ void displacement_fields(void)
       fclose(fd);
     }
 
-  // Broadcast the full X0Table to all tasks
   MPI_Bcast(&(X0Table[0][0]), N_modes * 2, MPI_DOUBLE, 0, MPI_COMM_WORLD);
 
   double t_012 = 0;
@@ -386,18 +366,13 @@ void displacement_fields(void)
 
   lpt_setup_gaussian_potential(&cpot, &Beta);
 
-  /*** For non-local models it is important to keep all factors of SQRT(-1) as done below ***/
-  /*** No sign flip is applied to the NG term: it is added to the Gaussian potential as is ***/
-  /*** (2LPTPNG noted a minus here to convert from Bardeen to gravitational potential)   ***/
-
+  /* the NG term is added to the Gaussian potential as is (no Bardeen-to-gravitational sign flip) */
   if(ThisTask == 0)
     {
       printf("Computing Legendre Basis non-Gaussian potential...\n");
       fflush(stdout);
     }
 
-
-  /**** NON-LOCAL PRIMORDIAL POTENTIAL **************/
 
   cpot_NG = (lpt_complex *) lpt_alloc_grid();
   ASSERT_ALLOC(cpot_NG);
@@ -415,7 +390,7 @@ void displacement_fields(void)
 
   /**** Add the NG potential to the Gaussian one, then the displacements ****/
 
-  //cpot_NG was accumulated in the band k-space layout: transpose it back to the normal x-slab layout
+  /* cpot_NG was accumulated in the band k-space layout: back to the normal x-slab layout */
   lpt_band_to_normal(cpot_NG);
 
   free(AlphaTable);

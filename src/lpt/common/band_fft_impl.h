@@ -11,11 +11,11 @@ struct BF_T
   int          ny;             /* band rows here */
   int         *nx_of, *x0_of;  /* slabs of every rank */
   ptrdiff_t    local_size;     /* complex numbers per grid */
-  BF_C *buf;           /* slab-side buffer: nx * nband * nkz */
+  BF_C        *buf;            /* slab-side buffer: nx * nband * nkz */
   int         *s_cnt, *s_dsp, *r_cnt, *r_dsp;     /* slab -> band counts (complex numbers); band -> slab swaps them */
   MPI_Comm     comm;
   MPI_Datatype cplx;
-  BF_PLAN    pz_f, py_f, px_f, px_b, py_b, pz_b;
+  BF_PLAN      pz_f, py_f, px_f, px_b, py_b, pz_b;   /* z, y transforms on the slab; x on the band rows */
 };
 
 int        BF(rows)(const BF_T *b) { return b->ny; }
@@ -33,8 +33,8 @@ size_t     BF(buffer_bytes)(const BF_T *b)
 /* slab layout (band part) -> band layout */
 static void BF(slab_to_band)(BF_T *b, BF_C *c)
 {
-  const int    N = b->N, nzc = b->nzc, nkz = b->nkz;
-  BF_C *p = b->buf;
+  const int N = b->N, nzc = b->nzc, nkz = b->nkz;
+  BF_C     *p = b->buf;
 
   for(int r = 0; r < b->np; r++)
     for(int x = 0; x < b->nx; x++)
@@ -47,8 +47,8 @@ static void BF(slab_to_band)(BF_T *b, BF_C *c)
 /* band layout -> slab layout, zero outside the band */
 void BF(to_slab)(BF_T *b, BF_C *c)
 {
-  const int     N = b->N, nzc = b->nzc, nkz = b->nkz;
-  BF_C *p = b->buf;
+  const int N = b->N, nzc = b->nzc, nkz = b->nkz;
+  BF_C     *p = b->buf;
 
   MPI_Alltoallv(c, b->r_cnt, b->r_dsp, b->cplx, b->buf, b->s_cnt, b->s_dsp, b->cplx, b->comm);
 
@@ -160,21 +160,23 @@ BF_T *BF(create)(int N, int kz_end, const int *row_in_band, int nx, int x0, MPI_
   /* serial plans, made on a scratch grid (FFTW_MEASURE overwrites it) */
   if(ok)
     {
-      BF_C *c = BF_X(alloc_complex)(b->local_size > 0 ? (size_t) b->local_size : 1);
-      BF_R         *f = (BF_R *) c;
-      int           n[1] = {N};
-      const int     N_nzc = N * b->nzc, row = b->ny * b->nkz;
+      BF_C     *c     = BF_X(alloc_complex)(b->local_size > 0 ? (size_t) b->local_size : 1);
+      BF_R     *f     = (BF_R *) c;
+      int       n[1]  = {N};
+      const int N_nzc = N * b->nzc, row = b->ny * b->nkz;
 
       if(nx > 0)
         {
           BF_X(iodim) ty    = {N, b->nzc, b->nzc};
           BF_X(iodim) hy[2] = {{nx, N_nzc, N_nzc}, {b->nkz, 1, 1}};
 
-          BF_PLAN_WISDOM_FIRST(b->pz_f, BF_X(plan_many_dft_r2c)(1, n, nx * N, f, NULL, 1, 2 * b->nzc, c, NULL, 1, b->nzc, flags));
-          BF_PLAN_WISDOM_FIRST(b->pz_b, BF_X(plan_many_dft_c2r)(1, n, nx * N, c, NULL, 1, b->nzc, f, NULL, 1, 2 * b->nzc, flags));
+          BF_PLAN_WISDOM_FIRST(b->pz_f,
+                               BF_X(plan_many_dft_r2c)(1, n, nx * N, f, NULL, 1, 2 * b->nzc, c, NULL, 1, b->nzc, flags));
+          BF_PLAN_WISDOM_FIRST(b->pz_b,
+                               BF_X(plan_many_dft_c2r)(1, n, nx * N, c, NULL, 1, b->nzc, f, NULL, 1, 2 * b->nzc, flags));
           BF_PLAN_WISDOM_FIRST(b->py_f, BF_X(plan_guru_dft)(1, &ty, 2, hy, c, c, FFTW_FORWARD, flags));
           BF_PLAN_WISDOM_FIRST(b->py_b, BF_X(plan_guru_dft)(1, &ty, 2, hy, c, c, FFTW_BACKWARD, flags));
-          ok      = ok && b->pz_f && b->pz_b && b->py_f && b->py_b;
+          ok = ok && b->pz_f && b->pz_b && b->py_f && b->py_b;
         }
       if(b->ny > 0)
         {
@@ -183,7 +185,7 @@ BF_T *BF(create)(int N, int kz_end, const int *row_in_band, int nx, int x0, MPI_
 
           BF_PLAN_WISDOM_FIRST(b->px_f, BF_X(plan_guru_dft)(1, &tx, 1, &hx, c, c, FFTW_FORWARD, flags));
           BF_PLAN_WISDOM_FIRST(b->px_b, BF_X(plan_guru_dft)(1, &tx, 1, &hx, c, c, FFTW_BACKWARD, flags));
-          ok      = ok && b->px_f && b->px_b;
+          ok = ok && b->px_f && b->px_b;
         }
       BF_X(free)(c);
     }

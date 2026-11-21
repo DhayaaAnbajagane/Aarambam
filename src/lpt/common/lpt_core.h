@@ -27,6 +27,8 @@ void lpt_prof_report(void);
 
 void print_timed_done(int n);
 void print_timed_done_aligned(int printed_chars);
+void lpt_print_banner(const char *name);                  /* boxed name at the top of the setup print-out */
+void lpt_print_rule(void);                               /* a row of '*' */
 void lpt_setup_gaussian_potential(lpt_complex **cpot_out, double *Beta_out);
 void lpt_displacements_from_potential(lpt_complex *cpot, lpt_complex *cpot_NG, double ng_scale, double Beta);
 

@@ -5,9 +5,6 @@
 
 #include "allvars.h"
 #include "proto.h"
-
-
-//wrc
 #include <stdio.h>
 #include <errno.h>
 #include <sys/stat.h>
@@ -127,10 +124,12 @@ void write_phi(lpt_real *pot, int isNonGaus)
 }
 
 
+/* Task 0 writes one Gadget file per task that holds particles (NumFilesWrittenInParallel is not used). The files
+ * are numbered 0 .. NTaskWithN - 1 in task order, as the header's num_files says, also if a task in the middle had
+ * no particles. */
 void write_particle_data(void)
 {
-  /* Task 0 writes every file (one per task), so NumFilesWrittenInParallel is not used. It used to abort
-     here, after all the work, whenever NTask < NumFilesWrittenInParallel. */
+  int file = 0;     /* task 0: next file number */
 
   for(int task = 0; task < NTask; task++)
     {
@@ -138,12 +137,12 @@ void write_particle_data(void)
         {
           if(task == 0)
             {
-              // Task 0 writes its own data
-              save_local_data(0);
+              if(NumPart > 0)
+                save_local_data(file++);
             }
           else
             {
-              // Receive from other task and write on their behalf
+              /* another task's particles, written on its behalf */
               MPI_Status status;
               int        numpart;
 
@@ -161,14 +160,14 @@ void write_particle_data(void)
                 MPI_Recv((char *) recvbuf + off, (int) (nb - off < SAVE_CHUNK_BYTES ? nb - off : SAVE_CHUNK_BYTES),
                          MPI_BYTE, task, 1, MPI_COMM_WORLD, &status);
 
-              // Temporarily replace P and NumPart
               struct part_data *P_old       = P;
               int               NumPart_old = NumPart;
 
               P       = recvbuf;
               NumPart = numpart;
 
-              save_local_data(task);  // Write to FileBase.task
+              if(numpart > 0)
+                save_local_data(file++);
 
               free(P);
               P       = P_old;
@@ -188,12 +187,13 @@ void write_particle_data(void)
             }
         }
 
-      MPI_Barrier(MPI_COMM_WORLD);  // Synchronize
+      MPI_Barrier(MPI_COMM_WORLD);
     }
 }
 
 
-void save_local_data(int task)
+/* One Gadget-1 file of the particles in P: <OutputDir>/<FileBase>.<file> (or without suffix for a single file). */
+void save_local_data(int file)
 {
 #define BUFFER 10
   size_t bytes;
@@ -216,9 +216,9 @@ void save_local_data(int task)
     return;
 
   if(NTaskWithN > 1)
-    sprintf(buf, "%s/%s.%d", OutputDir, FileBase, task);
+    snprintf(buf, sizeof(buf), "%s/%s.%d", OutputDir, FileBase, file);
   else
-    sprintf(buf, "%s/%s", OutputDir, FileBase);
+    snprintf(buf, sizeof(buf), "%s/%s", OutputDir, FileBase);
 
   if(!(fd = fopen(buf, "w")))
     {

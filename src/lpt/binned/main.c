@@ -14,8 +14,6 @@
 #include "allvars.h"
 #include "binned_vars.h"
 #include "proto.h"
-#include <signal.h>
-#include <assert.h>
 #include <ctype.h>
 
 #include "lpt_core.h"
@@ -23,27 +21,7 @@
 
 void print_setup(void)
 {
-  char pstr[79];
-
-  for(int i = 0; i < 79; i++)
-    pstr[i] = '*';
-  printf("%s\n", pstr);
-
-  char exec[] = "2LPTNGBinned";
-
-  pstr[0] = '*';
-  for(int i = 1; i < 79/2 - 3; i++)
-    pstr[i] = ' ';
-  sprintf(&pstr[79/2 - 4], "%s", exec);
-  for(int i = 79/2 + 4; i < 78; i++)
-    pstr[i] = ' ';
-  pstr[78] = '*';
-  printf("%s\n", pstr);
-
-  for(int i = 0; i < 79; i++)
-    pstr[i] = '*';
-  printf("%s\n", pstr);
-  printf("\n");
+  lpt_print_banner("2LPTNGBinned");
 
   printf("      Box = %.2e   Nmesh = %d   Nsample = %d   Nmax = %d\n", Box, Nmesh, Nsample, Nmax);
   printf("                       Nglass = %d    GlassTileFac = %d\n\n", Nglass, GlassTileFac);
@@ -60,9 +38,9 @@ void print_setup(void)
   printf("   BinnedK3Edges(output) = %s\n", FileWithBinnedK3Edges);
   printf("   BinnedKernelValues = %s\n", FileWithBinnedKernelValues);
 
-  for(int i = 0; i < 79; i++)
-    pstr[i] = '*';
-  printf("\n%s\n\n", pstr);
+  printf("\n");
+  lpt_print_rule();
+  printf("\n");
   return;
 }
 
@@ -371,6 +349,15 @@ static void bpng_read_and_broadcast_table(void)
       bpng_read_edge_file_root(FileWithBinnedK1Edges, 0);
       memcpy(BPNG.edges[1], BPNG.edges[0], nedge[0] * sizeof(double));
       bpng_read_edge_file_root(FileWithBinnedK3Edges, 2);
+      for(axis = 0; axis < 3; axis += 2)
+        for(int e = 1; e < nedge[axis]; e++)
+          if(!(BPNG.edges[axis][e] > BPNG.edges[axis][e - 1]))
+            {
+              printf("Binned edge file '%s': the edges must increase strictly (edge %d is %g after %g).\n",
+                     axis ? FileWithBinnedK3Edges : FileWithBinnedK1Edges, e, BPNG.edges[axis][e],
+                     BPNG.edges[axis][e - 1]);
+              FatalError(9119);
+            }
 
       ncoef       = ((long long) BPNG.coeff_count) * bpng_ncell();
       BPNG.Kcoeff = malloc(ncoef * sizeof(double));
@@ -412,25 +399,15 @@ static void bpng_read_and_broadcast_table(void)
 
 static void bpng_free_table(void)
 {
-  int axis;
-
-  for(axis = 0; axis < 3; axis++)
-    {
-      if(BPNG.edges[axis])
-        free(BPNG.edges[axis]);
-      BPNG.edges[axis] = NULL;
-    }
-
-  if(BPNG.Kcoeff)
-    free(BPNG.Kcoeff);
+  free(BPNG.Kcoeff);
   BPNG.Kcoeff = NULL;
-
   for(int axis = 0; axis < 3; axis++)
     {
+      free(BPNG.edges[axis]);
       free(BPNG.node_x[axis]);
       free(BPNG.bin_xc[axis]);
       free(BPNG.bin_dx[axis]);
-      BPNG.node_x[axis] = BPNG.bin_xc[axis] = BPNG.bin_dx[axis] = NULL;
+      BPNG.edges[axis] = BPNG.node_x[axis] = BPNG.bin_xc[axis] = BPNG.bin_dx[axis] = NULL;
     }
 }
 
@@ -689,7 +666,6 @@ static double bpng_input_basis_value(int axis, int node, double kmag)
 
 /* ---- per-mode steps of the convolution: filter, product, output-leg coefficient ---- */
 
-/* dst = psi_node(|k|) src in Fourier space (normal x-slab layout), zero elsewhere. */
 /* The output-leg polynomial of one cell, sum_q c[q] u^q for the BPNG.coeff_count coefficients c. */
 static inline double bpng_cell_polynomial(const double *c, double u)
 {
@@ -862,23 +838,16 @@ void displacement_fields(void)
   lpt_complex  *cpot_NG;        /* non-Gaussian term, accumulated in the band k-space layout */
   uint64_t      bytes = 0;
 
-  /* The binned-kernel implementation no longer reads modal AlphaTable or X0Table.
-   * It only needs the explicit binned table files configured in the parameter file.
-   * Keep Nmax>=Nsample as a sanity check because the input Gaussian modes are
-   * generated only over the usual Nsample support.
-   */
-  assert(Nmax >= Nsample);
-
-  MPI_Bcast(&SavePotentialField, 1, MPI_INT, 0, MPI_COMM_WORLD);
+  if(Nmax < Nsample)
+    {
+      if(ThisTask == 0)
+        printf("Nmax (%d) must be at least Nsample (%d).\n", Nmax, Nsample);
+      FatalError(9118);
+    }
 
   lpt_setup_gaussian_potential(&cpot, &Beta);
 
-  /*** For non-local models it is important to keep all factors of SQRT(-1) as done below ***/
-  /*** No sign flip is applied to the NG term: it is added to the Gaussian potential as is ***/
-  /*** (2LPTPNG noted a minus here to convert from Bardeen to gravitational potential)   ***/
-
-  /**** BINNED PRIMORDIAL POTENTIAL **************/
-
+  /* the binned NG term, added to the Gaussian potential as is (no Bardeen-to-gravitational sign flip) */
   cpot_NG = (lpt_complex *) lpt_alloc_grid();
   ASSERT_ALLOC(cpot_NG);
   memset(cpot_NG, 0, sizeof(lpt_real) * TotalSizePlusAdditional);

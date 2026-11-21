@@ -242,8 +242,8 @@ int find_files(char *fname)
   char buf[600], buf1[600];
   int dummy;
 
-  sprintf(buf, "%s.%d", fname, 0);
-  sprintf(buf1, "%s", fname);
+  snprintf(buf, sizeof(buf), "%s.%d", fname, 0);
+  snprintf(buf1, sizeof(buf1), "%s", fname);
 
   if((fd = fopen(buf, "r")))
     {
@@ -268,6 +268,7 @@ int find_files(char *fname)
       return header.num_files;
     }
 
+  printf("Cannot open the glass file '%s' (or '%s').\n", buf1, buf);
   FatalError(121);
   return 0;
 }

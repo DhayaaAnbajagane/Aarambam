@@ -22,6 +22,7 @@ static band_fft *Band;              /* FFTBackend band (NGPrecision double); NUL
 int              NGFloat;           /* NGPrecision float */
 unsigned         Lpt_plan_flags = FFTW_ESTIMATE;   /* planner flags of the run (FFTW_MEASURE with a wisdom file) */
 static int       Wisdom_use = 0;                   /* a wisdom file is in use (all ranks) */
+static char     *Wisdom_path = NULL;               /* rank 0: the double-precision wisdom file */
 #ifndef AARAMBAM_NO_FLOAT
 static band_fftf *BandF;            /* NGPrecision float: the single-precision band FFT */
 #endif
@@ -61,6 +62,17 @@ static void lpt_check_alignment(const void *field)
       FatalError(1116);
     }
 }
+
+#ifndef AARAMBAM_NO_FLOAT
+static void lpt_check_alignment_f(const float *field)
+{
+  if(fftwf_alignment_of((float *) field) != 0)
+    {
+      printf("Task %d: grid passed to a single-precision FFT is not allocated with lpt_alloc_grid_f()\n", ThisTask);
+      FatalError(1116);
+    }
+}
+#endif
 
 static void lpt_no_double_band(void)
 {
@@ -122,8 +134,7 @@ void lpt_fftf_forward_band(float *field)
 {
 #ifndef AARAMBAM_NO_FLOAT
   PROF_BEGIN(PROF_FFT)
-  if(fftwf_alignment_of(field) != 0)
-    FatalError(1116);
+  lpt_check_alignment_f(field);
   band_fftf_forward(BandF, field);
   PROF_END(PROF_FFT)
 #else
@@ -136,8 +147,7 @@ void lpt_fftf_inverse_band(float *field)
 {
 #ifndef AARAMBAM_NO_FLOAT
   PROF_BEGIN(PROF_FFT)
-  if(fftwf_alignment_of(field) != 0)
-    FatalError(1116);
+  lpt_check_alignment_f(field);
   band_fftf_inverse(BandF, field);
   PROF_END(PROF_FFT)
 #else
@@ -558,17 +568,21 @@ static void lpt_make_plans(int band, unsigned flags)
       FatalError(1);
     }
 
-  BF_PLAN_WISDOM_FIRST(Forward_plan, fftw_mpi_plan_dft_r2c_3d(Nmesh, Nmesh, Nmesh, plan_grid, (fftw_complex *) plan_grid,
-                                          MPI_COMM_WORLD, flags));
-  BF_PLAN_WISDOM_FIRST(Inverse_plan, fftw_mpi_plan_dft_c2r_3d(Nmesh, Nmesh, Nmesh, (fftw_complex *) plan_grid, plan_grid,
-                                          MPI_COMM_WORLD, flags));
+  fftw_complex *cgrid = (fftw_complex *) plan_grid;
+
+  BF_PLAN_WISDOM_FIRST(Forward_plan,
+                       fftw_mpi_plan_dft_r2c_3d(Nmesh, Nmesh, Nmesh, plan_grid, cgrid, MPI_COMM_WORLD, flags));
+  BF_PLAN_WISDOM_FIRST(Inverse_plan,
+                       fftw_mpi_plan_dft_c2r_3d(Nmesh, Nmesh, Nmesh, cgrid, plan_grid, MPI_COMM_WORLD, flags));
   if(!band)
     {
-      BF_PLAN_WISDOM_FIRST(Forward_plan_t, fftw_mpi_plan_dft_r2c_3d(Nmesh, Nmesh, Nmesh, plan_grid, (fftw_complex *) plan_grid,
-                                                MPI_COMM_WORLD, flags | FFTW_MPI_TRANSPOSED_OUT));
-      BF_PLAN_WISDOM_FIRST(Transpose_plan, fftw_mpi_plan_many_transpose(Nmesh, Nmesh, 2 * nzc, FFTW_MPI_DEFAULT_BLOCK,
-                                                    FFTW_MPI_DEFAULT_BLOCK, plan_grid, plan_grid, MPI_COMM_WORLD,
-                                                    flags));
+      BF_PLAN_WISDOM_FIRST(Forward_plan_t,
+                           fftw_mpi_plan_dft_r2c_3d(Nmesh, Nmesh, Nmesh, plan_grid, cgrid, MPI_COMM_WORLD,
+                                                    flags | FFTW_MPI_TRANSPOSED_OUT));
+      BF_PLAN_WISDOM_FIRST(Transpose_plan,
+                           fftw_mpi_plan_many_transpose(Nmesh, Nmesh, 2 * nzc, FFTW_MPI_DEFAULT_BLOCK,
+                                                        FFTW_MPI_DEFAULT_BLOCK, plan_grid, plan_grid, MPI_COMM_WORLD,
+                                                        flags));
     }
   if(!Forward_plan || !Inverse_plan || (!band && (!Forward_plan_t || !Transpose_plan)))
     {
@@ -599,6 +613,8 @@ static void lpt_wisdom_begin(lpt_wisdom *w)
   Wisdom_use = w->use;
   if(!w->use)
     return;
+  if(ThisTask == 0)
+    Wisdom_path = strdup(w->path);
   w->loaded = lpt_wisdom_import_file(w->path, 0);
 #ifndef AARAMBAM_NO_FLOAT
   if(NGFloat)
@@ -636,21 +652,18 @@ void lpt_wisdom_save_new(const char *what)
     return;
   if(lpt_wisdom_changed())
     {
-      char path[LPT_WISDOM_PATH_LEN];
-
       fftw_mpi_gather_wisdom(MPI_COMM_WORLD);
       if(ThisTask == 0)
         {
-          lpt_wisdom_path(path, sizeof(path));
-          lpt_save_wisdom(path);
-          printf("\n%s FFT plans measured and added to %s\n", what, path);
+          lpt_save_wisdom(Wisdom_path);
+          printf("\n%s FFT plans measured and added to %s\n", what, Wisdom_path);
         }
 #ifndef AARAMBAM_NO_FLOAT
       if(NGFloat)
         {
-          char fpath[LPT_WISDOM_PATH_LEN];
+          char fpath[LPT_WISDOM_PATH_LEN + 8] = "";
           if(ThisTask == 0)
-            lpt_float_wisdom_path(fpath, sizeof(fpath), path);
+            lpt_float_wisdom_path(fpath, sizeof(fpath), Wisdom_path);
           lpt_float_wisdom_keep(fpath, 0.0);
         }
 #endif
@@ -734,7 +747,10 @@ void initialize_ffts(void)
 void free_ffts(void)
 {
   free(Slab_to_task);
+  free(Local_nx_table);
   free(Band_y);
+  free(Wisdom_path);
+  Wisdom_path = NULL;
   fftw_destroy_plan(Inverse_plan);
   fftw_destroy_plan(Forward_plan);
   if(Forward_plan_t)

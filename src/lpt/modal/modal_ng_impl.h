@@ -18,7 +18,7 @@ static void NG(modal_build_field)(unsigned int N, int restart, lpt_complex *cpot
   uint64_t    coord;
   double      kmag2, kmag1, kmag, Pl, pk;
   long double fnl_fac;
-  double      np = ((double) N) - 1;     //For doing legendre calculations later
+  double      np = ((double) N) - 1;     /* degree of the Legendre recursion step */
 
   for(ii = 0; ii < Local_nx; ii++)
     {
@@ -39,7 +39,7 @@ static void NG(modal_build_field)(unsigned int N, int restart, lpt_complex *cpot
 
               if(N <= 3)
                 {
-                  //including 1/P1(k) term here
+                  /* includes the 1/P(k) factor */
                   fnl_fac = pow(kmag1, (4 - PrimordialIndex)/3 * (N - 3.)) * pow(kmag1, 4 - PrimordialIndex);
 
                   out[coord].re = fnl_fac * cpot[coord].re;
@@ -49,8 +49,7 @@ static void NG(modal_build_field)(unsigned int N, int restart, lpt_complex *cpot
 
               kmag = modal_legendre_x(kmag1, kmin_ns, kmax_ns);
 
-              //Use 2 - n_s instad of 4 - n_s since you implicitly account for the 1/k^2 factor
-              //in switching from S(k1, k2, k3) --> B(k1, k2, k3).
+              /* 2 - n_s rather than 4 - n_s: the 1/k^2 of S(k1, k2, k3) -> B(k1, k2, k3) is folded in */
               pk = pow(kmag1, (2 - PrimordialIndex));
 
               if(restart)
@@ -127,7 +126,7 @@ static void NG(modal_ng_stage)(lpt_complex *cpot, lpt_complex *cpot_NG, double (
   NGR         **gcache = NULL;
   ModalModeList ML     = {0, 0, NULL, NULL};
 
-  //Recursion buffers of the mode fields (k-space, double): 0-2 for g_i, 4-6 for g_j
+  /* recursion buffers of the mode fields (k-space, double): 0-2 for g_i, 4-6 for g_j */
   for(N = 0; N < 8; N++)
     {
       cfields[N] = NULL;
@@ -138,7 +137,7 @@ static void NG(modal_ng_stage)(lpt_complex *cpot, lpt_complex *cpot_NG, double (
       ASSERT_ALLOC(cfields[N]);
     }
 
-  //Work grids of g_i and g_j (without the cache), in the precision of the NG stage
+  /* work grids of g_i and g_j (without the cache), in the precision of the NG stage */
   cg_i = cg_j = NULL;
   if(!ModeTables)
     {
@@ -212,12 +211,11 @@ static void NG(modal_ng_stage)(lpt_complex *cpot, lpt_complex *cpot_NG, double (
         gi = gcache[N_i];
       else
         {
-          //Generate the first field in fourier space
-          //zero the out-of-band modes: the previous FFT left this grid in real space
+          /* g_i in Fourier space (zeroed first: the previous FFT left this grid in real space) */
           memset(cg_i, 0, sizeof(NGR) * TotalSizePlusAdditional);
           NG(modal_build_field)(N_i, N_i == 4, cpot, ri, cg_i, X0Table, kmin_ns, kmax_ns);
           if(N_i >= 4)
-            modal_rotate(ri);     //so the next iteration continues the recursion
+            modal_rotate(ri);     /* the next N_i continues the recursion */
           lpt_barrier();
 
           NG_INV(g_ir);
@@ -229,8 +227,7 @@ static void NG(modal_ng_stage)(lpt_complex *cpot, lpt_complex *cpot_NG, double (
 
       for(N_j = N_i; N_j < N_modes; N_j++)
         {
-          //Routine that determines if we can skip the FFTs assuming
-          //the coefficients are zero for all these objects.
+          /* the pair can be skipped if all its alpha coefficients are zero */
           ksum = 0;
           for(N_k = N_j; N_k < N_modes; N_k++)
             if(fabs(AlphaTable[N_i][N_j][N_k]) > 0)
@@ -250,8 +247,7 @@ static void NG(modal_ng_stage)(lpt_complex *cpot, lpt_complex *cpot_NG, double (
 
               if(needed)
                 {
-                  //Generate the 2nd field, also in fourier space
-                  //zero the out-of-band modes: the previous FFT left this grid in real space
+                  /* g_j in Fourier space (zeroed first, as g_i) */
                   memset(cg_j, 0, sizeof(NGR) * TotalSizePlusAdditional);
                   NG(modal_build_field)(N_j, (N_j == 4) || ((N_i >= 4) && (N_i == N_j)), cpot, rj, cg_j, X0Table,
                                         kmin_ns, kmax_ns);
@@ -280,14 +276,14 @@ static void NG(modal_ng_stage)(lpt_complex *cpot, lpt_complex *cpot_NG, double (
               lpt_barrier();
             }
 
-          //Multiply terms in realspace [\phi gi] x [\phi gj]
+          /* product of the two mode fields in real space */
           NG(modal_multiply_fields)(p_tmp, gi, gj);
           lpt_barrier();
 
           NG_FWD(p_tmp);
           lpt_barrier();
 
-          //Add the g3(k) kernel. This can be summed linearly for fixed gi and gj.
+          /* output-leg kernel K_ij(k3), summed over N_k for this pair */
           PROF_BEGIN(PROF_ACCUM)
           const double *alpha = AlphaTable[N_i][N_j];
 
@@ -341,9 +337,7 @@ static void NG(modal_ng_stage)(lpt_complex *cpot, lpt_complex *cpot_NG, double (
 
   /**** Extra templates cancelling the divergent (0,1,2) term ****/
 
-  //Only the pairs (0, 1) and (0, 2) carry a t_012 term, so the other pairs N_i, N_j <= 3 are not computed.
-
-  //Free the recursion buffers 2..7, since we won't use them anymore (the Beta terms need N <= 2 only)
+  /* only the pairs (0, 1) and (0, 2) carry a t_012 term; the recursion buffers 2..7 are no longer needed */
   for(N = 2; N < 8; N++)
     free(cfields[N]);
   free(ML.coord);
@@ -357,8 +351,6 @@ static void NG(modal_ng_stage)(lpt_complex *cpot, lpt_complex *cpot_NG, double (
         g0 = gcache[0];
       else
         {
-          //Generate the first field in fourier space
-          //zero the out-of-band modes: the previous FFT left this grid in real space
           memset(cg_i, 0, sizeof(NGR) * TotalSizePlusAdditional);
           NG(modal_build_field)(0, 0, cpot, ri, cg_i, X0Table, kmin_ns, kmax_ns);
           lpt_barrier();
@@ -374,8 +366,6 @@ static void NG(modal_ng_stage)(lpt_complex *cpot, lpt_complex *cpot_NG, double (
             gj = gcache[N_j];
           else
             {
-              //Generate the 2nd field, also in fourier space
-              //zero the out-of-band modes: the previous FFT left this grid in real space
               memset(cg_j, 0, sizeof(NGR) * TotalSizePlusAdditional);
               NG(modal_build_field)(N_j, 0, cpot, ri, cg_j, X0Table, kmin_ns, kmax_ns);
               lpt_barrier();
@@ -385,7 +375,6 @@ static void NG(modal_ng_stage)(lpt_complex *cpot, lpt_complex *cpot_NG, double (
               gj = g_jr;
             }
 
-          //Multiply terms in realspace [\phi g0] x [\phi gj]
           NG(modal_multiply_fields)(p_tmp, g0, gj);
           lpt_barrier();
 
@@ -417,10 +406,10 @@ static void NG(modal_ng_stage)(lpt_complex *cpot, lpt_complex *cpot_NG, double (
 
                       fnl_fac = 0;
 
-                      //The t_012 piece (cancels the divergent (0,1,2) term).
-                      if(N_j == 1)      //Subtract from the original kernel
+                      /* the t_012 template cancelling the divergent (0, 1, 2) term */
+                      if(N_j == 1)
                         fnl_fac += -AlphaTable[0][1][2] * t_012 * pow(kmag1, (4 - PrimordialIndex)/3 * (2 - 3.0));
-                      else              //Now add the t_012 piece
+                      else
                         fnl_fac +=  AlphaTable[0][1][2] * t_012 * pow(kmag1, (4 - PrimordialIndex)/3 * (1 - 3.0));
 
                       cpot_NG[coord].re += (double) (fnl_fac * c_tmp[coord].re);

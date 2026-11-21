@@ -10,7 +10,6 @@
 #include "allvars.h"
 #include "proto.h"
 #include "lpt_core.h"
-#include <signal.h>
 #include <assert.h>
 
 /* Code shared by the modal (2LPTBasis) and binned (2LPTBinned) executables: program driver, timing,
@@ -76,6 +75,26 @@ void print_timed_done(int n)
   return;
 }
 
+/* The setup banner: a row of 79 '*', the executable's name centred in a box, another row */
+void lpt_print_rule(void)
+{
+  char rule[80];
+
+  memset(rule, '*', 79);
+  rule[79] = 0;
+  printf("%s\n", rule);
+}
+
+void lpt_print_banner(const char *name)
+{
+  const int len = (int) strlen(name), left = (77 - len) / 2;
+
+  lpt_print_rule();
+  printf("*%*s%s%*s*\n", left, "", name, 77 - len - left, "");
+  lpt_print_rule();
+  printf("\n");
+}
+
 void print_timed_done_aligned(int printed_chars)
 {
   int indent = TIMED_DONE_COLUMN - printed_chars;
@@ -83,13 +102,6 @@ void print_timed_done_aligned(int printed_chars)
   if(indent < 1)
     indent = 1;
   print_timed_done(indent);
-}
-
-void handle_signal(int signal)
-{
-  // Handle the signal, clean up resources
-  MPI_Finalize();
-  exit(0);
 }
 
 
@@ -103,9 +115,6 @@ int main(int argc, char **argv)
   fftw_mpi_init();
   MPI_Comm_rank(MPI_COMM_WORLD, &ThisTask);
   MPI_Comm_size(MPI_COMM_WORLD, &NTask);
-
-  // Setup signal handling
-  signal(SIGINT, handle_signal);
 
   start_time    = MPI_Wtime();
   previous_time = start_time;
@@ -283,7 +292,6 @@ void lpt_setup_gaussian_potential(lpt_complex **cpot_out, double *Beta_out)
   long long     ncol = 0;          /* in-band columns so far, the dealing counter */
   double        cph, sph;
   lpt_gauss_out out = {NULL, 0, 0};
-  uint64_t      bytes = 0;
   int           timed_chars = 0;
   double        phig, Beta;
   lpt_complex  *cpot;              /* Gaussian potential */
@@ -292,6 +300,8 @@ void lpt_setup_gaussian_potential(lpt_complex **cpot_out, double *Beta_out)
   double        phase, ampl;
   unsigned int *seedtable;
   double        phase_shift;       /* pi for PhaseFlip = 1 */
+  uint64_t      bytes = 0;         /* for ASSERT_ALLOC's message */
+
   phase_shift = 0.0;
   if(PhaseFlip == 1)
     phase_shift = PI;
@@ -575,7 +585,7 @@ void lpt_displacements_from_potential(lpt_complex *cpot, lpt_complex *cpot_NG, d
 
   maxdisp = 0;
 
-  //Transform to real space and back only to write out the potential (the round trip multiplies it by nmesh3)
+  /* to real space and back only to write out the potential (the round trip multiplies it by nmesh3) */
   if(SavePotentialField == 1)
     {
       lpt_fft(Inverse_plan, pot);
@@ -587,23 +597,23 @@ void lpt_displacements_from_potential(lpt_complex *cpot, lpt_complex *cpot_NG, d
   nmesh3 = ((uint64_t) Nmesh) * ((uint64_t) Nmesh ) * ((uint64_t) Nmesh);
   const double rt = (SavePotentialField == 1) ? (double) nmesh3 : 1.0;   /* FFT round trip of the potential */
 
-  //Add NG potential to the full potential
+  /* add the NG potential */
   for(ii = 0; ii < Local_nx; ii++)
     for(j = 0; j < Nmesh; j++)
       for(k = 0; k <= Nmesh / 2 ; k++)
         {
           coord = (ii * Nmesh + j) * (Nmesh / 2 + 1) + k;
 
-          //Undo the factor nmesh3 of the save-potential round trip above, if there was one
+          /* undo the factor nmesh3 of the save-potential round trip above, if there was one */
           cpot[coord].re /= rt;
           cpot[coord].im /= rt;
 
-          //One factor due to converting c_tmp from real space to fourier space
+          /* cpot_NG carries one factor nmesh3 from its forward FFT */
           cpot[coord].re += ng_scale * cpot_NG[coord].re / (double) nmesh3;
           cpot[coord].im += ng_scale * cpot_NG[coord].im / (double) nmesh3;
         }
 
-  //Zero-out the mean mode alone
+  /* zero the mean mode */
   if(ThisTask == 0)
     {
       cpot[0].re = 0.;
@@ -849,13 +859,11 @@ void lpt_displacements_from_potential(lpt_complex *cpot, lpt_complex *cpot_NG, d
     print_timed_done_aligned(timed_chars);
   if(ThisTask == 0)
     {
-      timed_chars = printf("Computing displacements and velocitites...");
+      timed_chars = printf("Computing displacements and velocities...");
       fflush(stdout);
     }
 
   /* read-out displacements: CIC interpolation of the ZA and 2LPT fields at each particle */
-  nmesh3 = (uint64_t)Nmesh * (uint64_t)Nmesh *(uint64_t) Nmesh;
-
   for(n = 0; n < NumPart; n++)
     {
       u = P[n].Pos[0] / Box * Nmesh;
@@ -902,7 +910,7 @@ void lpt_displacements_from_potential(lpt_complex *cpot, lpt_complex *cpot_NG, d
         {
           dis  = lpt_cic_read(disp[axes], i, ii, j, jj, k, kk, f);
           dis2 = lpt_cic_read(disp2[axes], i, ii, j, jj, k, kk, f);
-          dis2 /= (float) nmesh3;
+          dis2 /= (double) nmesh3;
 
           P[n].Pos[axes] += dis - 3./7. * dis2;
           P[n].Vel[axes]  = dis * vel_prefac - 3./7. * dis2 * vel_prefac2;
@@ -922,6 +930,8 @@ void lpt_displacements_from_potential(lpt_complex *cpot, lpt_complex *cpot_NG, d
     free(cdisp2[axes]);
 
   MPI_Reduce(&maxdisp, &max_disp_glob, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
+  if(ThisTask == 0)
+    printf("Largest displacement: %g (%.3g grid cells)\n", max_disp_glob, max_disp_glob / (Box / Nmesh));
 }
 
 
@@ -979,9 +989,13 @@ void print_spec(void)
 
   if(ThisTask == 0)
     {
-      sprintf(buf, "%s/inputspec_%s.txt", OutputDir, FileBase);
+      snprintf(buf, sizeof(buf), "%s/inputspec_%s.txt", OutputDir, FileBase);
 
-      fd = fopen(buf, "w");
+      if(!(fd = fopen(buf, "w")))
+        {
+          printf("Could not write the input spectrum to %s\n", buf);
+          return;
+        }
 
       gf  = GrowthFactor(0.001, 1.0) / (1.0 / 0.001);
       DDD = GrowthFactor(1.0 / (Redshift + 1), 1.0);

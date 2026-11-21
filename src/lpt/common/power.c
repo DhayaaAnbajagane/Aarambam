@@ -38,13 +38,18 @@ double TransferFunc(double k)
       break;
 
     case 3:
-      printf(" TranferFunction from Pk deprecreated\n");
+      printf(" TransferFunction from P(k) is deprecated\n");
       FatalError(117);
       transfer = TransferFunc_FromPk(k);
       break;
 
     default:
-      printf(" TranferFunction Efstathiou is a stub (T(k) = 1); use WhichTransfer 2\n");
+      {
+        static int warned = 0;     /* once, not once per mode */
+        if(!warned && ThisTask == 0)
+          printf(" TransferFunction Efstathiou is a stub (T(k) = 1); use WhichTransfer 2\n");
+        warned = 1;
+      }
       transfer = TransferFunc_Efstathiou(k);
       break;
     }
@@ -81,6 +86,13 @@ void read_transfer_table(void)
         NTransferTable++;
 
       fclose(fd);
+
+      if(NTransferTable < 2)
+        {
+          printf("The transfer function file '%s' has %d rows of (k, T); at least 2 are needed.\n", buf,
+                 NTransferTable);
+          FatalError(20);
+        }
 
       TransferTable = malloc(NTransferTable * sizeof(struct trans_table));
       if(!TransferTable)
@@ -128,10 +140,8 @@ void read_transfer_table(void)
         TransferTable[i].logT -= Tlower;
     }
 
-  // Broadcast the number of table entries
   MPI_Bcast(&NTransferTable, 1, MPI_INT, 0, MPI_COMM_WORLD);
 
-  // Allocate memory for the table on other tasks
   if(ThisTask != 0)
     {
       TransferTable = malloc(NTransferTable * sizeof(struct trans_table));
@@ -142,10 +152,8 @@ void read_transfer_table(void)
         }
     }
 
-  // Broadcast the full TransferTable
   MPI_Bcast(TransferTable, NTransferTable * sizeof(struct trans_table), MPI_BYTE, 0, MPI_COMM_WORLD);
 
-  // Broadcast klower (used outside the loop)
   MPI_Bcast(&klower, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
 }
 
