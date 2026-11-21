@@ -87,6 +87,9 @@ class Basis:
         self.tetrapyd_grid_size = self.tetrapyd_grid.shape[1]
         self.tetrapyd_grid_weights = np.prod(self.k_weights[self.tetrapyd_indices], axis = 0)
         
+        #Orderings of each (k1 >= k2 >= k3) point. Not applied: the weights below count every ordered triangle once,
+        #so, relative to a generic triangle, isosceles ones weigh 2x and equilateral ones 6x more than in an
+        #integral over all orderings.
         sym_factors = np.zeros_like(self.tetrapyd_grid_weights)
         p1, p2, p3  = self.tetrapyd_indices
         sym_factors[(p1 != p2) & (p2 != p3)] = 6
