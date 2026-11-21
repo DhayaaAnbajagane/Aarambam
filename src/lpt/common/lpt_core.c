@@ -1,4 +1,5 @@
 #include <math.h>
+#include <limits.h>
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -163,12 +164,126 @@ int main(int argc, char **argv)
 
 /* ---- Gaussian potential ---- */
 
+/* cos and sin of a phase as two separate calls. A compiler may fuse cos(x) and sin(x) into one sincos(x), whose last
+ * bit can differ; doing it in some branches and not others made modes depend on which rank drew them. */
+static void lpt_cos_sin(double phase, double *c, double *s)
+{
+  volatile double p = phase;     /* two separate reads keep the calls apart */
+
+  *c = cos(p);
+  *s = sin(p);
+}
+
+/* Modes of the Gaussian potential bound for other ranks: (index in the owner's slab, value) */
+typedef struct
+{
+  uint64_t coord;
+  double   re, im;
+  int      dest;
+}
+lpt_gauss_mode;
+
+typedef struct
+{
+  lpt_gauss_mode *m;
+  size_t          n, cap;
+}
+lpt_gauss_out;
+
+/* Mode (x, y, z) of the potential: into this rank's slab, or queued for the rank holding plane x */
+static void lpt_gauss_put(lpt_complex *cpot, const ptrdiff_t *x0_of, lpt_gauss_out *out, ptrdiff_t x, ptrdiff_t y,
+                          ptrdiff_t z, double re, double im)
+{
+  const int      dest  = Slab_to_task[x];
+  const uint64_t coord = ((x - x0_of[dest]) * Nmesh + y) * (Nmesh / 2 + 1) + z;
+
+  if(dest == ThisTask)
+    {
+      cpot[coord].re = re;
+      cpot[coord].im = im;
+      return;
+    }
+  if(out->n == out->cap)
+    {
+      const size_t bytes = sizeof(lpt_gauss_mode) * (out->cap ? 2 * out->cap : 4096);
+
+      out->cap = out->cap ? 2 * out->cap : 4096;
+      out->m   = realloc(out->m, bytes);
+      ASSERT_ALLOC(out->m);
+    }
+  out->m[out->n++] = (lpt_gauss_mode) {coord, re, im, dest};
+}
+
+/* Send the queued modes to their ranks (one all-to-all) and store the received ones; frees the queue. Collective. */
+static void lpt_gauss_deliver(lpt_complex *cpot, lpt_gauss_out *out)
+{
+  int            *scnt = calloc(NTask, sizeof(int)), *sdsp = malloc(sizeof(int) * NTask);
+  int            *rcnt = malloc(sizeof(int) * NTask), *rdsp = malloc(sizeof(int) * NTask);
+  long long       ns = 0, nr = 0;
+  lpt_gauss_mode *sb, *rb;
+  MPI_Datatype    mtype;
+  size_t          bytes = 4 * sizeof(int) * NTask;
+
+  ASSERT_ALLOC(scnt && sdsp && rcnt && rdsp);
+  for(size_t q = 0; q < out->n; q++)
+    scnt[out->m[q].dest]++;
+  MPI_Alltoall(scnt, 1, MPI_INT, rcnt, 1, MPI_INT, MPI_COMM_WORLD);
+  for(int t = 0; t < NTask; t++)
+    {
+      sdsp[t] = (int) ns;
+      rdsp[t] = (int) nr;
+      ns += scnt[t];
+      nr += rcnt[t];
+    }
+  if(ns > INT_MAX || nr > INT_MAX)
+    {
+      printf("Task %d: too many Gaussian modes to exchange (%lld, %lld). Run with more MPI ranks.\n", ThisTask, ns, nr);
+      FatalError(1124);
+    }
+  bytes = sizeof(lpt_gauss_mode) * (ns + nr + 2);
+  sb    = malloc(sizeof(lpt_gauss_mode) * (ns + 1));
+  rb    = malloc(sizeof(lpt_gauss_mode) * (nr + 1));
+  ASSERT_ALLOC(sb && rb);
+  for(int t = 0; t < NTask; t++)
+    scnt[t] = 0;
+  for(size_t q = 0; q < out->n; q++)      /* by destination */
+    {
+      const int t = out->m[q].dest;
+      sb[sdsp[t] + scnt[t]++] = out->m[q];
+    }
+  free(out->m);
+  out->m = NULL;
+  out->n = out->cap = 0;
+
+  MPI_Type_contiguous((int) sizeof(lpt_gauss_mode), MPI_BYTE, &mtype);
+  MPI_Type_commit(&mtype);
+  MPI_Alltoallv(sb, scnt, sdsp, mtype, rb, rcnt, rdsp, mtype, MPI_COMM_WORLD);
+  MPI_Type_free(&mtype);
+
+  for(long long q = 0; q < nr; q++)
+    {
+      cpot[rb[q].coord].re = rb[q].re;
+      cpot[rb[q].coord].im = rb[q].im;
+    }
+  free(sb);
+  free(rb);
+  free(scnt);
+  free(sdsp);
+  free(rcnt);
+  free(rdsp);
+}
+
 /* Gaussian primordial potential on this rank's slab (the random phases do not depend on the number of
  * ranks). Allocates and returns cpot, and the factor Beta. */
 void lpt_setup_gaussian_potential(lpt_complex **cpot_out, double *Beta_out)
 {
   gsl_rng      *random_generator;
-  ptrdiff_t     i, j, k, ii, jj, kend;
+  ptrdiff_t     i, j, k, ii, jj;
+  ptrdiff_t    *x0_of;             /* first x plane of each rank */
+  long long     ncol = 0;          /* in-band columns so far, the dealing counter */
+  double        cph, sph;
+  lpt_gauss_out out = {NULL, 0, 0};
+  uint64_t      bytes = 0;
   int           timed_chars = 0;
   double        phig, Beta;
   lpt_complex  *cpot;              /* Gaussian potential */
@@ -177,9 +292,6 @@ void lpt_setup_gaussian_potential(lpt_complex **cpot_out, double *Beta_out)
   double        phase, ampl;
   unsigned int *seedtable;
   double        phase_shift;       /* pi for PhaseFlip = 1 */
-  uint64_t      bytes = 0;
-  uint64_t      coord;
-
   phase_shift = 0.0;
   if(PhaseFlip == 1)
     phase_shift = PI;
@@ -226,8 +338,7 @@ void lpt_setup_gaussian_potential(lpt_complex **cpot_out, double *Beta_out)
       fflush(stdout);
     }
 
-  bytes = 0; /*initialize*/
-  cpot  = (lpt_complex *) lpt_alloc_grid();
+  cpot = (lpt_complex *) lpt_alloc_grid();
   ASSERT_ALLOC(cpot);
 
   memset(cpot, 0, sizeof(lpt_real) * TotalSizePlusAdditional);
@@ -235,146 +346,116 @@ void lpt_setup_gaussian_potential(lpt_complex **cpot_out, double *Beta_out)
   /* Ho in units of UnitLength_in_cm and c=1, i.e., internal units so far  */
   Beta = 1.5 * Omega / (2998. * 2998. / UnitLength_in_cm / UnitLength_in_cm * 3.085678e24 * 3.085678e24 ) / D0 ;
 
+  /* Every in-band (i, j) column is drawn by one rank, dealt round-robin (the draws are balanced whatever the slab
+   * layout); each mode goes to the rank holding its x plane, directly or through one all-to-all. */
+  x0_of = malloc(sizeof(ptrdiff_t) * (NTask + 1));
+  ASSERT_ALLOC(x0_of);
+  x0_of[0] = 0;
+  for(int t = 0; t < NTask; t++)
+    x0_of[t + 1] = x0_of[t] + Local_nx_table[t];
+
   for(i = 0; i < Nmesh; i++)
     {
+      if(!lpt_axis_in_band(i))
+        continue;
       ii = Nmesh - i;
       if(ii == Nmesh)
         ii = 0;
 
-      /* this rank holds column i or its conjugate */
-      if((i >= Local_x_start && i < (Local_x_start + Local_nx)) ||
-         (ii >= Local_x_start && ii < (Local_x_start + Local_nx)))
+      for(j = 0; j < Nmesh; j++)
         {
-          for(j = 0; j < Nmesh; j++)
+          if(!lpt_axis_in_band(j))      /* no sampled mode in this column */
+            continue;
+          if((ncol++) % NTask != ThisTask)
+            continue;
+          gsl_rng_set(random_generator, seedtable[i * Nmesh + j]);
+
+          for(k = 0; k < Nmesh / 2 && k <= Nsample / 2 + 1; k++)   /* later draws are not used */
             {
-              if(!lpt_axis_in_band(i) || !lpt_axis_in_band(j))      /* no sampled mode in this column */
+              phase  = gsl_rng_uniform(random_generator) * 2 * PI;
+              phase += phase_shift;
+
+              do
+                ampl = gsl_rng_uniform(random_generator);
+              while(ampl == 0);
+
+              if(i == Nmesh / 2 || j == Nmesh / 2 || k == Nmesh / 2)
                 continue;
-              gsl_rng_set(random_generator, seedtable[i * Nmesh + j]);
+              if(i == 0 && j == 0 && k == 0)
+                continue;
 
-              /* a column this rank holds needs every sampled k; a column of which it only holds the conjugate needs
-               * k = 0 alone (the conjugate half of the k = 0 plane), which comes from the column's first draws */
-              kend = (i >= Local_x_start && i < (Local_x_start + Local_nx)) ? Nsample / 2 + 1 : 0;
-              for(k = 0; k < Nmesh / 2 && k <= kend; k++)   /* later draws are not used */
+              kvec[0] = lpt_wavenumber(i);
+              kvec[1] = lpt_wavenumber(j);
+              kvec[2] = lpt_wavenumber(k);
+
+              kmag2 = kvec[0] * kvec[0] + kvec[1] * kvec[1] + kvec[2] * kvec[2];
+              kmag  = sqrt(kmag2);
+
+              if(SphereMode == 1)
                 {
-                  phase  = gsl_rng_uniform(random_generator) * 2 * PI;
-                  phase += phase_shift;
-
-                  do
-                    ampl = gsl_rng_uniform(random_generator);
-                  while(ampl == 0);
-
-                  if(i == Nmesh / 2 || j == Nmesh / 2 || k == Nmesh / 2)
+                  if(kmag * Box / (2 * PI) > Nsample / 2)       /* select a sphere in k-space */
                     continue;
-                  if(i == 0 && j == 0 && k == 0)
+                }
+              else
+                {
+                  if(fabs(kvec[0]) * Box / (2 * PI) > Nsample / 2)
                     continue;
+                  if(fabs(kvec[1]) * Box / (2 * PI) > Nsample / 2)
+                    continue;
+                  if(fabs(kvec[2]) * Box / (2 * PI) > Nsample / 2)
+                    continue;
+                }
 
-                  kvec[0] = lpt_wavenumber(i);
-                  kvec[1] = lpt_wavenumber(j);
-                  kvec[2] = lpt_wavenumber(k);
+              phig = Anorm * exp( PrimordialIndex * log(kmag) );   /* initial normalized power */
+              switch(WhichSpectrum)    /* oscillating primordial P(k), see PowerSpec() in power.c */
+                {
+                case 0:
+                  phig *= 1.0;
+                  break;
 
-                  kmag2 = kvec[0] * kvec[0] + kvec[1] * kvec[1] + kvec[2] * kvec[2];
-                  kmag  = sqrt(kmag2);
+                case 1:
+                  phig *= (1.0 + A_res * cos(w_res * kmag + phi_res));
+                  break;
 
-                  if(SphereMode == 1)
+                case 2:
+                  phig *= (1.0 + A_res * cos(w_res * log(kmag) + phi_res));
+                  break;
+                }
+
+              if(!FixedAmplitude)       /* Rayleigh-distributed amplitude unless FixedAmplitude */
+                phig *= -log(ampl);
+
+              phig = sqrt(phig) * fac * Beta / kmag2;    /* amplitude of the initial gaussian potential */
+
+              lpt_cos_sin(phase, &cph, &sph);
+              if(k > 0)
+                lpt_gauss_put(cpot, x0_of, &out, i, j, k, phig * cph, phig * sph);
+              else      /* k=0 plane: the mode and its conjugate */
+                {
+                  if(i == 0)
                     {
-                      if(kmag * Box / (2 * PI) > Nsample / 2)       /* select a sphere in k-space */
+                      if(j >= Nmesh / 2)
                         continue;
+                      jj = Nmesh - j;   /* note: j!=0 surely holds at this point */
+                      lpt_gauss_put(cpot, x0_of, &out, 0, j, 0, phig * cph, phig * sph);
+                      lpt_gauss_put(cpot, x0_of, &out, 0, jj, 0, phig * cph, -phig * sph);
                     }
                   else
                     {
-                      if(fabs(kvec[0]) * Box / (2 * PI) > Nsample / 2)
+                      if(i >= Nmesh / 2)
                         continue;
-                      if(fabs(kvec[1]) * Box / (2 * PI) > Nsample / 2)
-                        continue;
-                      if(fabs(kvec[2]) * Box / (2 * PI) > Nsample / 2)
-                        continue;
-                    }
-
-                  phig = Anorm * exp( PrimordialIndex * log(kmag) );   /* initial normalized power */
-                  switch(WhichSpectrum)    /* oscillating primordial P(k), see PowerSpec() in power.c */
-                    {
-                    case 0:
-                      phig *= 1.0;
-                      break;
-
-                    case 1:
-                      phig *= (1.0 + A_res * cos(w_res * kmag + phi_res));
-                      break;
-
-                    case 2:
-                      phig *= (1.0 + A_res * cos(w_res * log(kmag) + phi_res));
-                      break;
-                    }
-
-                  if(!FixedAmplitude)       /* Rayleigh-distributed amplitude unless FixedAmplitude */
-                    phig *= -log(ampl);
-
-                  phig = sqrt(phig) * fac * Beta / kmag2;    /* amplitude of the initial gaussian potential */
-
-                  if(k > 0)
-                    {
-                      if(i >= Local_x_start && i < (Local_x_start + Local_nx))
-                        {
-                          coord = ((i - Local_x_start) * Nmesh + j) * (Nmesh / 2 + 1) + k;
-
-                          cpot[coord].re = phig * cos(phase);
-                          cpot[coord].im = phig * sin(phase);
-                        }
-                    }
-                  else      /* k=0 plane needs special treatment */
-                    {
-                      if(i == 0)
-                        {
-                          if(j >= Nmesh / 2)
-                            continue;
-                          else
-                            {
-                              if(i >= Local_x_start && i < (Local_x_start + Local_nx))
-                                {
-                                  jj = Nmesh - j;   /* note: j!=0 surely holds at this point */
-
-                                  coord = ((i - Local_x_start) * Nmesh + j) * (Nmesh / 2 + 1) + k;
-                                  cpot[coord].re = phig * cos(phase);
-                                  cpot[coord].im = phig * sin(phase);
-
-                                  coord = ((i - Local_x_start) * Nmesh + jj) * (Nmesh / 2 + 1) + k;
-                                  cpot[coord].re =  phig * cos(phase);
-                                  cpot[coord].im = -phig * sin(phase);
-                                }
-                            }
-                        }
-                      else  /* here comes i!=0 : conjugate can be on other processor! */
-                        {
-                          if(i >= Nmesh / 2)
-                            continue;
-                          else
-                            {
-                              jj = Nmesh - j;
-                              if(jj == Nmesh)
-                                jj = 0;
-
-                              if(i >= Local_x_start && i < (Local_x_start + Local_nx))
-                                {
-                                  coord = ((i - Local_x_start) * Nmesh + j) * (Nmesh / 2 + 1) + k;
-
-                                  cpot[coord].re = phig * cos(phase);
-                                  cpot[coord].im = phig * sin(phase);
-                                }
-
-                              if(ii >= Local_x_start && ii < (Local_x_start + Local_nx))
-                                {
-                                  coord = ((ii - Local_x_start) * Nmesh + jj) * (Nmesh / 2 + 1) + k;
-
-                                  cpot[coord].re = phig * cos(phase);
-                                  cpot[coord].im = -phig * sin(phase);
-                                }
-                            }
-                        }
+                      jj = Nmesh - j;
+                      if(jj == Nmesh)
+                        jj = 0;
+                      lpt_gauss_put(cpot, x0_of, &out, i, j, 0, phig * cph, phig * sph);
+                      lpt_gauss_put(cpot, x0_of, &out, ii, jj, 0, phig * cph, -phig * sph);
                     }
                 }
             }
         }
     }
+  lpt_gauss_deliver(cpot, &out);
+  free(x0_of);
 
   if(ThisTask == 0)
     print_timed_done_aligned(timed_chars);
@@ -846,9 +927,22 @@ void lpt_displacements_from_potential(lpt_complex *cpot, lpt_complex *cpot_NG, d
 
 /* ---- utilities ---- */
 
+/* fmod(a, b) for b > 0, without glibc's slow exact remainder in the common cases: a itself for |a| < b, and
+ * a - copysign(b, a) for b <= |a| < 2b, which is exact (Sterbenz's lemma). Same result as fmod, bit for bit. */
+static inline double lpt_fmod(double a, double b)
+{
+  const double m = fabs(a);
+
+  if(m < b)
+    return a;
+  if(m < 2 * b)
+    return a - copysign(b, a);
+  return fmod(a, b);
+}
+
 double periodic_wrap(double x)
 {
-  return fmod(fmod(x, Box) + Box, Box);
+  return lpt_fmod(lpt_fmod(x, Box) + Box, Box);
 }
 
 void set_units(void)     /* ... set some units */
