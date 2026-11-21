@@ -51,6 +51,9 @@ option                          gain                                     cost
                                                                          only on CPUs like the build machine's
 ``NGPrecision float``           binned 15-24%, basis 0-9% at 192^3       NG term to ~1e-6 relative; a second,
                                 (more at larger grids for that stage)    single-precision FFTW build
+``BinnedPNGMultiGrid 1``        binned 14-21% (8 ranks), 32-40%          on by default; the first run measures a
+                                (1 rank) at 192^3                        few more FFT plans; NG term to rounding,
+                                                                         not bit for bit
 ==============================  =======================================  ========================================
 
 One grid is ``8 Nmesh^3`` bytes summed over all ranks: 57 MB at :math:`192^3`, 0.46 GB at
@@ -74,12 +77,38 @@ lean ones above. Set them explicitly when you know your memory allows more (see
 * **Aarambam_NATIVE**: see :doc:`installation`. Only worth it when all the nodes you run on have
   the same CPU type.
 * **NGPrecision**: see `Single precision`_ below.
+* **BinnedPNGMultiGrid**: on by default; see `Multi-grid binned stage`_ below.
 
 ``2LPTBinned`` also skips, automatically, every pair of bins in which one filtered field is zero on the grid:
 kernel bins below the box's fundamental mode or above the sampled k range have no modes. The result is
 unchanged (those pairs add exactly zero); the log says how many pairs were skipped. With the default kernel
 table, ``Lbox 512`` and ``Nsample 128`` that is 57 of the 210 pairs, and the binned run at :math:`192^3` on 8
 ranks takes 2.68 s instead of 3.25 s.
+
+Multi-grid binned stage
+-----------------------
+
+``2LPTBinned`` computes each pair of bins on the smallest grid on which the pair's contribution is exact
+(``BinnedPNGMultiGrid 1``, the default; see `Speed and memory <conventions.html#speed-and-memory>`_ for
+the rule). Low-k bins hold few modes, so most pairs need far less than the full grid: with the default
+table at :math:`192^3` / ``Nsample 128``, 64 of the 153 pairs run on grids of at most 108 points per
+side, 68 on 140 or 168, and 21 on the full 192. Wall times of the whole IC (fastest settings otherwise,
+plans from the wisdom file):
+
+=====================  ==============  ==============
+setup                  multi-grid off  multi-grid on
+=====================  ==============  ==============
+1 rank, double         15.2 s          9.1 s
+1 rank, float          11.0 s          7.5 s
+8 ranks, double        2.60 s          2.05 s
+8 ranks, float         2.04 s          1.76 s
+=====================  ==============  ==============
+
+The non-Gaussian term agrees with ``BinnedPNGMultiGrid 0`` to :math:`\sim 10^{-14}` relative in double;
+in single precision it is closer to the double result than the full-grid float path (2.5e-7 against
+1.3e-6 relative rms), because the smaller grids accumulate less rounding. The gain grows with the ratio
+``Nmesh / Nsample`` and with the grid: the products of the largest bins need only
+:math:`3 N_{\rm sample}/2` points per side, not ``Nmesh``.
 
 Single precision
 ----------------

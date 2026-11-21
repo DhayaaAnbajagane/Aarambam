@@ -59,6 +59,10 @@ typedef struct
 }
 lpt_complexf;
 
+extern unsigned Lpt_plan_flags;                 /* FFTW planner flags of the run: FFTW_MEASURE with a wisdom file */
+void  lpt_wisdom_snapshot(void);                /* before making plans after initialize_ffts ... */
+void  lpt_wisdom_save_new(const char *what);    /* ... and after: new plans of all ranks go to the wisdom files */
+
 void *lpt_alloc_grid(void);                     /* one grid of TotalSizePlusAdditional reals, FFT-aligned */
 void *lpt_alloc_grid_f(void);                   /* the same number of floats */
 void  lpt_fftf_forward_band(float *field);

@@ -58,7 +58,6 @@ if __name__ == '__main__':
                                          z_ini = z_ini, Fnl = Fnl, 
                                          TransferPath = outdir + '/TransferFunctionConverted.dat',
                                          BinnedK1EdgesPath         = outdir + '/BinnedKernel_k1_edges.txt',
-                                         BinnedK2EdgesPath         = outdir + '/BinnedKernel_k2_edges.txt',
                                          BinnedK3EdgesPath         = outdir + '/BinnedKernel_k3_edges.txt',
                                          BinnedKernelValuesPath    = outdir + '/BinnedKernel_hybrid_values.txt',
                                          BinnedPNGFilterCode       = 3,

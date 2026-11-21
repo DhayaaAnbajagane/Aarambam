@@ -55,10 +55,8 @@ void print_setup(void)
          FixedAmplitude, PhaseFlip, SphereMode, Seed);
   printf("   BinnedPNGFilter(input k1/k2) = %d    BinnedPNGOutputFilter(k3) = %d    BinnedPNGCoordinate = %d\n",
          BinnedPNGFilter, BinnedPNGOutputFilter, BinnedPNGCoordinate);
-  printf("   BinnedPNGUseInternalSymmetry = %d    BinnedPNGCacheBlockSize = %d\n",
-         BinnedPNGUseInternalSymmetry, BinnedPNGCacheBlockSize);
-  printf("   BinnedK1Edges = %s\n", FileWithBinnedK1Edges);
-  printf("   BinnedK2Edges = %s\n", FileWithBinnedK2Edges);
+  printf("   BinnedPNGMultiGrid = %d    BinnedPNGCacheBlockSize = %d\n", BinnedPNGMultiGrid, BinnedPNGCacheBlockSize);
+  printf("   BinnedK1Edges(k1 = k2) = %s\n", FileWithBinnedK1Edges);
   printf("   BinnedK3Edges(output) = %s\n", FileWithBinnedK3Edges);
   printf("   BinnedKernelValues = %s\n", FileWithBinnedKernelValues);
 
@@ -356,7 +354,7 @@ static void bpng_read_and_broadcast_table(void)
                            (output_filter == BPNG_FILTER_LINEAR) ? 2 : 1;
 
       nedge[0] = bpng_count_edge_file(FileWithBinnedK1Edges);
-      nedge[1] = bpng_count_edge_file(FileWithBinnedK2Edges);
+      nedge[1] = nedge[0];                                         /* k2 shares the k1 edges */
       nedge[2] = bpng_count_edge_file(FileWithBinnedK3Edges);
 
       for(axis = 0; axis < 3; axis++)
@@ -371,7 +369,7 @@ static void bpng_read_and_broadcast_table(void)
         }
 
       bpng_read_edge_file_root(FileWithBinnedK1Edges, 0);
-      bpng_read_edge_file_root(FileWithBinnedK2Edges, 1);
+      memcpy(BPNG.edges[1], BPNG.edges[0], nedge[0] * sizeof(double));
       bpng_read_edge_file_root(FileWithBinnedK3Edges, 2);
 
       ncoef       = ((long long) BPNG.coeff_count) * bpng_ncell();
@@ -727,26 +725,14 @@ static double bpng_output_k3_coefficient_u(int ia, int ib, int ic, double u)
   return bpng_cell_polynomial(c, u);
 }
 
-static int bpng_internal_edges_are_identical(void)
-{
-  int a;
-
-  if(BPNG.nk[0] != BPNG.nk[1])
-    return 0;
-  for(a = 0; a <= BPNG.nk[0]; a++)
-    if(BPNG.edges[0][a] != BPNG.edges[1][a])
-      return 0;
-  return 1;
-}
-
-/* Output-leg coefficient of pair (ia, ib) in bin ic at bin coordinate u (bpng_u_in_bin_axis); with use_symmetry
- * the (ib, ia) cell is added, since only ia <= ib pairs are convolved. */
-static double bpng_output_k3_pair_coefficient_u(int ia, int ib, int ic, double u, int use_symmetry)
+/* Output-leg coefficient of pair (ia, ib) in bin ic at bin coordinate u (bpng_u_in_bin_axis); the (ib, ia) cell is
+ * added, since only ia <= ib pairs are convolved (k1 and k2 share their bins). */
+static double bpng_output_k3_pair_coefficient_u(int ia, int ib, int ic, double u)
 {
   double coef;
 
   coef = bpng_output_k3_coefficient_u(ia, ib, ic, u);
-  if(use_symmetry && ia != ib)
+  if(ia != ib)
     coef += bpng_output_k3_coefficient_u(ib, ia, ic, u);
   return coef;
 }
@@ -830,6 +816,11 @@ static void bpng_free_mode_list(void)
       L[q]->n     = 0;
     }
 }
+
+
+/* ---- multi-grid: bin pairs on smaller alias-free grids (BinnedPNGMultiGrid) ---- */
+
+#include "binned_multigrid.h"
 
 
 /* ---- the NG potential, for NGPrecision double (_d) and float (_f): binned_ng_impl.h ---- */

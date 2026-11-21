@@ -64,15 +64,14 @@ _MODAL_MODES  = "N_modes                             %(N_modes)d\n\n"
 _MODAL_TABLES = ("FileWithAlphaCoeff                  %(AlphaPath)s\n"
                  "FileWithX0Coeff                     %(AiPath)s")
 
-_BINNED_TABLES = ("FileWithBinnedK1Edges               %(BinnedK1EdgesPath)s\n"
-                  "FileWithBinnedK2Edges               %(BinnedK2EdgesPath)s\n"
+_BINNED_TABLES = ("FileWithBinnedK1Edges               %(BinnedK1EdgesPath)s     #k1 and k2 (the internal legs) share these\n"
                   "FileWithBinnedK3Edges               %(BinnedK3EdgesPath)s\n"
                   "FileWithBinnedKernelValues          %(BinnedKernelValuesPath)s\n"
                   "BinnedPNGFilter                     %(BinnedPNGFilterCode)d         #1,2,3 for top-hat/linear/cubic\n"
                   "BinnedPNGOutputFilter               %(BinnedPNGOutputFilterCode)d   #1,2,3 for constant/linear/cubic\n"
                   "BinnedPNGCoordinate                 2                               #1,2   for k/log(k). WE ONLY IMPLEMENT LOG(k) FOR NOW\n"
-                  "BinnedPNGUseInternalSymmetry        1                               #No reason to turn-off. Uses symmetry between k1, k2\n"
-                  "BinnedPNGCacheBlockSize             %(BinnedPNGCacheBlockSize)d #Filtered fields kept in memory per block: fewer FFTs, ~that many extra grids")
+                  "BinnedPNGCacheBlockSize             %(BinnedPNGCacheBlockSize)d #Filtered fields kept in memory per block: fewer FFTs, ~that many extra grids\n"
+                  "BinnedPNGMultiGrid                  %(BinnedPNGMultiGrid)d         #1: each bin pair on its smallest alias-free grid (same result, faster)")
 
 _OSCILLATION = ("\nA_res               %(Pk_A_res).17g\n"
                 "w_res               %(Pk_w_res).17g\n"
@@ -114,12 +113,12 @@ DEFAULT_BINNED_INPUTS = dict(Nmesh = 256, Nsample = 256, Nmax = 256, Lbox = 512,
                              Fnl = 100,
                              TransferPath = os.path.dirname(__file__) + "/defaults/TransferFunctionConverted.dat",
                              BinnedK1EdgesPath      = os.path.dirname(__file__) + "/defaults/BinnedKernel_k1_edges.txt",
-                             BinnedK2EdgesPath      = os.path.dirname(__file__) + "/defaults/BinnedKernel_k2_edges.txt",
                              BinnedK3EdgesPath      = os.path.dirname(__file__) + "/defaults/BinnedKernel_k3_edges.txt",
                              BinnedKernelValuesPath = os.path.dirname(__file__) + "/defaults/BinnedKernel_hybrid_values.txt",
                              BinnedPNGFilterCode       = 3,
                              BinnedPNGOutputFilterCode = 3,
                              BinnedPNGCacheBlockSize   = 'auto',
+                             BinnedPNGMultiGrid        = 1,
                              SavePotentialField = True, NWriteoutProcesses = 1,
                              ModeTables = 'auto', FFTWWisdomDir = 'auto', FFTBackend = 'fftw',
                              NGPrecision = 'double'
@@ -384,10 +383,11 @@ def make_config_resbasis(Nmesh, Nsample, Nmax, Lbox, FileBase, OutputDir, GlassF
 
 def make_config_binned(Nmesh, Nsample, Nmax, Lbox, FileBase, OutputDir, GlassFile, GlassTileFac,
                        seed, Om, Ode, h, sigma8, n_s, z_ini, Fnl, TransferPath,
-                       BinnedK1EdgesPath, BinnedK2EdgesPath, BinnedK3EdgesPath, BinnedKernelValuesPath,
+                       BinnedK1EdgesPath, BinnedK3EdgesPath, BinnedKernelValuesPath,
                        BinnedPNGFilterCode, BinnedPNGOutputFilterCode, BinnedPNGCacheBlockSize,
                        SavePotentialField, NWriteoutProcesses, ModeTables = 'auto',
-                       FFTWWisdomDir = 'auto', FFTBackend = 'fftw', NGPrecision = 'double'):
+                       FFTWWisdomDir = 'auto', FFTBackend = 'fftw', NGPrecision = 'double',
+                       BinnedPNGMultiGrid = 1):
     """
     Generate a configuration string for the binned-PNG initial-condition generator.
 
@@ -436,9 +436,7 @@ def make_config_binned(Nmesh, Nsample, Nmax, Lbox, FileBase, OutputDir, GlassFil
     TransferPath : str
         Path to the tabulated CAMB/CLASS transfer function in Aarambam format.
     BinnedK1EdgesPath : str
-        Path to ``BinnedKernel_k1_edges.txt``.
-    BinnedK2EdgesPath : str
-        Path to ``BinnedKernel_k2_edges.txt``.
+        Path to ``BinnedKernel_k1_edges.txt``: the bins of both internal legs, ``k1`` and ``k2``.
     BinnedK3EdgesPath : str
         Path to ``BinnedKernel_k3_edges.txt``.
     BinnedKernelValuesPath : str
@@ -452,8 +450,8 @@ def make_config_binned(Nmesh, Nsample, Nmax, Lbox, FileBase, OutputDir, GlassFil
         Cell-local interpolation code on the output ``k3`` leg:
         ``1`` for constant, ``2`` for linear, or ``3`` for cubic.
     BinnedPNGCacheBlockSize : int or 'auto'
-        Number of filtered k1 (and k2) real-space basis fields kept in memory per block
-        when the k1 <-> k2 symmetry is used; 0 disables the blocked path. Larger values
+        Number of filtered k1 (and k2) real-space basis fields kept in memory per block;
+        0 disables the blocked path. Larger values
         cut repeated FFTs at the cost of roughly that many extra grids of memory (the C
         code caps it at the number of k1 bins); the result does not depend on it.
         ``'auto'`` (default) is 64, i.e. all bins, for ``Nmesh <= AUTO_FAST_MAX_NMESH``
@@ -491,7 +489,6 @@ def make_config_binned(Nmesh, Nsample, Nmax, Lbox, FileBase, OutputDir, GlassFil
     ...     sigma8 = 0.8, n_s = 0.965, z_ini = 49.0, Fnl = 100.0,
     ...     TransferPath = 'TransferFunctionConverted.dat',
     ...     BinnedK1EdgesPath = 'BinnedKernel_k1_edges.txt',
-    ...     BinnedK2EdgesPath = 'BinnedKernel_k2_edges.txt',
     ...     BinnedK3EdgesPath = 'BinnedKernel_k3_edges.txt',
     ...     BinnedKernelValuesPath = 'BinnedKernel_hybrid_values.txt',
     ...     BinnedPNGFilterCode = 3, BinnedPNGOutputFilterCode = 3,
@@ -500,6 +497,7 @@ def make_config_binned(Nmesh, Nsample, Nmax, Lbox, FileBase, OutputDir, GlassFil
     ... )
     """
     _check_binned_codes(BinnedKernelValuesPath, BinnedPNGFilterCode, BinnedPNGOutputFilterCode)
+    BinnedPNGMultiGrid = int(bool(BinnedPNGMultiGrid))
     ModeTables = _resolve_mode_tables(ModeTables, Nmesh, lean = 1)      #the binned tables cost ~1 grid
     BinnedPNGCacheBlockSize = _resolve_auto(BinnedPNGCacheBlockSize, Nmesh, 64, 4, 'BinnedPNGCacheBlockSize')
     return textwrap.dedent(DEFAULT_BINNED_CONFIG % locals())
@@ -528,7 +526,7 @@ def binned_kernel_inputs(kernel_dir):
     """
     Read the ``BinnedKernel_metadata.txt`` written by a binned decomposition
     (``Decomposer.go(..., outdir = kernel_dir)``) and return the
-    ``make_config_binned`` inputs that describe its tables: the four table
+    ``make_config_binned`` inputs that describe its tables: the three table
     paths and the two C filter codes.
 
     Parameters
@@ -539,7 +537,7 @@ def binned_kernel_inputs(kernel_dir):
     Returns
     -------
     dict
-        ``BinnedK1EdgesPath``, ``BinnedK2EdgesPath``, ``BinnedK3EdgesPath``,
+        ``BinnedK1EdgesPath``, ``BinnedK3EdgesPath``,
         ``BinnedKernelValuesPath``, ``BinnedPNGFilterCode`` and
         ``BinnedPNGOutputFilterCode``.
 
@@ -564,7 +562,6 @@ def binned_kernel_inputs(kernel_dir):
         values = meta['hybrid_values_file']
 
     return dict(BinnedK1EdgesPath         = os.path.join(kernel_dir, meta['k1_edges_file']),
-                BinnedK2EdgesPath         = os.path.join(kernel_dir, meta['k2_edges_file']),
                 BinnedK3EdgesPath         = os.path.join(kernel_dir, meta['k3_edges_file']),
                 BinnedKernelValuesPath    = os.path.join(kernel_dir, values),
                 BinnedPNGFilterCode       = codes[0],

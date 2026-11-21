@@ -19,6 +19,9 @@ ptrdiff_t Band_sy, Band_sx;
 
 static band_fft *Band;              /* FFTBackend band (NGPrecision double); NULL otherwise */
 int              NGFloat;           /* NGPrecision float */
+unsigned         Lpt_plan_flags = FFTW_ESTIMATE;   /* planner flags of the run (FFTW_MEASURE with a wisdom file) */
+static int       Wisdom_use = 0;                   /* a wisdom file is in use (all ranks) */
+static char     *Wisdom_mark = NULL, *Wisdom_markf = NULL;
 #ifndef AARAMBAM_NO_FLOAT
 static band_fftf *BandF;            /* NGPrecision float: the single-precision band FFT */
 #endif
@@ -585,6 +588,7 @@ static void lpt_wisdom_begin(lpt_wisdom *w)
   if(ThisTask == 0)
     w->use = lpt_wisdom_path(w->path, sizeof(w->path));
   MPI_Bcast(&w->use, 1, MPI_INT, 0, MPI_COMM_WORLD);
+  Wisdom_use = w->use;
   if(!w->use)
     return;
   if(ThisTask == 0)
@@ -601,6 +605,66 @@ static void lpt_wisdom_begin(lpt_wisdom *w)
       lpt_float_wisdom_load(w->fpath, &w->fbefore, &w->floaded);
     }
 #endif
+}
+
+/* Plans made after initialize_ffts (the multi-grid stage): lpt_wisdom_snapshot() before planning, then
+ * lpt_wisdom_save_new() gathers the plans of all ranks and adds them to the wisdom files if any rank measured new ones.
+ * Both collective; nothing without a wisdom file. */
+void lpt_wisdom_snapshot(void)
+{
+  if(!Wisdom_use)
+    return;
+  free(Wisdom_mark);
+  Wisdom_mark = fftw_export_wisdom_to_string();
+#ifndef AARAMBAM_NO_FLOAT
+  free(Wisdom_markf);
+  Wisdom_markf = NGFloat ? fftwf_export_wisdom_to_string() : NULL;
+#endif
+}
+
+void lpt_wisdom_save_new(const char *what)
+{
+  char *now;
+  int   changed = 0, any = 0;
+
+  if(!Wisdom_use)
+    return;
+  now      = fftw_export_wisdom_to_string();
+  changed |= !Wisdom_mark || !now || strcmp(Wisdom_mark, now) != 0;
+  free(now);
+#ifndef AARAMBAM_NO_FLOAT
+  if(NGFloat)
+    {
+      now      = fftwf_export_wisdom_to_string();
+      changed |= !Wisdom_markf || !now || strcmp(Wisdom_markf, now) != 0;
+      free(now);
+    }
+#endif
+  MPI_Allreduce(&changed, &any, 1, MPI_INT, MPI_LOR, MPI_COMM_WORLD);
+  if(any)
+    {
+      char path[LPT_WISDOM_PATH_LEN];
+
+      fftw_mpi_gather_wisdom(MPI_COMM_WORLD);
+      if(ThisTask == 0)
+        {
+          lpt_wisdom_path(path, sizeof(path));
+          lpt_save_wisdom(path);
+          printf("\n%s FFT plans measured and added to %s\n", what, path);
+        }
+#ifndef AARAMBAM_NO_FLOAT
+      if(NGFloat)
+        {
+          char fpath[LPT_WISDOM_PATH_LEN];
+          if(ThisTask == 0)
+            lpt_float_wisdom_path(fpath, sizeof(fpath), path);
+          lpt_float_wisdom_keep(fpath, NULL, 1, 0.0);
+        }
+#endif
+    }
+  free(Wisdom_mark);
+  free(Wisdom_markf);
+  Wisdom_mark = Wisdom_markf = NULL;
 }
 
 /* Gather the plans of all ranks and save the files if new plans were measured (rank 0). */
@@ -651,6 +715,7 @@ void initialize_ffts(void)
 
   lpt_wisdom_begin(&wisdom);
   flags = wisdom.use ? FFTW_MEASURE : FFTW_ESTIMATE;
+  Lpt_plan_flags = flags;
   tplan = MPI_Wtime();
 
   band_size = lpt_band_setup(band, flags, n1, s1);

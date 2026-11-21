@@ -12,7 +12,8 @@ pytestmark = pytest.mark.mpi
 
 N = 32
 CASES = {'basis': ('basis', {}), 'res0': ('resbasis', {'Pk_mode': 0}), 'res1': ('resbasis', {'Pk_mode': 1}),
-         'res2': ('resbasis', {'Pk_mode': 2}), 'binned': ('binned', {})}
+         'res2': ('resbasis', {'Pk_mode': 2}), 'binned': ('binned', {}),
+         'binned_mg0': ('binned', {'BinnedPNGMultiGrid': 0})}
 EXE   = {'basis': '2LPTBasis', 'resbasis': '2LPTBasis', 'binned': '2LPTBinned'}
 DT    = np.dtype([('ind', 'i4'), ('pot', 'f8')])
 
@@ -36,6 +37,13 @@ def run(bins, method, cfg, np_):
                           capture_output=True, text=True, env=env, timeout=900)
 
 
+def run_float(lpt_binaries, method, cfg, np_):
+    r = run(lpt_binaries, method, cfg, np_)
+    if 'built without single-precision FFTW' in r.stdout:
+        pytest.skip('executables built without libfftw3f (NGPrecision float)')
+    return r
+
+
 def potential(d, field):
     files = sorted(f for f in glob.glob(os.path.join(d, field + '_potential_*')) if not f.endswith('.npy'))
     return np.concatenate([np.fromfile(f, dtype=DT, offset=16)['pot'] for f in files])
@@ -53,10 +61,47 @@ def outputs(am, lpt_binaries, tmp_path_factory):
     return out
 
 
+def ng_term(d):
+    return potential(d, 'Nongauss') - potential(d, 'Gauss')
+
+
 @pytest.mark.parametrize('case', sorted(CASES))
 def test_rank_independent(outputs, case):
-    for field in ('Gauss', 'Nongauss'):
-        np.testing.assert_array_equal(potential(outputs[case, 1], field), potential(outputs[case, 2], field))
+    np.testing.assert_array_equal(potential(outputs[case, 1], 'Gauss'), potential(outputs[case, 2], 'Gauss'))
+    if case == 'binned':        #multi-grid: the small-grid pairs are summed over the ranks in a rank-dependent order
+        a, b = ng_term(outputs[case, 1]), ng_term(outputs[case, 2])
+        assert np.abs(a - b).max() <= 1e-12 * np.abs(a).max()
+    else:
+        np.testing.assert_array_equal(potential(outputs[case, 1], 'Nongauss'), potential(outputs[case, 2], 'Nongauss'))
+
+
+@pytest.mark.parametrize('np_', [1, 2])
+def test_multigrid_matches_full_grid(outputs, np_):
+    """BinnedPNGMultiGrid: the same NG term as every pair on the full grid, to rounding."""
+    np.testing.assert_array_equal(potential(outputs['binned', np_], 'Gauss'), potential(outputs['binned_mg0', np_], 'Gauss'))
+    a, b = ng_term(outputs['binned', np_]), ng_term(outputs['binned_mg0', np_])
+    assert np.abs(a - b).max() <= 1e-12 * np.abs(b).max()
+
+
+@pytest.mark.parametrize('precision', ['double', 'float'])
+def test_multigrid_medium_grids(am, lpt_binaries, outputs, tmp_path, monkeypatch, precision):
+    """The medium-grid path (a band FFT on a smaller grid, all ranks), forced at 32^3 with a small-grid cap of 12."""
+    monkeypatch.setenv('AARAMBAM_MG_SMALL_MAX', '12')
+    r = run_float(lpt_binaries, 'binned', write_config(am, 'binned', tmp_path, NGPrecision=precision), 2)
+    assert r.returncode == 0, r.stdout[-2000:]
+    nmed = int(r.stdout.split(' on medium grids')[0].split(',')[-1])
+    assert nmed > 0
+    a, b = ng_term(str(tmp_path)), ng_term(outputs['binned_mg0', 2])
+    assert np.abs(a - b).max() <= (1e-12 if precision == 'double' else 1e-5) * np.abs(b).max()
+
+
+def test_old_binned_tags_accepted(am, lpt_binaries, outputs, tmp_path):
+    """Parameter files from before k2 always took the k1 edges still run (the two tags are ignored)."""
+    cfg = write_config(am, 'binned', tmp_path, BinnedPNGMultiGrid=0)
+    open(cfg, 'a').write('\nFileWithBinnedK2Edges               unused.txt\nBinnedPNGUseInternalSymmetry        1\n')
+    r = run(lpt_binaries, 'binned', cfg, 2)
+    assert r.returncode == 0, r.stdout[-2000:]
+    np.testing.assert_array_equal(potential(str(tmp_path), 'Nongauss'), potential(outputs['binned_mg0', 2], 'Nongauss'))
 
 
 def test_resbasis_mode0_is_basis(outputs):
@@ -155,13 +200,6 @@ def test_fft_backend_band_matches_fftw(am, lpt_binaries, tmp_path, method):
     for f in ('Gauss', 'Nongauss'):
         a, b = pot['fftw'][f], pot['band'][f]
         assert np.abs(a - b).max() <= 1e-12 * np.abs(a).max(), f
-
-
-def run_float(lpt_binaries, method, cfg, np_):
-    r = run(lpt_binaries, method, cfg, np_)
-    if 'built without single-precision FFTW' in r.stdout:
-        pytest.skip('executables built without libfftw3f (NGPrecision float)')
-    return r
 
 
 @pytest.mark.parametrize('method', ['basis', 'binned'])

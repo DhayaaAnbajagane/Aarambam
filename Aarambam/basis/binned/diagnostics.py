@@ -178,7 +178,6 @@ def generate_diagnostics(kernel_true, kernel_binned, edges, args):
         'triangle_K_error':          absolute,
         'triangle_K_fractional_error': fractional,
         'k1_edges':                  np.asarray(edges[0]),
-        'k2_edges':                  np.asarray(edges[1]),
         'k3_edges':                  np.asarray(edges[2]),
     }
 

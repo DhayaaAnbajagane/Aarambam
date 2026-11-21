@@ -169,7 +169,9 @@ the default `fftw` backend). The
 [Running faster page](https://aarambam.readthedocs.io/en/latest/performance.html) lists every speed option with its
 gain and its cost; the paragraphs below summarise them. `NGPrecision = 'float'` (default `'double'`) computes the
 non-Gaussian stage in single precision: binned ~24% faster at $192^3$, the non-Gaussian term to ~1e-6 relative; it
-needs FFTW also built with `--enable-float` (see the installation docs).
+needs FFTW also built with `--enable-float` (see the installation docs). The binned method computes each pair of
+bins on the smallest grid on which the pair is exact (`BinnedPNGMultiGrid`, on by default): at $192^3$ 21% faster on 8
+ranks and 40% on 1 rank, with the same result to rounding.
 
 Speed vs memory: the `ModeTables` config tag (`make_config_*(..., ModeTables = 0 | 1 | 'auto')`) switches
 between per-mode tables and cached mode fields (`1`, fastest; about 3-4x faster ICs at $192^3$ than version 1.0.0) and on-the-fly

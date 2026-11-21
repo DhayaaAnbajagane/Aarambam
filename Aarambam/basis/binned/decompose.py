@@ -343,7 +343,11 @@ class BasicBinnedDecompose:
         passing ``out``.
         """
         self.logger.info('Starting binned decomposition for %s.', self._model_name())
-        out                      = self.generate_table(self.generate_edges())
+        edges                    = self.generate_edges()
+        if len(edges[0]) != len(edges[1]) or not np.array_equal(edges[0], edges[1]):
+            raise ValueError('The internal legs k1 and k2 must share their bin edges (generate_edges returned '
+                             'different k1 and k2 edges).')
+        out                      = self.generate_table(edges)
         out['template']          = self._model_name()
         out['kernel_definition'] = 'B_over_mean_P1P2_plus_perms'
         out.update(self.generate_limit_comparison(out))

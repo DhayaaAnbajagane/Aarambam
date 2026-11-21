@@ -64,6 +64,22 @@ Python config writers set both to ``'auto'`` by default.
   block, about that many extra grids. The C code caps it at the number of :math:`k_1` bins. The
   result does not depend on it. ``'auto'`` is 64 (all bins) up to ``Nmesh = 512`` and 4 above.
 
+* ``BinnedPNGMultiGrid`` (binned only, default 1): computes each pair of :math:`k_1, k_2` bins on the
+  smallest grid that holds its product without aliasing at the modes the pair contributes to. A
+  filtered field has modes only up to its bin's upper edge :math:`K_a`, so the product of two has modes
+  up to :math:`K_a + K_b`. Its Fourier modes up to :math:`K_{\rm out}` are then exact on any grid of
+  :math:`L > K_a + K_b + K_{\rm out}` points per side, and the pair adds nothing above
+  :math:`K_{\rm out}`. Pairs with :math:`L \le 128` are done whole on one rank with serial FFTs,
+  larger ones on all ranks with a band FFT of size :math:`L`, and only pairs that need the full grid stay
+  on it. The non-Gaussian term agrees with ``BinnedPNGMultiGrid 0`` (every pair on the full grid) to
+  rounding, :math:`\sim 10^{-14}` relative. It is then independent of the number of ranks to rounding
+  rather than bit for bit, because the small-grid pairs are summed over the ranks in a rank-dependent
+  order. ``0`` gives the previous behaviour.
+
+The two internal legs :math:`k_1` and :math:`k_2` always share their bins (``FileWithBinnedK1Edges``); the
+output leg :math:`k_3` has its own (``FileWithBinnedK3Edges``). Parameter files from older versions may still
+contain ``FileWithBinnedK2Edges`` and ``BinnedPNGUseInternalSymmetry``; the two tags are accepted and ignored.
+
 One grid is ``8 Nmesh^3`` bytes summed over ranks: 57 MB at :math:`192^3`, 0.46 GB at
 :math:`384^3`, and 8.6 GB at :math:`1024^3`. For a large run where memory is tight, set
 ``ModeTables 0`` and a small block size. Where memory allows, ``ModeTables 1`` is faster at
