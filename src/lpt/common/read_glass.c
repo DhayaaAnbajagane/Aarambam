@@ -15,6 +15,7 @@ void read_glass(char *fname)
   FILE *fd = 0;
   size_t bytes;
   int *npart_Task;
+  char *mine;                     /* [i * Nglass + n]: x tile i of glass particle n falls on this rank */
   int num, numfiles, skip, nlocal;
   char buf[600];
 
@@ -123,24 +124,24 @@ void read_glass(char *fname)
       }
 #endif
 
-  /* first pass over the tiled glass: count the particles that fall on each rank's slab */
+  /* The slab of a tiled particle depends only on its x tile i and its glass particle n, not on the y and z tiles:
+   * mine[i * Nglass + n] says whether it falls on this rank, and each (i, n) adds GlassTileFac^2 particles to the
+   * count of its rank. */
+  mine = malloc(sizeof(char) * GlassTileFac * (size_t) Nglass);
+  if(!mine)
+    FatalError(1116);
   for(i = 0; i < GlassTileFac; i++)
-    for(j = 0; j < GlassTileFac; j++)
-      for(k = 0; k < GlassTileFac; k++)
+    for(type = 0, n = 0; type < 6; type++)
+      for(m = 0; m < header1.npartTotal[type]; m++, n++)
         {
-          for(type = 0, n = 0; type < 6; type++)
-            {
-              for(m = 0; m < header1.npartTotal[type]; m++, n++)
-                {
-                  x = pos[3 * n] / header1.BoxSize * (Box / GlassTileFac) + i * (Box / GlassTileFac);
+          x = pos[3 * n] / header1.BoxSize * (Box / GlassTileFac) + i * (Box / GlassTileFac);
 
-                  slab = x / Box * Nmesh;
-                  if(slab >= Nmesh)
-                    slab = Nmesh - 1;
+          slab = x / Box * Nmesh;
+          if(slab >= Nmesh)
+            slab = Nmesh - 1;
 
-                  npart_Task[Slab_to_task[slab]] += 1;
-                }
-            }
+          npart_Task[Slab_to_task[slab]] += GlassTileFac * GlassTileFac;
+          mine[i * (size_t) Nglass + n] = (Slab_to_task[slab] == ThisTask);
         }
 
   TotNumPart = 0;               /* note: This is a 64 bit integer */
@@ -190,7 +191,7 @@ void read_glass(char *fname)
     }
 
 
-  /* second pass: store this rank's particles (IDs run over the whole tiled glass) */
+  /* second pass: store this rank's particles in the order of the tiled glass (IDs run over all of it) */
   count   = 0;
   IDStart = 1;
 
@@ -202,14 +203,9 @@ void read_glass(char *fname)
             {
               for(m = 0; m < header1.npartTotal[type]; m++, n++)
                 {
-                  x = pos[3 * n] / header1.BoxSize * (Box / GlassTileFac) + i * (Box / GlassTileFac);
-
-                  slab = x / Box * Nmesh;
-                  if(slab >= Nmesh)
-                    slab = Nmesh - 1;
-
-                  if(Slab_to_task[slab] == ThisTask)
+                  if(mine[i * (size_t) Nglass + n])
                     {
+                      x = pos[3 * n] / header1.BoxSize * (Box / GlassTileFac) + i * (Box / GlassTileFac);
                       y = pos[3 * n + 1] / header1.BoxSize * (Box / GlassTileFac) + j * (Box / GlassTileFac);
                       z = pos[3 * n + 2] / header1.BoxSize * (Box / GlassTileFac) + k * (Box / GlassTileFac);
 
@@ -235,6 +231,7 @@ void read_glass(char *fname)
       FatalError(1);
     }
 
+  free(mine);
   free(pos);
 }
 

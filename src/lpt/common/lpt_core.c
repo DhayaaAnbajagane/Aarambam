@@ -386,6 +386,21 @@ void lpt_setup_gaussian_potential(lpt_complex **cpot_out, double *Beta_out)
 
 /* ---- NG term added, potentials written, ZA + 2LPT displacements ---- */
 
+#ifdef CORRECT_CIC
+/* CIC window of one axis, sin(x)/x at x = kc Box / (2 Nmesh), 1 at kc = 0 */
+static double lpt_cic_window(double kc)
+{
+  double fx = 1;
+
+  if(kc != 0)
+    {
+      fx = (kc * Box / 2) / Nmesh;
+      fx = sin(fx) / fx;
+    }
+  return fx;
+}
+#endif
+
 /* Copy the first x plane of this rank's real-space field to the left neighbour and receive the right
  * neighbour's first plane behind the slab (plane Local_nx), skipping ranks without planes. */
 static void lpt_exchange_ghost_plane(lpt_real *field)
@@ -465,6 +480,7 @@ void lpt_displacements_from_potential(lpt_complex *cpot, lpt_complex *cpot_NG, d
 
 #ifdef CORRECT_CIC
   double fx, fy, fz, ff, smth;
+  double *wx, *wy, *wz;                    /* CIC window sin(x)/x of each axis index */
 #endif
 
   pot = (lpt_real *) cpot;
@@ -557,7 +573,8 @@ void lpt_displacements_from_potential(lpt_complex *cpot, lpt_complex *cpot_NG, d
     }
   ASSERT_ALLOC(cdisp[0] && cdisp[1] && cdisp[2]);
 
-  /* ZA displacement: dis = i k T(k) phi / (D+ Beta), written to every mode of the slab */
+  /* ZA displacement: dis = i k T(k) phi / (D+ Beta), written to every mode of the slab. Where phi is exactly zero
+   * (outside the sampled band, most of the grid) T(k) is not evaluated: the displacement is zero either way. */
   for(ii = 0; ii < Local_nx; ii++)
     for(j = 0; j < Nmesh; j++)
       for(k = 0; k <= Nmesh / 2 ; k++)
@@ -572,8 +589,13 @@ void lpt_displacements_from_potential(lpt_complex *cpot, lpt_complex *cpot_NG, d
           kmag2 = kvec[0] * kvec[0] + kvec[1] * kvec[1] + kvec[2] * kvec[2];
           kmag  = sqrt(kmag2);
 
-          t_of_k = TransferFunc(kmag);
-          twb    = t_of_k / Dplus  / Beta;
+          if(cpot[coord].re == 0 && cpot[coord].im == 0)
+            twb = 0;
+          else
+            {
+              t_of_k = TransferFunc(kmag);
+              twb    = t_of_k / Dplus  / Beta;
+            }
 
           for(axes = 0; axes < 3; axes++)
             {
@@ -663,6 +685,20 @@ void lpt_displacements_from_potential(lpt_complex *cpot, lpt_complex *cpot_NG, d
   free(cdigrad[4]);
   free(cdigrad[5]);
 
+#ifdef CORRECT_CIC
+  /* the deconvolution factor of the CIC interpolation is a product over the three axes: per-axis tables */
+  wx = malloc(sizeof(double) * (Local_nx > 0 ? Local_nx : 1));
+  wy = malloc(sizeof(double) * Nmesh);
+  wz = malloc(sizeof(double) * (Nmesh / 2 + 1));
+  ASSERT_ALLOC(wx && wy && wz);
+  for(i = 0; i < Local_nx; i++)
+    wx[i] = lpt_cic_window(lpt_wavenumber(i + Local_x_start));
+  for(j = 0; j < Nmesh; j++)
+    wy[j] = lpt_cic_window(lpt_wavenumber(j));
+  for(k = 0; k <= Nmesh / 2; k++)
+    wz[k] = lpt_cic_window(lpt_wavenumber(k));
+#endif
+
   /* Solve Poisson eq. and calculate 2nd order displacements */
   for(i = 0; i < Local_nx; i++)
     for(j = 0; j < Nmesh; j++)
@@ -677,23 +713,10 @@ void lpt_displacements_from_potential(lpt_complex *cpot, lpt_complex *cpot_NG, d
           kmag2 = kvec[0] * kvec[0] + kvec[1] * kvec[1] + kvec[2] * kvec[2];
 
 #ifdef CORRECT_CIC
-          /* calculate smooth factor for deconvolution of CIC interpolation */
-          fx = fy = fz = 1;
-          if(kvec[0] != 0)
-            {
-              fx = (kvec[0] * Box / 2) / Nmesh;
-              fx = sin(fx) / fx;
-            }
-          if(kvec[1] != 0)
-            {
-              fy = (kvec[1] * Box / 2) / Nmesh;
-              fy = sin(fy) / fy;
-            }
-          if(kvec[2] != 0)
-            {
-              fz = (kvec[2] * Box / 2) / Nmesh;
-              fz = sin(fz) / fz;
-            }
+          /* smooth factor for the deconvolution of the CIC interpolation */
+          fx   = wx[i];
+          fy   = wy[j];
+          fz   = wz[k];
           ff   = 1 / (fx * fy * fz);
           smth = ff * ff;
 #endif
@@ -720,6 +743,11 @@ void lpt_displacements_from_potential(lpt_complex *cpot, lpt_complex *cpot_NG, d
 
   /* Free cdigrad[3] */
   free(cdigrad[3]);
+#ifdef CORRECT_CIC
+  free(wx);
+  free(wy);
+  free(wz);
+#endif
 
   lpt_barrier();
 
