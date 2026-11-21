@@ -66,8 +66,8 @@ static void phi_write_slab(const char *name, int total_size, const lpt_real *buf
   free(row);
 }
 
-/* Write the real-space potential: with NTaskWithN > 1 each rank writes its own slab file; otherwise task 0 writes
- * one file. The header's total size is task 0's TotalSizePlusAdditional. */
+/* Write the real-space potential: with NTaskWithN > 1 (ranks holding particles) each rank writes its own slab file;
+ * otherwise task 0 gathers the slabs into one file. The header's total size is task 0's TotalSizePlusAdditional. */
 void write_phi(lpt_real *pot, int isNonGaus)
 {
   char buf_will[1100];
@@ -114,8 +114,11 @@ void write_phi(lpt_real *pot, int isNonGaus)
             }
           MPI_Recv(buffer, recv_size, MPI_DOUBLE, task, 3, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
         }
-      phi_name(buf_will, sizeof(buf_will), isNonGaus, start_x, nx);
-      phi_write_slab(buf_will, total_size, buffer, nx);
+      if(nx > 0)      /* one file name for all: an empty slab would overwrite it */
+        {
+          phi_name(buf_will, sizeof(buf_will), isNonGaus, start_x, nx);
+          phi_write_slab(buf_will, total_size, buffer, nx);
+        }
       if(task != 0)
         free(buffer);
     }

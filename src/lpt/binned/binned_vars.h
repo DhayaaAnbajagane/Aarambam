@@ -6,7 +6,7 @@
  * BinnedPNGCoordinate: 1=k, 2=log(k).
  * The internal legs k1 and k2 share the k1 edges; k3 (the output leg) has its own.
  * BinnedPNGMultiGrid: 1 = each bin pair on the smallest alias-free grid (binned_multigrid.h), 0 = all on Nmesh^3.
- * The loaded kernel table is always multiplied by the config Fnl.
+ * The kernel is multiplied by the config Fnl as each bin pair is accumulated.
  */
 extern char     FileWithBinnedK1Edges[500];
 extern char     FileWithBinnedK3Edges[500];

@@ -9,12 +9,13 @@
  *
  *   small  (L <= MG_SMALL_MAX): whole pairs per rank, serial pruned FFTW transforms on the L^3 grid;
  *   medium (MG_SMALL_MAX < L < Nmesh): all ranks together, a band_fft on the L^3 grid per ladder size;
- *   full   (L >= Nmesh): the distributed Nmesh^3 path of binned_ng_impl.h, which skips the pairs done here
- *          (bpng_mg_pair_done) and the fields only they use (bpng_mg_field_needed).
+ *   full   (L >= Nmesh, or a medium L with fewer x planes than ranks): the distributed Nmesh^3 path of
+ *          binned_ng_impl.h, which skips the pairs done here (bpng_mg_pair_done) and the fields only they use
+ *          (bpng_mg_field_needed).
  *
- * The small and medium results are accumulated on the band |n| <= Nsample/2 (on every rank), summed over the ranks and
- * added into the band layout of the NG term. The FFTs use the run's planner flags (FFTW_MEASURE with a wisdom file);
- * plans measured here are added to the wisdom files. */
+ * The small and medium results are accumulated on the band |n_x|, |n_y|, n_z <= Nsample/2 (on every rank), summed
+ * over the ranks and added into the band layout of the NG term. The FFTs use the run's planner flags (FFTW_MEASURE
+ * with a wisdom file); plans measured here are added to the wisdom files. */
 
 #include "band_fft.h"
 

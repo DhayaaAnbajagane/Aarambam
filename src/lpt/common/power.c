@@ -172,7 +172,7 @@ int compare_transfer_logk(const void *a, const void *b)
 
 void initialize_transferfunction(void)
 {
-  /* Transfer function is meant to be normalized to 1 at k=0
+  /* The tabulated transfer function is normalised to 1 at its lowest k (read_transfer_table).
    * No multiple Tf implemented as in power spectrum multiple species
    */
   if(WhichTransfer == 2)
@@ -336,7 +336,7 @@ void initialize_powerspectrum(void)
   if(ThisTask == 0)
     printf("Normalization adjusted to  Sigma8=%g   (Normfac=%g)\n\n", Sigma8, Norm);
 
-  /* Linnear growth factor at redshift z=0.0 normalized to D = a during matter domination */
+  /* Linear growth factor at redshift z=0.0 normalized to D = a during matter domination */
   D0    = GrowthFactor(1.e-8, 1.0) * 1.e-8;
   Dplus = GrowthFactor(InitTime, 1.0);
 

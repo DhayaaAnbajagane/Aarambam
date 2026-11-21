@@ -555,8 +555,8 @@ static long long lpt_band_setup(int band, unsigned flags, ptrdiff_t n1, ptrdiff_
 }
 
 /* FFTW3-MPI plans: the full r2c / c2r (lpt_fft), and for FFTBackend fftw the transposed r2c and the transpose. Made on
- * a grid from lpt_alloc_grid, so every grid they later run on has the planning alignment (FFTW_MEASURE overwrites it
- * while timing candidate plans). */
+ * a scratch grid (FFTW_MEASURE overwrites the array it plans on) from lpt_alloc_grid, so every grid they later run on
+ * has the planning alignment. */
 static void lpt_make_plans(int band, unsigned flags)
 {
   const int nzc       = Nmesh / 2 + 1;

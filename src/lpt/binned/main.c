@@ -431,8 +431,8 @@ static double bpng_axis_node_x(int axis, int node)
   return BPNG.node_x[axis][node];
 }
 
-/* Node coordinates and bin centres/widths depend only on the edges: compute them once instead of in every
- * per-mode call (same arithmetic as before, so results are bit-identical). */
+/* Node coordinates and bin centres/widths depend only on the edges: computed once instead of in every per-mode
+ * call. */
 static void bpng_precompute_axes(void)
 {
   int    axis, b;
@@ -473,7 +473,7 @@ static double bpng_u_in_bin_axis(int axis, int bin, double k)
   return (x - BPNG.bin_xc[axis][bin]) / dx;
 }
 
-/* Modes used by the NG term: the Gaussian field's support (SphereMode / Nsample test as in displacement_fields),
+/* Modes used by the NG term: the Gaussian field's support (the Nsample test of lpt_setup_gaussian_potential),
  * never k = 0 and never the Nyquist planes, where the Gaussian field is zero and i*k is ill-defined. */
 static int bpng_mode_allowed(ptrdiff_t i, ptrdiff_t j, ptrdiff_t k, double kx, double ky, double kz, double kmag)
 {
@@ -830,8 +830,8 @@ void displacement_fields(void)
     bpng_compute_non_gaussian_potential_d(cpot, cpot_NG);
   lpt_barrier();
 
-  /* cpot_NG was accumulated in the band k-space layout (see bpng_accumulate_hybrid_convolution):
-   * transpose it back to the normal x-slab layout used below. */
+  /* cpot_NG was accumulated in the band k-space layout (see bpng_accumulate_hybrid_convolution): move it to the
+   * normal x-slab layout used below. */
   lpt_band_to_normal(cpot_NG);
 
   lpt_barrier();

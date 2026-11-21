@@ -42,7 +42,8 @@ void print_setup(void)
 
 /* ---- per-mode helpers of the Legendre kernels ---- */
 
-/* |k|^2 and |k| of mode (i, j, k); returns 0 for k = 0 and for modes outside the sampled band (SphereMode). */
+/* |k|^2 and |k| of mode (i, j, k); returns 0 for k = 0 and for modes outside the sampled cube (sphere with
+ * SphereMode 1). */
 static inline int modal_mode_in_band(ptrdiff_t i, ptrdiff_t j, ptrdiff_t k, double *kmag2, double *kmag1)
 {
   double kvec[3];

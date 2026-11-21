@@ -71,8 +71,8 @@ extern struct io_header_1
 header, header1;
 
 
-extern double   start_time;          /* MPI_Wtime() at start-up, and at the last print_timed_done */
-extern double   previous_time;
+extern double   start_time;          /* MPI_Wtime() at start-up */
+extern double   previous_time;       /* MPI_Wtime() at the last print_timed_done */
 
 extern int      Nglass;
 extern int      *Local_nx_table;

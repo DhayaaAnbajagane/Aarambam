@@ -100,7 +100,7 @@ static void NG(modal_pair_done)(unsigned int N_i, unsigned int N_j)
     print_timed_done(23 - (N_i >= 10) - (N_j >= 10));
 }
 
-/* The NG stage: cpot_NG (double, band layout, zeroed) += sum over the mode pairs of K_ij FFT[g_i g_j], and the Beta
+/* The NG stage: cpot_NG (double, band layout, zeroed) += sum over the mode pairs of K_ij FFT[g_i g_j], and the t_012
  * terms. */
 static void NG(modal_ng_stage)(lpt_complex *cpot, lpt_complex *cpot_NG, double (*AlphaTable)[N_modes][N_modes],
                                double (*X0Table)[2], double t_012, double kmin_ns, double kmax_ns)

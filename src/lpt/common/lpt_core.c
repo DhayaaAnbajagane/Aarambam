@@ -75,7 +75,7 @@ void print_timed_done(int n)
   return;
 }
 
-/* The setup banner: a row of 79 '*', the executable's name centred in a box, another row */
+/* A row of 79 '*' */
 void lpt_print_rule(void)
 {
   char rule[80];
@@ -85,6 +85,7 @@ void lpt_print_rule(void)
   printf("%s\n", rule);
 }
 
+/* The setup banner: a row of '*', the executable's name centred in a box, another row */
 void lpt_print_banner(const char *name)
 {
   const int len = (int) strlen(name), left = (77 - len) / 2;
@@ -550,8 +551,8 @@ static inline double lpt_cic_read(const lpt_real *field, ptrdiff_t i, ptrdiff_t 
 
 /* Everything after the non-Gaussian term: cpot (Gaussian, Fourier space) += ng_scale * cpot_NG,
  * potentials written if SavePotentialField, then the ZA and 2LPT displacements and velocities of P[].
- * Frees cpot and cpot_NG. ng_scale is Fnl for the modal method and 1 for the binned one (whose
- * kernel already includes Fnl). */
+ * Frees cpot and cpot_NG. ng_scale is Fnl for the modal method and 1 for the binned one (which multiplies
+ * by Fnl while accumulating cpot_NG). */
 void lpt_displacements_from_potential(lpt_complex *cpot, lpt_complex *cpot_NG, double ng_scale, double Beta)
 {
   ptrdiff_t     i, j, k, ii, jj, kk, axes;
