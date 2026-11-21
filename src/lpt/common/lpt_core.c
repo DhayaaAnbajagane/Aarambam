@@ -168,7 +168,7 @@ int main(int argc, char **argv)
 void lpt_setup_gaussian_potential(lpt_complex **cpot_out, double *Beta_out)
 {
   gsl_rng      *random_generator;
-  ptrdiff_t     i, j, k, ii, jj;
+  ptrdiff_t     i, j, k, ii, jj, kend;
   int           timed_chars = 0;
   double        phig, Beta;
   lpt_complex  *cpot;              /* Gaussian potential */
@@ -251,7 +251,10 @@ void lpt_setup_gaussian_potential(lpt_complex **cpot_out, double *Beta_out)
                 continue;
               gsl_rng_set(random_generator, seedtable[i * Nmesh + j]);
 
-              for(k = 0; k < Nmesh / 2 && k <= Nsample / 2 + 1; k++)   /* later draws are not used */
+              /* a column this rank holds needs every sampled k; a column of which it only holds the conjugate needs
+               * k = 0 alone (the conjugate half of the k = 0 plane), which comes from the column's first draws */
+              kend = (i >= Local_x_start && i < (Local_x_start + Local_nx)) ? Nsample / 2 + 1 : 0;
+              for(k = 0; k < Nmesh / 2 && k <= kend; k++)   /* later draws are not used */
                 {
                   phase  = gsl_rng_uniform(random_generator) * 2 * PI;
                   phase += phase_shift;

@@ -107,6 +107,8 @@ typedef struct
   int         *s_ic;         /* per s: output bin (-1 outside) */
   double      *s_u;          /* and the position in it */
   int         *Ka;           /* per node: largest per-axis mode index where its filter is non-zero */
+  int         *s_amax;       /* per s: largest max(|n_x|, |n_y|, n_z) of an allowed mode with |n|^2 = s (-1: none) */
+  char        *s_live;       /* per s: the Gaussian potential is non-zero at some mode with |n|^2 = s */
   lpt_complex *G;            /* Gaussian potential on the band */
   lpt_complex *A;            /* NG term of the small and medium pairs on the band */
   double      *coef;         /* per s: Fnl * scale * output coefficient of the current pair (0: skipped) */
@@ -321,6 +323,15 @@ static void mg_build_tables(MgCtx *X, lpt_complex *cpot)
   X->coef = calloc(S, sizeof(double));
   if(!X->filt || !X->s_ic || !X->s_u || !X->coef)
     FatalError(9422);
+  X->s_amax = malloc(sizeof(int) * S);
+  X->s_live = calloc(S, 1);
+  if(!X->s_amax || !X->s_live)
+    FatalError(9426);
+  for(int s = 0; s < S; s++)
+    X->s_amax[s] = -1;
+  for(int r = 0; r <= KB; r++)
+    for(long long m = X->shell[r]; m < X->shell[r + 1]; m++)
+      X->s_amax[X->m_s[m]] = r;                   /* shells in increasing r: the last one is the largest */
   X->s_ic[0] = -1;
   X->s_u[0]  = 0;
   for(int s = 1; s < S; s++)
@@ -351,6 +362,9 @@ static void mg_build_tables(MgCtx *X, lpt_complex *cpot)
         }
     }
   MPI_Allreduce(MPI_IN_PLACE, X->G, 2 * X->nB, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+  for(long long m = 0; m < X->nm; m++)
+    if(X->G[X->m_idx[m]].re != 0 || X->G[X->m_idx[m]].im != 0)
+      X->s_live[X->m_s[m]] = 1;
 }
 
 static void mg_free_tables(MgCtx *X)
@@ -365,6 +379,8 @@ static void mg_free_tables(MgCtx *X)
   free(X->filt);
   free(X->s_ic);
   free(X->s_u);
+  free(X->s_amax);
+  free(X->s_live);
   free(X->coef);
   free(X->Ka);
   free(X->G);
@@ -381,20 +397,20 @@ static int mg_plan_pairs(MgCtx *X, MgPair *P, int *nsmall, int *nmed, int *nfull
 
   X->Ka       = calloc(n, sizeof(int));
   X->kout_max = 0;
-  for(int r = 0; r <= X->KB; r++)
-    for(long long m = X->shell[r]; m < X->shell[r + 1]; m++)
-      {
-        const double *w  = X->filt + (size_t) X->m_s[m] * n;
-        const int     nz = (X->G[X->m_idx[m]].re != 0 || X->G[X->m_idx[m]].im != 0);
-        if(X->s_ic[X->m_s[m]] >= 0)
-          X->kout_max = r;
-        for(int a = 0; a < n; a++)
-          if(w[a] != 0)
-            {
-              X->Ka[a] = r;
-              live[a] |= nz;
-            }
-      }
+  for(int s = 0; s < X->S; s++)                 /* everything here depends on |n|^2 only */
+    {
+      const double *w = X->filt + (size_t) s * n;
+      if(X->s_amax[s] < 0)
+        continue;
+      if(X->s_ic[s] >= 0 && X->s_amax[s] > X->kout_max)
+        X->kout_max = X->s_amax[s];
+      for(int a = 0; a < n; a++)
+        if(w[a] != 0)
+          {
+            X->Ka[a] = X->s_amax[s] > X->Ka[a] ? X->s_amax[s] : X->Ka[a];
+            live[a] |= X->s_live[s];
+          }
+    }
 
   levels[nlev++] = mg_next_good(8);
   while(levels[nlev - 1] < Nmesh && nlev < 63)
