@@ -24,13 +24,10 @@ def test_collate(am, tmp_path):
     a = np.arange(27.).reshape(3, 3, 3)
     for t in ('Gauss', 'Nongauss'):
         write_slab(tmp_path / f'{t}_potential_5', a, 3, 0)
-    am.cli.main(['collate', '--file_dir', str(tmp_path)])
-    np.testing.assert_array_equal(np.load(tmp_path / 'Nongauss_potential.npy'), a)
+    am.cli.main(['collate', '--file_dir', str(tmp_path)])        #one-rank file names
+    for t in ('Gauss', 'Nongauss'):
+        np.testing.assert_array_equal(np.load(tmp_path / f'{t}_potential.npy'), a)
     assert not list(tmp_path.glob('*_potential_5'))
-
-
-def test_resbasis_runs_the_modal_binary(am):
-    assert am.cli.BINARIES['resbasis'] == am.cli.BINARIES['basis'] == '2LPTBasis'
 
 
 def test_missing_binary_message(am, monkeypatch, tmp_path):

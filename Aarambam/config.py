@@ -152,115 +152,67 @@ def make_config_basis(Nmesh, Nsample, Nmax, Lbox, FileBase, OutputDir, GlassFile
                       AlphaPath, AiPath, SavePotentialField, NWriteoutProcesses, ModeTables = 'auto',
                       FFTWWisdomDir = 'auto', FFTBackend = 'fftw', NGPrecision = 'double'):
     """
-    Generate a basis configuration file string for initial condition generation
-    with the standard basis method.
-
-    This function fills a default configuration template with the provided
-    simulation and cosmology parameters, returning the formatted string.
-    The configuration is intended for use in non-Gaussian initial condition
-    generation codes (e.g. N-GenIC variants with modal decomposition support).
+    Config file text for ``2LPTBasis`` (Legendre/modal decomposition).
 
     Parameters
     ----------
     Nmesh : int
-        Number of mesh cells per dimension used for the density and potential grids.
+        Grid points per side of the potential and displacement grids.
     Nsample : int
-        Sets the maximum k that the code uses, i.e. this effectively determines the Nyquist frequency 
-        that the code assumes, k_Nyquist = 2*PI/Box * Nsample/2 Normally, one chooses Nsample such that 
-        Ntot =  Nsample^3, where Ntot is the total number of particles
+        Largest sampled mode: the code keeps modes with ``|k| <= Nsample/2`` (in units of
+        ``2 pi / Lbox``) per axis. Usually the particle count per side; use ``Nmesh >= 3/2 Nsample``
+        for an alias-free non-Gaussian term.
     Nmax : int
-        Maximum wavenumber index or mode cutoff used in the modal expansion. In units of
-        the fundamental frequency of the box. Must be >= Nsample (the C code stops otherwise);
-        normally set it equal to Nsample.
+        Largest wavenumber of the decomposition, in units of ``2 pi / Lbox``. Must be ``>= Nsample``;
+        normally equal to it.
     Lbox : float
-        Side length of the simulation box in comoving units (e.g. Mpc/h).
+        Box side in Mpc/h.
     FileBase : str
-        Base name for all output files
+        Base name of the snapshot files.
     OutputDir : str
-        Directory where output files will be written. The defaults use
-        ``$TMPDIR``, or ``tempfile.gettempdir()`` if it is unset.
+        Directory for the snapshots and potentials.
     GlassFile : str
-        Path to the glass file used to generate the initial particle load. Aarambam provides a default.
+        Glass file of the unperturbed particle load.
     GlassTileFac : int
-        Tiling factor applied to the glass file to match the desired number of particles.
+        Times the glass is tiled per side (particles per side = glass side x ``GlassTileFac``).
     seed : int
-        Random seed for generating the random phases of the simulation.
-    Om : float
-        Matter density parameter :math:`\\Omega_m`.
-    Ode : float
-        Dark energy density parameter :math:`\\Omega_\\Lambda`.
-    h : float
-        Dimensionless Hubble parameter.
-    sigma8 : float
-        Normalization of the linear power spectrum at 8 Mpc/h.
-    n_s : float
-        Scalar spectral index of primordial fluctuations.
+        Seed of the Gaussian random field.
+    Om, Ode, h, sigma8, n_s : float
+        Omega_m, Omega_Lambda, H0 / (100 km/s/Mpc), sigma_8 and the scalar spectral index.
     z_ini : float
-        Initial redshift for the simulation. Good choice is z = 49.
+        Starting redshift (e.g. 49).
     Fnl : float
-        Non-Gaussian amplitude parameter.
+        Amplitude of the template: :math:`B_\\Phi = 6 f_{\\rm NL} B_{\\rm template}`.
     N_modes : int
-        Number of modes in the modal expansion. The expansion happens
-        outside of LPT being run. Make sure you ran it first.
+        Number of 1D Legendre modes of the decomposition (``N_modes`` of ``Decomposer``).
     TransferPath : str
-        Path to the transfer function file from CAMB/CLASS.
-    AlphaPath : str
-        Path to the alpha-coefficients file for the modal basis.
-    AiPath : str
-        Path to the A_i-coefficients file for the modal basis.
-    SavePotentialField : int
-        Flag (0 or 1) indicating whether to save the potential field to disk.
+        Two-column (k, T(k)) transfer function (see ``camb2input``).
+    AlphaPath, AiPath : str
+        ``AlphaTable.dat`` and ``AiTable.dat`` written by the Legendre decomposition.
+    SavePotentialField : bool or int
+        Also write the Gaussian and non-Gaussian potentials (read them with ``collate_potential``).
     NWriteoutProcesses : int
-        Written as ``NumFilesWrittenInParallel``. Kept for config compatibility: the C code
-        writes all files from task 0 and does not use it. Default 1.
+        Written as ``NumFilesWrittenInParallel``; not used by the C code.
     ModeTables : {0, 1, 'auto'}, optional
-        Speed/memory switch of the 2LPT code. ``1`` keeps all ``N_modes`` mode fields in
-        real space and tabulates the per-mode kernel values (about ``N_modes`` extra grids
-        of ``8 Nmesh^3`` bytes, half the FFTs): the fast setting. ``0`` rebuilds the fields
-        for every mode pair and uses the least memory. Both give the same ICs to rounding.
-        ``'auto'`` (default) picks 1 for ``Nmesh <= AUTO_FAST_MAX_NMESH`` (512) and 0 above.
+        ``1``: keep all mode fields in real space (about ``N_modes`` extra grids of ``8 Nmesh^3``
+        bytes, half the FFTs). ``0``: least memory. Same ICs to rounding. ``'auto'``: 1 for
+        ``Nmesh <= AUTO_FAST_MAX_NMESH`` (512), else 0.
     FFTWWisdomDir : str, optional
-        Directory in which the 2LPT code keeps its FFT plans: they are measured (``FFTW_MEASURE``)
-        the first time a grid size and rank count are run, and later runs read them back at no cost.
-        A path: that directory (created if needed; the run stops with an error if it cannot be
-        created or written). ``'auto'`` (default): ``$XDG_CACHE_HOME/aarambam`` or
-        ``~/.cache/aarambam`` (the ``AARAMBAM_FFTW_WISDOM_DIR`` environment variable, if set, takes
-        its place). ``'none'``: plan with ``FFTW_ESTIMATE``, no measuring and no file (the results
-        are then bit-for-bit reproducible across rank counts).
+        Where measured FFT plans are kept: a directory, ``'auto'`` (``~/.cache/aarambam``, or
+        ``$AARAMBAM_FFTW_WISDOM_DIR``) or ``'none'`` (unmeasured plans, no file).
     FFTBackend : {'fftw', 'band'}, optional
-        FFTs of the non-Gaussian term. ``'fftw'`` (default): FFTW3's MPI transforms of the full
-        grid. ``'band'``: the 2LPT code's own slab FFT (``src/lpt/common/band_fft.c``, built on
-        FFTW3's serial transforms), which transforms and communicates only the band of k-space
-        that is sampled (``|k| <= Nsample/2 + 1`` per axis) and spreads it evenly over the ranks:
-        faster when ``Nmesh > Nsample``, the same ICs to rounding. It keeps one communication
-        buffer of about ``(Nsample / Nmesh)^2`` of a grid per rank (0.44 for ``Nmesh = 3/2 Nsample``).
+        FFTs of the non-Gaussian term: FFTW3-MPI on the whole grid, or the code's own FFT of the
+        sampled band only (faster when ``Nmesh > Nsample``; same ICs to rounding).
     NGPrecision : {'double', 'float'}, optional
-        Precision of the non-Gaussian term's real-space fields, their products and their FFTs.
-        ``'double'`` (default). ``'float'``: single precision, always with the band FFT; about 40%
-        faster for that stage and half its memory. The Gaussian potential, the accumulated
-        non-Gaussian term and the 2LPT stage stay double; the non-Gaussian term then agrees with
-        ``'double'`` to ~4e-7 (binned) and ~1e-6 (basis) relative. Needs FFTW3 also built in single
-        precision (``--enable-float``, see the installation page).
+        Precision of the non-Gaussian stage. ``'float'`` is ~40% faster for that stage, agrees to
+        ~1e-6 relative and needs FFTW built with ``--enable-float``.
 
     Returns
     -------
     str
-        A configuration file string with all placeholders filled by the given parameters.
-        The string is formatted according to ``DEFAULT_BASIS_CONFIG``.
+        The config text; write it to a file and pass that to ``aarambam 2lpt basis``.
 
-    Examples
-    --------
-    >>> cfg = make_config_basis(
-    ...     Nmesh=384, Nsample=256, Nmax=256, Lbox=1000.0,
-    ...     FileBase="ICs", OutputDir="./output/",
-    ...     GlassFile="glass256.dat", GlassTileFac=2,
-    ...     seed=12345, Om=0.3, Ode=0.7, h=0.7,
-    ...     sigma8=0.8, n_s=0.965, z_ini=99.0,
-    ...     Fnl=10.0, N_modes=50,
-    ...     TransferPath="transfer.dat", AlphaPath="alpha.dat", AiPath="ai.dat",
-    ...     SavePotentialField=1, NWriteoutProcesses=1
-    ... )
-    >>> print(cfg)  # prints the beginning of the config file
+    See the Conventions and Running faster pages of the docs for details on the options.
     """
     ModeTables = _resolve_mode_tables(ModeTables, Nmesh)
     return textwrap.dedent(DEFAULT_BASIS_CONFIG % locals())
@@ -273,108 +225,22 @@ def make_config_resbasis(Nmesh, Nsample, Nmax, Lbox, FileBase, OutputDir, GlassF
                          FFTWWisdomDir = 'auto', FFTBackend = 'fftw', NGPrecision = 'double'):
 
     """
-    Generate a basis configuration file string for initial condition generation
-    with the standard basis method supplemented with oscillations in the
-    power spectra as well.
-
-    This function fills a default configuration template with the provided
-    simulation and cosmology parameters, returning the formatted string.
-    The configuration is intended for use in non-Gaussian initial condition
-    generation codes (e.g. N-GenIC variants with modal decomposition support).
+    Config file text for ``2LPTBasis`` with an oscillating primordial power spectrum (ResBasis).
 
     Parameters
     ----------
-    Nmesh : int
-        Number of mesh cells per dimension used for the density and potential grids.
-    Nsample : int
-        Sets the maximum k that the code uses, i.e. this effectively determines the Nyquist frequency 
-        that the code assumes, k_Nyquist = 2*PI/Box * Nsample/2 Normally, one chooses Nsample such that 
-        Ntot =  Nsample^3, where Ntot is the total number of particles
-    Nmax : int
-        Maximum wavenumber index or mode cutoff used in the modal expansion. In units of
-        the fundamental frequency of the box. Must be >= Nsample (the C code stops otherwise);
-        normally set it equal to Nsample.
-    Lbox : float
-        Side length of the simulation box in comoving units (e.g. Mpc/h).
-    FileBase : str
-        Base name for all output files
-    OutputDir : str
-        Directory where output files will be written. The defaults use
-        ``$TMPDIR``, or ``tempfile.gettempdir()`` if it is unset.
-    GlassFile : str
-        Path to the glass file used to generate the initial particle load. Aarambam provides a default.
-    GlassTileFac : int
-        Tiling factor applied to the glass file to match the desired number of particles.
-    seed : int
-        Random seed for generating the random phases of the simulation.
-    Om : float
-        Matter density parameter :math:`\\Omega_m`.
-    Ode : float
-        Dark energy density parameter :math:`\\Omega_\\Lambda`.
-    h : float
-        Dimensionless Hubble parameter.
-    sigma8 : float
-        Normalization of the linear power spectrum at 8 Mpc/h.
-    n_s : float
-        Scalar spectral index of primordial fluctuations.
-    z_ini : float
-        Initial redshift for the simulation. Good choice is z = 49.
-    Fnl : float
-        Non-Gaussian amplitude parameter.
-    N_modes : int
-        Number of modes in the modal expansion. The expansion happens
-        outside of LPT being run. Make sure you ran it first.
-    TransferPath : str
-        Path to the transfer function file from CAMB/CLASS.
-    AlphaPath : str
-        Path to the alpha-coefficients file for the modal basis.
-    AiPath : str
-        Path to the A_i-coefficients file for the modal basis.
-    SavePotentialField : int
-        Flag (0 or 1) indicating whether to save the potential field to disk.
-    NWriteoutProcesses : int
-        Written as ``NumFilesWrittenInParallel``. Kept for config compatibility: the C code
-        writes all files from task 0 and does not use it. Default 1.
-    Pk_A_res : float
-        Amplitude of the power spectrum oscillations
-    Pk_w_res : float
-        Frequency (in either linear or log-k, set by ``Pk_mode`` below) of the oscillations
-    Pk_phi_res : float
-        Phase of the oscillations in P(k)
-    Pk_mode : int
-        Control flag for the different P(k) oscillation options:
-            0 - No oscillations
-            1 - Oscillations in :math:`k`.
-            2 - Oscillations in :math:`\\log k`.
-    ModeTables : {0, 1, 'auto'}, optional
-        Speed/memory switch of the 2LPT code; see ``make_config_basis``.
-    FFTWWisdomDir : str, optional
-        FFT plan directory of the 2LPT code; see ``make_config_basis``.
-    FFTBackend : {'fftw', 'band'}, optional
-        FFTs of the non-Gaussian term; see ``make_config_basis``.
-    NGPrecision : {'double', 'float'}, optional
-        Precision of the non-Gaussian stage; see ``make_config_basis``.
+    (all of make_config_basis)
+        See ``make_config_basis``.
+    Pk_A_res, Pk_w_res, Pk_phi_res : float
+        Amplitude, frequency and phase of the oscillation in P(k).
+    Pk_mode : {0, 1, 2}
+        ``0``: no oscillation (same ICs as ``make_config_basis``); ``1``: oscillation in k;
+        ``2``: oscillation in log k.
 
     Returns
     -------
     str
-        A configuration file string with all placeholders filled by the given parameters.
-        The string is formatted according to ``DEFAULT_RESBASIS_CONFIG``.
-
-    Examples
-    --------
-    >>> cfg = make_config_resbasis(
-    ...     Nmesh=384, Nsample=256, Nmax=256, Lbox=1000.0,
-    ...     FileBase="ICs", OutputDir="./output/",
-    ...     GlassFile="glass256.dat", GlassTileFac=2,
-    ...     seed=12345, Om=0.3, Ode=0.7, h=0.7,
-    ...     sigma8=0.8, n_s=0.965, z_ini=99.0,
-    ...     Fnl=10.0, N_modes=50,
-    ...     TransferPath="transfer.dat", AlphaPath="alpha.dat", AiPath="ai.dat",
-    ...     SavePotentialField=1, NWriteoutProcesses=1,
-    ...     Pk_A_res = 0.8, Pk_w_res = 3, Pk_phi_res = 0, Pk_mode = 1
-    ... )
-    >>> print(cfg)  # prints the beginning of the config file
+        The config text, for ``aarambam 2lpt resbasis``.
     """
 
     ModeTables = _resolve_mode_tables(ModeTables, Nmesh)
@@ -389,115 +255,41 @@ def make_config_binned(Nmesh, Nsample, Nmax, Lbox, FileBase, OutputDir, GlassFil
                        FFTWWisdomDir = 'auto', FFTBackend = 'fftw', NGPrecision = 'double',
                        BinnedPNGMultiGrid = 1):
     """
-    Generate a configuration string for the binned-PNG initial-condition generator.
+    Config file text for ``2LPTBinned`` (binned decomposition).
 
-    The returned configuration uses precomputed one-dimensional bin-edge tables
-    and a C-readable binned-kernel table produced by
-    ``BasicBinnedDecompose.finalize``. The interpolation codes supplied here must
-    agree with the filter used when that kernel table was generated.
+    ``binned_kernel_inputs(outdir)`` returns the five table and filter arguments for tables
+    written by ``Decomposer.go(..., outdir = outdir)``.
 
     Parameters
     ----------
-    Nmesh : int
-        Number of mesh cells per dimension used for the density and potential grids.
-    Nsample : int
-        Fourier sampling size used by the initial-condition generator. The assumed
-        Nyquist wavenumber is ``2*pi/Lbox * Nsample/2``.
-    Nmax : int
-        Maximum dimensionless wavenumber index used by the generator. Must be
-        >= ``Nsample`` (the C code stops otherwise); normally set equal to ``Nsample``.
-    Lbox : float
-        Side length of the simulation box in comoving Mpc/h.
-    FileBase : str
-        Base name for the generated initial-condition files.
-    OutputDir : str
-        Directory in which the generated files are written. The defaults use
-        ``$TMPDIR``, or ``tempfile.gettempdir()`` if it is unset.
-    GlassFile : str
-        Path to the glass particle load.
-    GlassTileFac : int
-        Number of times the supplied glass is tiled along each dimension.
-    seed : int
-        Random seed used to generate the Gaussian phases.
-    Om : float
-        Matter density parameter :math:`\\Omega_m`.
-    Ode : float
-        Dark-energy density parameter :math:`\\Omega_\\Lambda`.
-    h : float
-        Dimensionless Hubble parameter.
-    sigma8 : float
-        Linear-theory normalization at 8 Mpc/h.
-    n_s : float
-        Scalar spectral index.
-    z_ini : float
-        Initial redshift.
-    Fnl : float
-        Primordial non-Gaussian amplitude.
-    TransferPath : str
-        Path to the tabulated CAMB/CLASS transfer function in Aarambam format.
-    BinnedK1EdgesPath : str
-        Path to ``BinnedKernel_k1_edges.txt``: the bins of both internal legs, ``k1`` and ``k2``.
-    BinnedK3EdgesPath : str
-        Path to ``BinnedKernel_k3_edges.txt``.
+    (all of make_config_basis except N_modes, AlphaPath, AiPath)
+        See ``make_config_basis``. ``ModeTables`` here tabulates the per-mode bin lookups (about one
+        extra grid, bit-identical result); ``'auto'`` is 1 at every ``Nmesh``.
+    BinnedK1EdgesPath, BinnedK3EdgesPath : str
+        Bin edges of the internal legs (k1 and k2 share them) and of the output leg k3.
     BinnedKernelValuesPath : str
-        Path to the C-readable kernel table. Should have format
-        ``BinnedKernel_values.txt`` for the top-hat filter and
-        ``BinnedKernel_hybrid_values.txt`` for a hybrid filter.
-    BinnedPNGFilterCode : int
-        Interpolation code on the internal ``k1`` and ``k2`` legs:
-        ``1`` for top-hat, ``2`` for linear, or ``3`` for cubic.
-    BinnedPNGOutputFilterCode : int
-        Cell-local interpolation code on the output ``k3`` leg:
-        ``1`` for constant, ``2`` for linear, or ``3`` for cubic.
+        Kernel table (``BinnedKernel_hybrid_values.txt``, or ``BinnedKernel_values.txt`` for
+        top-hat filters).
+    BinnedPNGFilterCode : {1, 2, 3}
+        Interpolation on k1, k2: top-hat, linear or cubic. Must match the table.
+    BinnedPNGOutputFilterCode : {1, 2, 3}
+        Interpolation within a k3 bin: constant, linear or cubic. Must match the table.
     BinnedPNGCacheBlockSize : int or 'auto'
-        Number of filtered k1 (and k2) real-space basis fields kept in memory per block;
-        0 disables the blocked path. Larger values
-        cut repeated FFTs at the cost of roughly that many extra grids of memory (the C
-        code caps it at the number of k1 bins); the result does not depend on it.
-        ``'auto'`` (default) is 64, i.e. all bins, for ``Nmesh <= AUTO_FAST_MAX_NMESH``
-        and 4 above.
-    SavePotentialField : int or bool
-        Whether to save the Gaussian and non-Gaussian potential fields.
-    NWriteoutProcesses : int
-        Written as ``NumFilesWrittenInParallel``. Kept for config compatibility: the C code
-        writes all files from task 0 and does not use it. Default 1.
-    ModeTables : {0, 1, 'auto'}, optional
-        Speed/memory switch of the 2LPT code. ``1`` tabulates |k|, the output bin and
-        the in-bin coordinate of every sampled mode once (56 bytes per sampled mode, about
-        one extra grid at ``Nmesh = 3/2 Nsample``): the fast setting. ``0`` recomputes them
-        for every bin pair. The result is bit-identical. ``'auto'`` (default) is 1 at every
-        ``Nmesh``; the binned memory/speed trade-off is ``BinnedPNGCacheBlockSize``.
-    FFTWWisdomDir : str, optional
-        FFT plan directory of the 2LPT code; see ``make_config_basis``.
-    FFTBackend : {'fftw', 'band'}, optional
-        FFTs of the non-Gaussian term; see ``make_config_basis``.
-    NGPrecision : {'double', 'float'}, optional
-        Precision of the non-Gaussian stage; see ``make_config_basis``.
-    BinnedPNGMultiGrid : bool or int, optional
-        ``1`` (default): each bin pair is computed on the smallest grid free of aliases for the output modes,
-        which gives the same non-Gaussian term (to ~1e-14) faster. ``0``: every pair on the ``Nmesh`` grid.
+        Filtered k1 fields kept in memory at once (about that many extra grids; fewer FFTs).
+        ``'auto'``: 64 (all bins) for ``Nmesh <= 512``, else 4.
+    BinnedPNGMultiGrid : bool, optional
+        Compute each bin pair on the smallest alias-free grid (default; same result to ~1e-14,
+        faster). ``False``: every pair on the full grid.
 
     Returns
     -------
     str
-        Configuration text formatted using ``DEFAULT_BINNED_CONFIG``.
+        The config text, for ``aarambam 2lpt binned``.
 
-    Examples
-    --------
-    >>> cfg = make_config_binned(
-    ...     Nmesh = 384, Nsample = 256, Nmax = 256, Lbox = 1000.0,
-    ...     FileBase = 'ICs', OutputDir = './output/',
-    ...     GlassFile = 'glass256.dat', GlassTileFac = 2,
-    ...     seed = 12345, Om = 0.3, Ode = 0.7, h = 0.7,
-    ...     sigma8 = 0.8, n_s = 0.965, z_ini = 49.0, Fnl = 100.0,
-    ...     TransferPath = 'TransferFunctionConverted.dat',
-    ...     BinnedK1EdgesPath = 'BinnedKernel_k1_edges.txt',
-    ...     BinnedK3EdgesPath = 'BinnedKernel_k3_edges.txt',
-    ...     BinnedKernelValuesPath = 'BinnedKernel_hybrid_values.txt',
-    ...     BinnedPNGFilterCode = 3, BinnedPNGOutputFilterCode = 3,
-    ...     BinnedPNGCacheBlockSize = 'auto', ModeTables = 'auto',
-    ...     SavePotentialField = True, NWriteoutProcesses = 1,
-    ... )
+    Raises
+    ------
+    ValueError
+        If the filter codes disagree with the metadata written next to the kernel table.
     """
     _check_binned_codes(BinnedKernelValuesPath, BinnedPNGFilterCode, BinnedPNGOutputFilterCode)
     BinnedPNGMultiGrid = int(bool(BinnedPNGMultiGrid))

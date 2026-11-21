@@ -55,10 +55,21 @@ def get_cond(i, OMP_msk, QQ_tilde):
     return np.linalg.cond(QQ_tilde[np.ix_(m, m)])
 
 class Basis:
-    ''' Class for CMBBEST's basis set'''
+    """Legendre basis of CMB-BEST (modified), on a tetrapyd grid of triangles.
+
+    Parameters
+    ----------
+    k_min, k_max : float
+        Range of the basis.
+    parameter_n_scalar : float
+        Scalar spectral index; the modes are polynomials of ``k^((4 - n_s)/3)``.
+    mode_p_max : int
+        Number of 1D modes.
+    k_grid_size : int
+        Points of the 1D k grid used for the inner products.
+    """
 
     def __init__(self, k_min, k_max, parameter_n_scalar, mode_p_max, k_grid_size):
-        """Set up the Legendre basis on [k_min, k_max]: k grid, tetrapyd grid, mode indices and the mode covariance."""
         
         self.mode_p_max = mode_p_max
         self.parameter_n_scalar = parameter_n_scalar
@@ -323,7 +334,13 @@ class Basis:
     def basis_expansion(self, model_list, regularization = 0, Niter = 1e4, 
                         rtol = 1e-12, bad_modes = False, RR_tol = 1e-2, cond_tol = 1e9,
                         max_modes = None):
-        """Expand given model shape functions with respect to separable basis."""
+        """Expand the shapes of ``model_list`` (``Model`` instances) in the basis by orthogonal matching pursuit.
+
+        ``bad_modes`` (bool mask over the 3D modes) are never picked; the search stops once the residual
+        variance is below ``RR_tol`` of the shape's, at ``max_modes`` modes or when the mode covariance's
+        condition number would exceed ``cond_tol``. ``Niter`` and ``rtol`` control the iterative solve;
+        ``regularization`` is added to its diagonal. Returns ``(alpha, shape_cov, convergence, convergence_MSE)``.
+        """
 
         N_models = len(model_list)
         N_modes = self.mode_indices.shape[1]
@@ -537,10 +554,20 @@ class Basis:
 
 
 class Model:
-    ''' Class for the bispectrum template or model of interest '''
+    """A shape to decompose.
+
+    Parameters
+    ----------
+    shape_type : str
+        ``'custom'`` (pass ``shape_function = S(k1, k2, k3)``), ``'custom_shape_evals'`` (pass
+        ``grid_k_1, grid_k_2, grid_k_3`` and ``shape_function_values``, interpolated linearly), or a preset
+        ``'local'``, ``'equilateral'``, ``'orthogonal'`` (optional ``parameter_A_scalar``,
+        ``parameter_n_scalar``, ``parameter_k_pivot``).
+    shape_name : str, optional
+        Label.
+    """
 
     def __init__(self, shape_type, **kwargs):
-        """Shape to decompose: 'local', 'equilateral', 'orthogonal', 'custom' (shape_function=...) or 'custom_shape_evals'."""
         self.shape_type = shape_type.lower()
 
         if shape_type == "custom_shape_evals":

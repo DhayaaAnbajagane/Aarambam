@@ -3,23 +3,18 @@ import numpy as np
 from .base import ShapeTemplate
 
 __all__ = ['LogResonance', 'LinearResonance', 'K2cosResonance', 'KsinResonance', 'NBDsin']
+
+
 class LogResonance(ShapeTemplate):
     """
-    Logarithmic oscillations in the bispectrum, i.e. oscillations in :math:`\\log k`.
-    See https://arxiv.org/pdf/1905.05697, Equation (12)
-    
-    This object must be used with the `utils.Decomposer` class. That class instance
-    should be provided with the parameters necessary to compute this model (mass, spin, etc.)
+    Oscillations in log k (Planck 2018 IX, arXiv:1905.05697, Eq. 12).
 
     Parameters
     ----------
-    - n_s : float
-        Scalar spectral index used to rescale each wavenumber by
-        :math:`k^{(4-n_s)/3}` for near scale invariance.
-    - w_res : float
-        Frequency of the oscillations in the bispectrum.
-    - phi : float
-        The phase of the oscillations.
+    w_res : float
+        Frequency.
+    phi : float
+        Phase.
     """
 
     normalise = None #Amplitude convention of the cited template, not S(1,1,1) = 1
@@ -32,21 +27,14 @@ class LogResonance(ShapeTemplate):
 
 class LinearResonance(ShapeTemplate):
     """
-    Linear oscillations in the bispectrum, i.e. oscillations in k.
-    See https://arxiv.org/pdf/1905.05697, Equation (15)
-    
-    This object must be used with the `utils.Decomposer` class. That class instance
-    should be provided with the parameters necessary to compute this model (mass, spin, etc.)
+    Oscillations in k (Planck 2018 IX, arXiv:1905.05697, Eq. 15).
 
     Parameters
     ----------
-    - n_s : float
-        Scalar spectral index used to rescale each wavenumber by
-        :math:`k^{(4-n_s)/3}` for near scale invariance.
-    - w_res : float
-        Frequency of the oscillations in the bispectrum.
-    - phi : float
-        The phase of the oscillations.
+    w_res : float
+        Frequency.
+    phi : float
+        Phase.
     """
 
     normalise = None #Amplitude convention of the cited template, not S(1,1,1) = 1
@@ -58,24 +46,16 @@ class LinearResonance(ShapeTemplate):
 
 
 class K2cosResonance(ShapeTemplate):
-
     """
-    The oscillatory bispectra from Adshead+ 2012, Eq(16) in https://arxiv.org/pdf/1905.05697.
-    Fairly similar to the linear resonance model but with a exponential dampening.
-    
-    This object must be used with the `utils.Decomposer` class. That class instance
-    should be provided with the parameters necessary to compute this model (mass, spin, etc.)
+    Damped :math:`K^2 \\cos` oscillations of Adshead+ 2012 (arXiv:1905.05697, Eq. 16).
 
     Parameters
     ----------
-    - n_s : float
-        Scalar spectral index used to rescale each wavenumber by
-        :math:`k^{(4-n_s)/3}` for near scale invariance.
-    - w_res : float
-        Frequency of the oscillations in the bispectrum.
-    - alpha : float
-        Damping parameter: the template is multiplied by
-        :math:`\\alpha\\omega / (K \\sinh(\\alpha\\omega K))` with :math:`K = k_1 + k_2 + k_3`.
+    w_res : float
+        Frequency.
+    alpha : float
+        Damping: the template is multiplied by :math:`\\alpha\\omega / (K \\sinh(\\alpha\\omega K))`,
+        :math:`K = k_1 + k_2 + k_3`.
     """
 
     normalise = None #Amplitude convention of the cited template, not S(1,1,1) = 1
@@ -88,24 +68,15 @@ class K2cosResonance(ShapeTemplate):
 
 
 class KsinResonance(ShapeTemplate):
-
     """
-    A different oscillatory bispectra from Adshead+ 2012, Eq(17) in https://arxiv.org/pdf/1905.05697.
-    A complement to the :math:`K^2\\cos` model provided in `Aarambam`.
-    
-    This object must be used with the `utils.Decomposer` class. That class instance
-    should be provided with the parameters necessary to compute this model (mass, spin, etc.)
+    Damped :math:`K \\sin` oscillations of Adshead+ 2012 (arXiv:1905.05697, Eq. 17).
 
     Parameters
     ----------
-    - n_s : float
-        Scalar spectral index used to rescale each wavenumber by
-        :math:`k^{(4-n_s)/3}` for near scale invariance.
-    - w_res : float
-        Frequency of the oscillations in the bispectrum.
-    - alpha : float
-        Damping parameter: the template is multiplied by
-        :math:`\\alpha\\omega / (K \\sinh(\\alpha\\omega K))` with :math:`K = k_1 + k_2 + k_3`.
+    w_res : float
+        Frequency.
+    alpha : float
+        Damping, as in ``K2cosResonance``.
     """
 
     normalise = None #Amplitude convention of the cited template, not S(1,1,1) = 1
@@ -119,20 +90,14 @@ class KsinResonance(ShapeTemplate):
 
 class NBDsin(ShapeTemplate):
     """
-    Oscillatory bispectra caused by excited initial states, Non-Bunch Davies (NBD) vacua
-    
-    This object must be used with the `utils.Decomposer` class. That class instance
-    should be provided with the parameters necessary to compute this model (mass, spin, etc.)
+    Oscillations from a non-Bunch-Davies initial state (arXiv:1502.01592, Eq. 21).
 
     Parameters
     ----------
-    - n_s : float
-        Scalar spectral index used to rescale each wavenumber by
-        :math:`k^{(4-n_s)/3}` for near scale invariance.
-    - w_res : float
-        Frequency of the oscillations in the bispectrum.
-    - phi : float
-        The phase of the oscillations.
+    w_res : float
+        Frequency.
+    phi : float
+        Phase.
     """
 
     normalise = None #Amplitude convention of the cited template, not S(1,1,1) = 1

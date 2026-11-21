@@ -25,17 +25,20 @@ class ShapeTemplate:
     :math:`S(1, 1, 1) = 1`. Templates with their own normalisation convention
     set ``normalise = None`` (then :math:`N = 1`).
 
-    Subclasses read their parameters (``n_s``, ``mass``, ...) from ``self.args``,
-    which the decomposition class sets.
+    Templates are not instantiated directly: pass the class to ``Decomposer.go``,
+    together with its parameters as keywords (e.g. ``mass = 1``). They are read
+    from ``self.args``, which also holds ``n_s``.
     """
 
     normalise = 'equilateral'
 
     def raw_shape(self, k1, k2, k3):
-        """One permutation term of the shape, with its permutation weight, in the rescaled wavenumbers.
+        """One permutation term of the shape, with its permutation weight; subclasses implement it.
 
-        Subclasses implement this; the decomposition classes sum ``raw_bispectrum`` over the six
-        permutations of (k1, k2, k3).
+        Parameters
+        ----------
+        k1, k2, k3 : ndarray
+            Rescaled wavenumbers :math:`\\tilde k`.
         """
         raise NotImplementedError("A ShapeTemplate must implement raw_shape(k1, k2, k3)")
 
@@ -49,7 +52,8 @@ class ShapeTemplate:
         return 6 * float(self.raw_shape(one, one, one)[0])
 
     def raw_bispectrum(self, k1, k2, k3):
-        """One permutation term of the bispectrum: ``raw_shape`` of the rescaled k over N (k1 k2 k3)^2."""
+        """One permutation term of the bispectrum at wavenumbers ``k1, k2, k3`` (h/Mpc):
+        ``raw_shape`` of the rescaled k over :math:`N (\\tilde k_1 \\tilde k_2 \\tilde k_3)^2`."""
 
         p  = (4 - self.args['n_s'])/3
         k1 = np.power(k1, p)

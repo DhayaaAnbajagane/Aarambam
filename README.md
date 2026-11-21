@@ -79,7 +79,7 @@ You may be able to skip the `MPICC=` addition if your computing cluster already 
 * `--enable-mpi` is required: it builds the MPI-parallel FFTs (`fftw3-mpi.h`, `libfftw3_mpi`), which is what Aarambam includes and links against.
 * Keep FFTW's default double precision in this build, i.e. do NOT add `--enable-float` or `--enable-long-double`.
 * `--enable-shared` builds shared libraries; the installed Aarambam executables find them without `LD_LIBRARY_PATH`.
-* `--enable-sse2 --enable-avx --enable-avx2` build FFTW's SIMD kernels, which make the FFTs faster. FFTW checks at run time which of them the CPU can use. `--enable-avx512` can be added on CPUs that support it, but it is not always a gain: on a Xeon Gold 6248R (which lowers its clock for AVX-512 code) it made single-precision runs 1-2% slower and double-precision ones no faster.
+* `--enable-sse2 --enable-avx --enable-avx2` build FFTW's SIMD kernels (chosen at run time to match the CPU), which make the FFTs faster. `--enable-avx512` is not always a gain: on a Xeon Gold 6248R (which lowers its clock for AVX-512 code) it made single-precision runs 1-2% slower and double-precision ones no faster.
 
 Optionally, for the faster single-precision non-Gaussian stage (`NGPrecision = 'float'`, see the
 [Running faster page](https://aarambam.readthedocs.io/en/latest/performance.html)), build FFTW a second time with
@@ -92,7 +92,7 @@ make -j 8
 make install
 ```
 
-The `make -j 8` step takes a few minutes. The first run with a given grid size and number of ranks measures the FFT plans once and keeps them (see `FFTWWisdomDir` below), so later runs start straight away.
+Each `make -j 8` takes a few minutes.
 
 If you have trouble installing this, please contact Dhayaa (details below). I've tested installation at multiple computing clusters now, but there will always be edge-cases:)
 
@@ -164,31 +164,12 @@ Particle IDs are 32-bit by default (up to $2^{31}-1$ particles). Set `export Aar
 `pip install` for larger runs.
 
 Running faster: with enough memory, `ModeTables = 1`, `BinnedPNGCacheBlockSize = 64` (binned) and
-`FFTBackend = 'band'` are the fastest settings (binned at $384^3$: 10.9 s, against 21.4 s with `ModeTables = 0` and
-the default `fftw` backend). The
-[Running faster page](https://aarambam.readthedocs.io/en/latest/performance.html) lists every speed option with its
-gain and its cost; the paragraphs below summarise them. `NGPrecision = 'float'` (default `'double'`) computes the
-non-Gaussian stage in single precision: binned ~24% faster at $192^3$, the non-Gaussian term to ~1e-6 relative; it
-needs FFTW also built with `--enable-float` (see the installation docs). The binned method computes each pair of
-bins on the smallest grid on which the pair is exact (`BinnedPNGMultiGrid`, on by default): at $192^3$ 21% faster on 8
-ranks and 40% on 1 rank, with the same result to rounding.
-
-Speed vs memory: the `ModeTables` config tag (`make_config_*(..., ModeTables = 0 | 1 | 'auto')`) switches
-between per-mode tables and cached mode fields (`1`, fastest; about 3-4x faster ICs at $192^3$ than version 1.0.0) and on-the-fly
-computation (`0`, least memory, for very large grids). `'auto'` picks for you from `Nmesh`. See the
-[conventions page](https://aarambam.readthedocs.io/en/latest/conventions.html#speed-and-memory) for the
-memory cost and timings.
-
-FFT plans: the first run with a given grid size and number of ranks measures the fastest FFT plans (a few
-seconds to ~30 s at $1024^3$) and keeps them in the directory `FFTWWisdomDir` (default `'auto'`:
-`~/.cache/aarambam/`); later runs read them back and start at once. Set `FFTWWisdomDir` to a directory of your
-own to keep them elsewhere, or to `'none'` for un-measured plans (bit-for-bit reproducible across rank counts).
-
-FFT backend: `FFTBackend = 'band'` (`make_config_*(..., FFTBackend = 'band')`, default `'fftw'`) does the FFTs of the
-non-Gaussian term with the code's own band-limited slab FFT, which transforms and communicates only the sampled part
-of k-space and spreads it evenly over the ranks: 14-16% faster ICs for the basis method and 22-25% for the binned one
-at $192^3$-$384^3$ with `Nmesh = 3/2 Nsample`, the same ICs to rounding. See the
-[conventions page](https://aarambam.readthedocs.io/en/latest/conventions.html#fft-backends).
+`FFTBackend = 'band'` are the fastest settings (binned at $384^3$: 10.9 s, against 21.4 s with `ModeTables = 0` and the
+default `fftw` backend). `NGPrecision = 'float'` makes the non-Gaussian stage faster still, to ~1e-6 relative. The
+first run with a new grid size measures the fastest FFT plans and keeps them in `FFTWWisdomDir` (default
+`~/.cache/aarambam/`). See the [Running faster page](https://aarambam.readthedocs.io/en/latest/performance.html) for
+every option with its gain and cost, and the
+[conventions page](https://aarambam.readthedocs.io/en/latest/conventions.html#speed-and-memory) for what each does.
 
 ## Attribution
 

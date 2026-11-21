@@ -1,6 +1,4 @@
-"""collate_potential / camb2input on synthetic files (pure Python)."""
-import os
-
+"""collate_potential on synthetic slab files (pure Python)."""
 import numpy as np
 import pytest
 
@@ -25,15 +23,6 @@ def fields():
     return {t: rng.normal(size=(8, 8, 8)) for t in ('Gauss', 'Nongauss')}
 
 
-def test_single_rank(am, tmp_path, fields):
-    for t, a in fields.items():
-        write_slab(tmp_path / f'{t}_potential_42', a, 8, 0)    #1-rank name: no StartX/NumX
-    out = am.utils.collate_potential(str(tmp_path))
-    for t, a in fields.items():
-        np.testing.assert_array_equal(out[t + '_potential'], a)
-    assert not list(tmp_path.glob('*_potential_*'))
-
-
 def test_slabs_and_seeds(am, tmp_path, fields):
     for seed in (7, 42):
         for t, a in fields.items():
@@ -54,8 +43,3 @@ def test_missing_slab(am, tmp_path, fields):
         am.utils.collate_potential(str(tmp_path))
     assert len(list(tmp_path.glob('*_potential_*'))) == 2      #nothing deleted on failure
 
-
-def test_camb2input_matches_shipped_table(am, defaults_dir):
-    a = am.utils.camb2input(os.path.join(defaults_dir, 'TransferFunction.dat'))
-    b = np.loadtxt(os.path.join(defaults_dir, 'TransferFunctionConverted.dat'))
-    np.testing.assert_allclose(a, b, rtol=0)

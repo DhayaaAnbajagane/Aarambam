@@ -147,7 +147,18 @@ def _limit_configuration(name, edges, args, n):
 
 
 def generate_diagnostics(kernel_true, kernel_binned, edges, args):
-    """Return one compressed dictionary of kernel reconstruction diagnostics."""
+    """Exact and binned kernel on a triangle grid and along the equilateral, squeezed and folded lines.
+
+    Parameters
+    ----------
+    kernel_true, kernel_binned : callable
+        ``f(k1, k2, k3)``: the exact and the interpolated kernel.
+    edges : tuple of 3 arrays
+        Bin edges of the table.
+    args : dict
+        Options (all optional): ``Binned_diagnostic_N`` (points per line, 192), ``_rel_floor``,
+        ``_kref``, ``_triangle_order``, ``_edge_margin``, ``_squeezed_ratio``, ``_folded_epsilon``.
+    """
     n         = max(8, int(args.get('Binned_diagnostic_N', 192)))
     rel_floor = float(args.get('Binned_diagnostic_rel_floor', 1e-3))
     triangle  = _ordered_triangle_grid(edges, args, n)

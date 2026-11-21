@@ -1,4 +1,4 @@
-"""Separable interpolation tables used by the Aarambam binned IC backend."""
+"""Interpolation tables of the binned decomposition: values at the bin centres and per-bin polynomials in k3."""
 
 import itertools
 
@@ -12,7 +12,7 @@ __all__ = ['BinnedProductInterpolator', 'filter_mode', 'hybrid_input_kind', 'hyb
 
 
 def filter_mode(args):
-    """Normalize the public filter aliases into ``heaviside`` or ``hybrid``."""
+    """``'heaviside'`` or ``'hybrid'``, from ``args['Binned_filter']`` (``args``: the decomposition settings)."""
     mode = str(args.get('Binned_filter', 'hybrid_cubic_k3cubic')).lower()
 
     if mode in ['heaviside', 'top_hat']:
@@ -24,7 +24,7 @@ def filter_mode(args):
 
 
 def hybrid_input_kind(args):
-    """Return the global interpolation order used on the internal k1/k2 legs."""
+    """Interpolation across the k1, k2 bins (``'linear'`` or ``'cubic'``) set by the decomposition settings ``args``."""
     mode = str(args.get('Binned_filter', 'hybrid_cubic_k3cubic')).lower()
 
     if 'hybrid_cubic' in mode:
@@ -39,7 +39,7 @@ def hybrid_input_kind(args):
 
 
 def hybrid_output_kind(args):
-    """Return the cell-local polynomial order used on the output k3 leg."""
+    """Polynomial within a k3 bin (``'heaviside'``, ``'linear'`` or ``'cubic'``) set by the settings ``args``."""
     mode = str(args.get('Binned_filter', 'hybrid_cubic_k3cubic')).lower()
 
     if mode.endswith('_k3cubic'):
@@ -62,7 +62,15 @@ def _hybrid_output_order(args):
 
 
 class BinnedProductInterpolator:
-    """Build and evaluate C-compatible B/K/D/S product-bin tables."""
+    """Builds and evaluates the tables of B, K, denom and S.
+
+    Parameters
+    ----------
+    args : dict
+        Decomposition settings (the ``Binned_*`` options).
+    quantities : dict
+        ``{'B', 'K', 'denom', 'S'}`` to callables ``f(k1, k2, k3)``.
+    """
 
     def __init__(self, args, quantities):
         self.args       = args
@@ -75,7 +83,7 @@ class BinnedProductInterpolator:
 
     @staticmethod
     def centers(edges):
-        """Return the geometric bin centres of ``edges``."""
+        """Geometric bin centres of ``edges``."""
         return centers_from_edges(edges)
 
     def _coord_value(self, k):
@@ -102,7 +110,7 @@ class BinnedProductInterpolator:
         return out
 
     def point_values(self, k1, k2, k3):
-        """Evaluate every tabulated quantity (B, K, denom, S) at the given wavenumbers."""
+        """Every quantity evaluated at ``k1, k2, k3``."""
         return {name: np.asarray(function(k1, k2, k3), dtype=float) for name, function in self.quantities.items()}
 
     @staticmethod
@@ -175,7 +183,18 @@ class BinnedProductInterpolator:
         return output
 
     def build(self, edges, valid_center, valid_box, progress=True):
-        """Build center values and hybrid k3 coefficients for B, K, D and S."""
+        """Values at the bin centres and interpolation coefficients of every quantity.
+
+        Parameters
+        ----------
+        edges : tuple of 3 arrays
+            Bin edges of k1, k2, k3.
+        valid_center, valid_box : ndarray
+            Triangle masks (centre closes a triangle / cell contains one); used with
+            ``Binned_center_triangle_only`` and ``Binned_enforce_triangle``.
+        progress : bool, optional
+            Show a progress bar.
+        """
         edges1, edges2, edges3 = edges
         cen1                   = self.centers(edges1)
         cen2                   = self.centers(edges2)
@@ -273,7 +292,23 @@ class BinnedProductInterpolator:
         return index, weight, valid
 
     def evaluate(self, k1, k2, k3, edges, values, coefficients=None, fill_value=0.0, input_kind=None):
-        """Evaluate a generated Heaviside or hybrid table."""
+        """Interpolate a table at ``k1, k2, k3``.
+
+        Parameters
+        ----------
+        k1, k2, k3 : array_like
+            Wavenumbers.
+        edges : tuple of 3 arrays
+            Bin edges.
+        values : ndarray
+            Values at the bin centres (used for heaviside tables).
+        coefficients : ndarray, optional
+            Hybrid coefficients, shape ``(ncoef, Nk1, Nk2, Nk3)``.
+        fill_value : float, optional
+            Value outside the table.
+        input_kind : str, optional
+            Interpolation across k1, k2; default from ``args``.
+        """
         mode       = filter_mode(self.args)
         k1, k2, k3 = np.broadcast_arrays(k1, k2, k3)
         out_shape  = k1.shape

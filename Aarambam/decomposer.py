@@ -5,58 +5,38 @@ __all__ = ['Decomposer']
 
 
 class Decomposer:
-    """Unified driver for Legendre-modal and binned bispectrum decompositions.
+    """Run a bispectrum template through the Legendre or the binned decomposition.
 
-    Exactly one decomposition selector must be supplied:
-
-    * ``N_modes`` selects the Legendre/modal decomposition and additionally
-      requires ``ModeTol`` and ``MaxModeCount``.
-    * ``Binned_Nk`` selects the binned decomposition. ``Binned_filter`` chooses
-      the C-level interpolation scheme and defaults to
-      ``'hybrid_cubic_k3cubic'``.
+    Give exactly one of ``N_modes`` (Legendre) or ``Binned_Nk`` (binned).
 
     Parameters
     ----------
     n_s : float
-        Scalar spectral index used by either decomposition.
+        Scalar spectral index.
     Lbox : float
-        Side length of the simulation box in comoving units.
+        Box side in Mpc/h; sets the smallest wavenumber ``2 pi / Lbox``.
     Nmax : int
-        Maximum dimensionless wavenumber index.
+        Largest wavenumber, in units of ``2 pi / Lbox`` (use the ``Nmax`` of the 2LPT config).
     N_modes : int, optional
-        Number of Legendre/modal basis modes. Supplying this selects the modal
-        decomposition.
+        Number of 1D Legendre modes. Selects the Legendre decomposition.
     ModeTol : float, optional
-        Modal truncation tolerance. Required when ``N_modes`` is supplied.
+        Legendre only (required): stop once the residual variance is below this fraction of the template's.
     MaxModeCount : int, optional
-        Maximum number of retained modal terms. Required when ``N_modes`` is
-        supplied.
+        Legendre only (required): largest number of 3D modes kept; usually reached first.
     Binned_Nk : int, optional
-        Number of bins on each binned-kernel axis. Supplying this selects the
-        binned decomposition.
+        Number of bins per k axis. Selects the binned decomposition.
     Binned_filter : str, optional
-        Binned interpolation/filter type. The supported values are those
-        accepted by ``BasicBinnedDecompose``, including ``'heaviside'``,
-        ``'hybrid_linear_k3linear'``, ``'hybrid_cubic_k3linear'``,
-        ``'hybrid_linear_k3cubic'`` and ``'hybrid_cubic_k3cubic'``.
-    **kwargs : dict, optional
-        Model parameters and backend-specific settings forwarded to the
-        combined model/basis class.
+        Binned interpolation: ``'hybrid_cubic_k3cubic'`` (default), ``'hybrid_linear_k3linear'``,
+        ``'hybrid_cubic_k3linear'``, ``'hybrid_linear_k3cubic'`` or ``'heaviside'``.
+    **kwargs
+        Template parameters and other options of the basis class, passed on to it.
 
     Examples
     --------
-    Legendre/modal decomposition:
-
-    >>> dec = Decomposer(n_s = 0.965, Lbox = 1000.0, Nmax = 256,
-    ...                  N_modes = 50, ModeTol = 1e-6, MaxModeCount = 500)
-    >>> out = dec.go(Model = SomeBispectrumModel, Basis = BasicLegendreDecompose)
-
-    Binned decomposition:
-
-    >>> dec = Decomposer(n_s = 0.965, Lbox = 1000.0, Nmax = 256,
-    ...                  Binned_Nk = 25)
-    >>> out = dec.go(Model = SomeBispectrumModel, Basis = BasicBinnedDecompose,
-    ...              outdir = './results')
+    >>> dec = Decomposer(n_s = 0.965, Lbox = 1000.0, Nmax = 256, Binned_Nk = 20)
+    >>> out = dec.go(Am.models.Local, Am.binned.BasicBinnedDecompose, outdir = './tables')
+    >>> dec = Decomposer(n_s = 0.965, Lbox = 1000.0, Nmax = 256, N_modes = 15, ModeTol = 1e-6, MaxModeCount = 100)
+    >>> out = dec.go(Am.models.ScalarI, Am.legendre.BasicLegendreDecompose, mass = 1, outdir = './tables')
     """
 
     def __init__(self, n_s, Lbox, Nmax, N_modes = None, ModeTol = None, MaxModeCount = None, Binned_Nk = None, Binned_filter = 'hybrid_cubic_k3cubic', **kwargs):
@@ -94,8 +74,26 @@ class Decomposer:
         return 'legendre'
 
     def go(self, Model, Basis, outdir = None, **kwargs):
-        """Run the selected decomposition for a chosen model and basis; with ``outdir`` (an existing directory,
-        checked before the decomposition starts) also write its tables there."""
+        """Decompose one template.
+
+        Parameters
+        ----------
+        Model : class
+            Template class, e.g. ``Am.models.Local``.
+        Basis : class
+            ``Am.legendre.BasicLegendreDecompose`` or ``Am.binned.BasicBinnedDecompose``, matching the
+            constructor's choice.
+        outdir : str, optional
+            Existing directory to write the 2LPT tables into (checked before the decomposition starts).
+        **kwargs
+            Template parameters (e.g. ``mass``); they override the constructor's keywords.
+
+        Returns
+        -------
+        dict
+            The decomposition (``Basis.go()``), including the template and its approximation in the
+            squeezed, equilateral and folded limits (``S_original``, ``S_apprx``, ``kbin``).
+        """
         basis_kind = self._basis_kind(Basis)
         if basis_kind != self.kind:
             selector = 'Binned_Nk' if basis_kind == 'binned' else 'N_modes'

@@ -1,4 +1,4 @@
-"""C-table serialization and loading for Aarambam binned kernels."""
+"""Writing and reading the text tables of the binned decomposition (the files read by ``2LPTBinned``)."""
 
 import os
 
@@ -136,7 +136,8 @@ def _write_hybrid_text(out, directory):
 
 
 def write_outputs(out, directory, args):
-    """Always write the complete C-readable B/K/D/S table set."""
+    """Write the edge files, the value and hybrid-coefficient tables and the metadata of decomposition ``out``
+    into ``directory`` (created if needed). ``args`` are the decomposition settings, recorded in the metadata."""
     directory = os.path.abspath(directory)
     os.makedirs(directory, exist_ok=True)
 
@@ -157,7 +158,9 @@ def _load_edge(directory, axis):
 
 
 def load_outputs(directory, strict=True):
-    """Load C-readable tables written by :func:`write_outputs`."""
+    """Read the tables in ``directory`` written by :func:`write_outputs`.
+
+    With ``strict=False``, a missing file gives ``{'ok': False, ...}`` instead of an error."""
     directory = os.path.abspath(directory)
     metadata  = _parse_metadata(_metadata_path(directory))
 

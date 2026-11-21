@@ -1,17 +1,14 @@
 Installation
 ============
 
-There is currently no support for PyPI or conda, so you (unfortunately) need to install from source.
-The installation has an extra step (setting environment variables) because of the C libraries that need
-to be compiled.
-
-It is recommended to install the code from source via pip install. This can be done as
+Aarambam is not on PyPI or conda yet, so install it from source with pip. Because it compiles C
+executables, first set the environment variables of `C dependencies`_ below. Then
 
 .. code-block:: bash
 
    pip install git+https://github.com/DhayaaAnbajagane/Aarambam.git
 
-or you can clone the repo yourself first
+or, from a clone,
 
 .. code-block:: bash
 
@@ -29,9 +26,8 @@ The 2LPT (2nd order Lagrangian Perturbation Theory) executables shipped with thi
 ``MPI``, ``FFTW3`` (double precision, built with its MPI library) and ``GSL``. The Cython
 extension used by the Legendre decomposition also needs a compiler with ``OpenMP`` support.
 
-We recommend that you always point the install at your ``FFTW3`` build by setting the following
-environment variable PRIOR to installation. It is the ``--prefix`` used when building FFTW3, i.e.
-the directory that contains ``include/fftw3-mpi.h`` and ``lib/``:
+Point the install at your ``FFTW3`` build before installing: the ``--prefix`` used when building
+FFTW3, i.e. the directory that contains ``include/fftw3-mpi.h`` and ``lib/``:
 
 .. code-block:: bash
 
@@ -41,11 +37,10 @@ If it is not set, the install looks for ``fftw3-mpi.h`` under ``FFTW3_ROOT``, ``
 ``FFTW_ROOT`` and the system paths. (Version 1.0.0 used FFTW2 and ``Aarambam_FFTW2_ROOT``; that
 variable is no longer used.)
 
-The install will do its best to find the C compiler, GSL and MPI. If it does not find the right
-ones, you can explicitly specify paths with the variables below. On most clusters you will need at
-least the GSL and MPI ones (otherwise the MPI library is searched for on ``LD_LIBRARY_PATH`` /
-``LIBRARY_PATH`` and the system paths, and GSL only in ``GSL_DIR`` / ``GSL_ROOT`` and the system
-paths).
+The install looks for the C compiler, GSL and MPI itself. If it picks the wrong ones, set the paths
+below; on most clusters at least the GSL and MPI ones are needed (otherwise MPI is searched for on
+``LD_LIBRARY_PATH`` / ``LIBRARY_PATH`` and the system paths, GSL in ``GSL_DIR`` / ``GSL_ROOT`` and
+the system paths).
 
 .. code-block:: bash
 
@@ -73,8 +68,7 @@ example AVX-512 code on AMD nodes), so leave it off when login and compute nodes
 The C sources of the 2LPT executables live in ``src/lpt`` (``common/`` shared by both methods,
 ``modal/`` and ``binned/``). They are compiled into ``Aarambam/bin/2LPTBasis`` and
 ``Aarambam/bin/2LPTBinned`` and are not shipped in the wheel. ``Aarambam/bin/2LPTFFTCheck``
-(``src/lpt/check/``) checks the ``band`` FFT backend against FFTW3-MPI on the ranks it is started
-on, e.g. ``mpirun -np 2 2LPTFFTCheck 48 32`` (grid size, ``Nsample``); the tests run it.
+(``src/lpt/check/``) tests the ``band`` FFT backend (see :doc:`conventions`).
 
 Running the tests
 -----------------
@@ -91,9 +85,8 @@ rank-independence checks and refuses to start on a busy node.
 Installing FFTW3
 ----------------
 
-Most computing clusters provide FFTW3, but often without its MPI library (``libfftw3_mpi``), or
-built against a different MPI than the one you use. In either case (or if there is no FFTW3 at all)
-you can install it via the following steps:
+Clusters often provide FFTW3 without its MPI library (``libfftw3_mpi``), or built against another
+MPI than yours. In that case, or without FFTW3 at all, build it:
 
 .. code-block:: bash
 
@@ -104,8 +97,7 @@ you can install it via the following steps:
    make -j 8
    make install
 
-You may be able to skip the ``MPICC=`` addition if your computing cluster already supplied
-``mpicc`` in an easily findable way, but it must be the same ``mpicc`` (i.e. the same MPI) you
+``MPICC=`` can be left out if the right ``mpicc`` is first on ``PATH``; it must be the same MPI you
 build Aarambam with. The flags:
 
 * ``--enable-mpi`` is required: it builds the MPI-parallel FFTs (``fftw3-mpi.h``,
@@ -114,10 +106,10 @@ build Aarambam with. The flags:
   ``--enable-long-double``.
 * ``--enable-shared`` builds shared libraries; the installed Aarambam executables find them without
   ``LD_LIBRARY_PATH``.
-* ``--enable-sse2 --enable-avx --enable-avx2`` build FFTW's SIMD kernels, which make the FFTs
-  faster. FFTW checks at run time which of them the CPU can use. ``--enable-avx512`` can be added
-  on CPUs that support it, but it is not always a gain: on a Xeon Gold 6248R (which lowers its clock
-  for AVX-512 code) it made the single-precision build's runs 1-2% slower and the double one no faster.
+* ``--enable-sse2 --enable-avx --enable-avx2`` build FFTW's SIMD kernels (chosen at run time to
+  match the CPU), which make the FFTs faster. ``--enable-avx512`` is not always a gain: on a Xeon
+  Gold 6248R (which lowers its clock for AVX-512 code) it made single-precision runs 1-2% slower and
+  double-precision ones no faster.
 
 Optionally, build FFTW a second time in single precision, into the same prefix, for the
 ``NGPrecision float`` option (see :doc:`performance`). From a fresh copy of the source:
@@ -133,9 +125,7 @@ This one needs no ``--enable-mpi`` (the code does its own single-precision distr
 ``--enable-float`` builds ``libfftw3f`` next to ``libfftw3``; the Aarambam install finds it there
 and enables the option (without it, ``NGPrecision float`` stops with a message).
 
-The ``make -j 8`` step takes a few minutes. The first run with a given grid size and number of ranks
-measures the FFT plans once and keeps them (the ``FFTWWisdomDir`` tag, see :doc:`conventions`), so
-later runs start straight away.
+Each ``make -j 8`` takes a few minutes.
 
 If you have trouble installing this, please contact Dhayaa Anbajagane (dhayaacosmo at gmail dot com).
 I've tested installation at multiple computing clusters now, but there will always be edge-cases :)

@@ -6,43 +6,35 @@ __all__ = ['collate_potential', 'find_potential_files', 'camb2input']
 
 def camb2input(path):
     """
-    Simple util to convert a camb-formatted T(k) file into
-    the format expected by 2LPTIc (and therefore by Aarambam).
+    Read a CAMB transfer-function file as the (k, T(k)) table the 2LPT executables expect.
 
     Parameters
     ----------
     path : str
-        Path to the T(k) file from CAMB
+        CAMB transfer-function file (k in column 0, total matter in column 6).
 
     Returns
     -------
-    numpy array: (N, 2)
-        2D array where first column is k-values and
-        2nd column is the matter transfer function.
-
+    ndarray, shape (N, 2)
+        k and the matter transfer function. Save it with ``np.savetxt``.
     """
     return np.loadtxt(path, usecols = [0, 6])
     
 
 def collate_potential(OutputDir, seed = None, cleanup = True):
     """
-    Utility to combine the potential grid outputs from Aarambam
-    (written when ``SavePotentialField`` is set) into single
-    numpy arrays. A run on one MPI rank writes one file per field,
-    ``<field>_potential_<seed>``; a run on several ranks writes one
-    file per slab, ``<field>_potential_<seed>_StartX_<x0>_NumX_<nx>``.
+    Combine the potential files of a run (``SavePotentialField 1``) into full arrays.
+    One rank writes ``<field>_potential_<seed>``, several ranks one file per slab,
+    ``<field>_potential_<seed>_StartX_<x0>_NumX_<nx>``.
 
     Parameters
     ----------
     OutputDir : str
-        The directory that these potential files were
-        written into
+        Directory the run wrote the potentials into.
     seed : int, optional
-        Seed of the run to collate. Required only if ``OutputDir``
-        holds potential files from more than one seed.
+        Seed of the run; needed only if ``OutputDir`` holds files of several seeds.
     cleanup : bool, optional
-        If True (default), delete the per-rank files once all
-        fields have been read.
+        Delete the per-rank files once both fields were read (default True).
 
     Returns
     -------
@@ -96,10 +88,9 @@ def find_potential_files(OutputDir, seed = None):
     Parameters
     ----------
     OutputDir : str
-        The directory that the potential files were written into
+        Directory the run wrote the potentials into.
     seed : int, optional
-        Seed of the run. Required only if ``OutputDir`` holds
-        potential files from more than one seed.
+        Seed of the run; needed only if ``OutputDir`` holds files of several seeds.
 
     Returns
     -------

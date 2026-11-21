@@ -1,4 +1,4 @@
-"""Logarithmic product-bin construction for the Aarambam binned backend."""
+"""Bin edges and triangle masks of the binned decomposition."""
 
 import warnings
 
@@ -13,13 +13,13 @@ _ADAPTIVE_MIN_WEIGHT_FRACTION = 0.05
 
 
 def centers_from_edges(edges):
-    """Return geometric bin centers."""
+    """Geometric centres of the bins with edges ``edges``."""
     edges = np.asarray(edges, dtype=float)
     return np.sqrt(edges[:-1] * edges[1:])
 
 
 def bin_index(edges, x):
-    """Return clipped bin indices and an in-range mask."""
+    """Bin index of each ``x`` (clipped into range) and a mask of the ``x`` within ``[edges[0], edges[-1]]``."""
     edges = np.asarray(edges, dtype=float)
     x     = np.asarray(x)
     ind   = np.searchsorted(edges, x, side='right') - 1
@@ -30,20 +30,34 @@ def bin_index(edges, x):
 
 
 def triangle_valid(k1, k2, k3):
-    """Return whether each point satisfies all triangle inequalities."""
+    """Whether the arrays ``k1, k2, k3`` are positive and close a triangle."""
     k1, k2, k3 = np.broadcast_arrays(k1, k2, k3)
     positive   = (k1 > 0) & (k2 > 0) & (k3 > 0)
     return positive & (k1 + k2 >= k3) & (k1 + k3 >= k2) & (k2 + k3 >= k1)
 
 
 def triangle_possible(lo1, hi1, lo2, hi2, lo3, hi3):
-    """Return whether a product cell contains at least one valid triangle."""
+    """Whether the cell ``[lo1, hi1] x [lo2, hi2] x [lo3, hi3]`` contains a closed triangle."""
     positive = min(lo1, lo2, lo3) > 0
     return bool(positive and (hi1 + hi2 >= lo3) and (hi1 + hi3 >= lo2) and (hi2 + hi3 >= lo1))
 
 
 class AdaptiveProductGrid:
-    """Place all three product-grid axes using kernel roughness in log(k)."""
+    """Bin edges in log k, denser where the kernel varies most.
+
+    Parameters
+    ----------
+    target : callable
+        Kernel ``target(k1, k2, k3)``.
+    n_bins : int
+        Bins per axis.
+    kmin, kmax : float
+        Range of the edges.
+    pilot_N : int, optional
+        Points per axis of the log grid on which ``target`` is sampled.
+    logger : logging.Logger, optional
+        Where to report progress.
+    """
 
     def __init__(self, target, n_bins, kmin, kmax, pilot_N=256, logger=None):
         self.target  = target
@@ -129,7 +143,7 @@ class AdaptiveProductGrid:
         return edges
 
     def build(self):
-        """Return roughness-adaptive log-coordinate edges for k1, k2 and k3."""
+        """The edges of k1, k2 (equal) and k3."""
         pilot           = self._pilot_axis()
         k1, k2, k3      = np.meshgrid(pilot, pilot, pilot, indexing='ij')
         valid           = triangle_valid(k1, k2, k3)

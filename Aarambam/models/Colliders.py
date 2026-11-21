@@ -32,21 +32,12 @@ def _scalar_I_shape(k1, k2, k3, mu):
 
 class ScalarI(ShapeTemplate):
     """
-    Scalar-I bispectrum template from Sohn+ 2024 (https://arxiv.org/abs/2404.07203).
-    See their Equation 2.15. Corresponds to the interaction :math:`\\dot{\\phi}^2 \\sigma`.
-
-    This object must be used with the `utils.Decomposer` class. That class instance
-    should be provided with the parameters necessary to compute this model (mass, spin, etc.)
+    Scalar-I collider template, interaction :math:`\\dot\\phi^2 \\sigma` (Sohn+ 2024, arXiv:2404.07203, Eq. 2.15).
 
     Parameters
     ----------
-    - n_s : float
-        Scalar spectral index used to rescale each wavenumber by
-        :math:`k^{(4-n_s)/3}` for near scale invariance.
-    - mass : float
-        Massive-field parameter :math:`\\mu > 0` controlling both the frequency
-        of the clock signal and several non-analytic amplitudes. Here,
-        :math:`\\mu = \\sqrt{(m/H)^2 - 9/4}`.
+    mass : float
+        :math:`\\mu = \\sqrt{(m/H)^2 - 9/4} > 0`; sets the frequency of the oscillation.
     """
 
     def raw_shape(self, k1, k2, k3):
@@ -55,24 +46,14 @@ class ScalarI(ShapeTemplate):
 
 
 class ScalarII(ShapeTemplate):
-
     """
-    Scalar-II bispectrum template from Sohn+ 2024 (https://arxiv.org/abs/2404.07203).
-    See their Equation 2.20. Corresponds to a linear combinations of the interaction 
-    :math:`\\dot{\\phi}^2 \\sigma` and :math:`(\\partial{\\phi})^2 \\sigma`.
-
-    This object must be used with the `utils.Decomposer` class. That class instance
-    should be provided with the parameters necessary to compute this model (mass, spin, etc.)
+    Scalar-II collider template, a combination of :math:`\\dot\\phi^2 \\sigma` and
+    :math:`(\\partial\\phi)^2 \\sigma` (Sohn+ 2024, Eq. 2.20).
 
     Parameters
     ----------
-    - n_s : float
-        Scalar spectral index used to rescale each wavenumber by
-        :math:`k^{(4-n_s)/3}` for near scale invariance.
-    - mass : float
-        Massive-field parameter :math:`\\mu > 0` controlling both the frequency
-        of the clock signal and several non-analytic amplitudes. Here,
-        :math:`\\mu = \\sqrt{(m/H)^2 - 9/4}`.
+    mass : float
+        :math:`\\mu = \\sqrt{(m/H)^2 - 9/4} > 0`.
     """
 
     def raw_shape(self, k1, k2, k3):
@@ -121,22 +102,13 @@ class ScalarII(ShapeTemplate):
 
 
 class HeavySpinCollider(ShapeTemplate):
-        
     """
-    Heavy Spin Collider template from Sohn+ 2024 (https://arxiv.org/abs/2404.07203).
-    See their Equation 2.24. Considers the interaction between the inflaton and a
-    massive particle, :math:`m \\gg H`, with arbitrary (integer) spin.
-
-    This object must be used with the `utils.Decomposer` class. That class instance
-    should be provided with the parameters necessary to compute this model (mass, spin, etc.)
+    Heavy spinning-particle collider template, :math:`m \\gg H` (Sohn+ 2024, Eq. 2.24).
 
     Parameters
     ----------
-    - n_s : float
-        Scalar spectral index used to rescale each wavenumber by
-        :math:`k^{(4-n_s)/3}` for near scale invariance.
-    - spin : int
-        The spin of the particle. Must be an integer.
+    spin : int
+        Spin of the exchanged particle.
     """
 
     def raw_shape(self, k1, k2, k3):
@@ -154,21 +126,13 @@ class HeavySpinCollider(ShapeTemplate):
 
 
 class LowSpeedCollider(ShapeTemplate):
-    
     """
-    Low Speed Collider template from Sohn+ 2024 (https://arxiv.org/abs/2404.07203).
-    See their Equation 2.33. 
-
-    This object must be used with the `utils.Decomposer` class. That class instance
-    should be provided with the parameters necessary to compute this model (mass, spin, etc.)
+    Low-speed collider template (Sohn+ 2024, Eq. 2.33).
 
     Parameters
     ----------
-    - n_s : float
-        Scalar spectral index used to rescale each wavenumber by
-        :math:`k^{(4-n_s)/3}` for near scale invariance.
-    - alpha : float
-        A dimension factor defined as :math:`\\alpha \\equiv c_{\\rm s} m / H`.
+    alpha : float
+        :math:`\\alpha = c_s m / H`. Large alpha gives the equilateral template.
     """
 
     def raw_shape(self, k1, k2, k3):
@@ -188,24 +152,12 @@ class LowSpeedCollider(ShapeTemplate):
 
 class MultiSpeedCollider(ShapeTemplate):
     """
-    The multi speed Collider template from Sohn+ 2024 (https://arxiv.org/abs/2404.07203).
-    See their Equation 2.34. It is a variant of massless exchange between inflatons. See
-    Figure 1 of Anbajagane & Lee 2025 for an illustration of the relevant interaction.
-
-    This object must be used with the `utils.Decomposer` class. That class instance
-    should be provided with the parameters necessary to compute this model (mass, spin, etc.)
+    Multi-speed collider template, massless exchange with different sound speeds (Sohn+ 2024, Eq. 2.34).
 
     Parameters
     ----------
-    - n_s : float
-        Scalar spectral index used to rescale each wavenumber by
-        :math:`k^{(4-n_s)/3}` for near scale invariance.
-    - c1 : float
-        The sound speed of the first leg of the interaction, in units of the speed of light
-    - c2 : float
-        Same as c1 but for the second leg of the interaction.
-    - c3 : float
-        Same as c1 but for the third leg of the interaction.
+    c1, c2, c3 : float
+        Sound speeds of the three legs, in units of c.
     """
 
     def raw_shape(self, k1, k2, k3):

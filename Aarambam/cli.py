@@ -8,7 +8,8 @@ BINARIES = {'basis': '2LPTBasis', 'resbasis': '2LPTBasis', 'binned': '2LPTBinned
 
 
 def run_2lpt(method, args):
-    """Replace this process with the compiled 2LPT executable for ``method``."""
+    """Replace this process with the 2LPT executable of ``method`` (a key of ``BINARIES``), run with ``args``
+    (the config path)."""
     exe = str(files("Aarambam") / "bin" / BINARIES[method])
     if not os.path.isfile(exe):
         sys.exit(f"Aarambam: the compiled 2LPT executable {exe} was not found. It is built when Aarambam is "
@@ -17,7 +18,7 @@ def run_2lpt(method, args):
 
 
 def write_example_config(method, config_path):
-    """Write ``make_example_config_<method>()`` to ``config_path``."""
+    """Write ``make_example_config_<method>()`` (method: basis, resbasis or binned) to ``config_path``."""
     from . import config
     with open(config_path, 'w') as f:
         f.write(getattr(config, f'make_example_config_{method}')())
@@ -25,7 +26,8 @@ def write_example_config(method, config_path):
 
 
 def collate(file_dir, seed = None):
-    """Save the collated potentials of ``file_dir`` as .npy files, then remove the per-rank files."""
+    """Save the potentials in ``file_dir`` (of run ``seed``, if it holds several) as .npy files there, then remove
+    the per-rank files."""
     import numpy as np
     from .postprocess import collate_potential, find_potential_files
 
@@ -40,7 +42,7 @@ def collate(file_dir, seed = None):
 
 
 def camb2input(transfer_path):
-    """Convert a CAMB transfer function into ``<root>Converted<ext>`` (two-column ASCII)."""
+    """Convert the CAMB transfer function ``transfer_path`` (``<root><ext>``) into ``<root>Converted<ext>``."""
     import numpy as np
     from .postprocess import camb2input as convert
 
@@ -76,7 +78,7 @@ def _parser():
 
 
 def main(argv = None):
-    """Entry point of the ``aarambam`` command."""
+    """Entry point of the ``aarambam`` command; ``argv`` defaults to ``sys.argv[1:]``."""
     args = _parser().parse_args(argv)
     if args.command == '2lpt':
         run_2lpt(args.method, [args.config])

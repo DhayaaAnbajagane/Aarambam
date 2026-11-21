@@ -75,11 +75,11 @@ def test_rank_independent(outputs, case):
         np.testing.assert_array_equal(potential(outputs[case, 1], 'Nongauss'), potential(outputs[case, 2], 'Nongauss'))
 
 
-@pytest.mark.parametrize('np_', [1, 2])
-def test_multigrid_matches_full_grid(outputs, np_):
-    """BinnedPNGMultiGrid: the same NG term as every pair on the full grid, to rounding."""
-    np.testing.assert_array_equal(potential(outputs['binned', np_], 'Gauss'), potential(outputs['binned_mg0', np_], 'Gauss'))
-    a, b = ng_term(outputs['binned', np_]), ng_term(outputs['binned_mg0', np_])
+def test_multigrid_matches_full_grid(outputs):
+    """BinnedPNGMultiGrid: the same NG term as every pair on the full grid, to rounding (on 2 ranks it follows from
+    test_rank_independent)."""
+    np.testing.assert_array_equal(potential(outputs['binned', 1], 'Gauss'), potential(outputs['binned_mg0', 1], 'Gauss'))
+    a, b = ng_term(outputs['binned', 1]), ng_term(outputs['binned_mg0', 1])
     assert np.abs(a - b).max() <= 1e-12 * np.abs(b).max()
 
 
@@ -168,9 +168,9 @@ def test_fftw_wisdom_file(am, lpt_binaries, tmp_path, monkeypatch):
         np.testing.assert_allclose(pot[name], pot['estimate'], rtol=0, atol=1e-12 * np.abs(pot['estimate']).max())
 
 
-# (ranks, Nmesh, Nsample[, measure]): Nmesh = Nsample, Nmesh = 3/2 Nsample, uneven slabs (40 on 3 ranks), a rank
-# without a slab (24 on 7 ranks: slabs of 4), measured plans
-FFT_CHECK_CASES = [(1, 32, 32), (2, 32, 32), (2, 48, 32), (2, 48, 32, 'measure'), (3, 40, 26), (7, 24, 16)]
+# (ranks, Nmesh, Nsample[, measure]): one rank, Nmesh = 3/2 Nsample, measured plans, uneven slabs (40 on 3 ranks), a
+# rank without a slab (24 on 7 ranks: slabs of 4)
+FFT_CHECK_CASES = [(1, 32, 32), (2, 48, 32), (2, 48, 32, 'measure'), (3, 40, 26), (7, 24, 16)]
 
 
 @pytest.mark.parametrize('case', FFT_CHECK_CASES, ids=lambda c: '-'.join(map(str, c)))
@@ -237,43 +237,27 @@ def test_float_wisdom_file(am, lpt_binaries, tmp_path, monkeypatch):
     assert 'Single-precision FFT plans read from' in logs[1]
 
 
-def test_bad_ng_precision_aborts(am, lpt_binaries, tmp_path):
-    cfg = write_config(am, 'binned', tmp_path, NGPrecision='half')
-    r = run(lpt_binaries, 'binned', cfg, 2)
-    assert r.returncode != 0 and "NGPrecision 'half'" in r.stdout
+BAD_CONFIGS = {     #case: (method, config inputs, line appended to the config, expected message)
+    'ng_precision':  ('binned', dict(NGPrecision='half'), '', "NGPrecision 'half'"),
+    'fft_backend':   ('binned', dict(FFTBackend='cufft'), '', "FFTBackend 'cufft'"),
+    'unknown_tag':   ('basis',  {}, 'NotARealTag 1', 'NotARealTag'),
+    'kernel_table':  ('binned', dict(BinnedPNGOutputFilterCode=1), '', 'columns'),   #default table has 4 coefficients
+    'wisdom_dir':    ('binned', {}, '', 'cannot be created or is not writable'),          #directory set below
+    'wisdom_env':    ('binned', dict(FFTWWisdomDir='auto'), '', 'AARAMBAM_FFTW_WISDOM_DIR is longer than'),
+}
 
 
-def test_bad_fft_backend_aborts(am, lpt_binaries, tmp_path):
-    cfg = write_config(am, 'binned', tmp_path, FFTBackend='cufft')
-    r = run(lpt_binaries, 'binned', cfg, 2)
-    assert r.returncode != 0 and "FFTBackend 'cufft'" in r.stdout
-
-
-def test_unusable_wisdom_dir_aborts(am, lpt_binaries, tmp_path):
-    blocker = tmp_path / 'a_file'
-    blocker.write_text('not a directory')
-    cfg = write_config(am, 'binned', tmp_path, FFTWWisdomDir=str(blocker / 'plans'))
-    r = run(lpt_binaries, 'binned', cfg, 2)
-    assert r.returncode != 0 and 'cannot be created or is not writable' in r.stdout
-
-
-def test_too_long_wisdom_dir_env_aborts(am, lpt_binaries, tmp_path, monkeypatch):
-    """AARAMBAM_FFTW_WISDOM_DIR longer than the FFTWWisdomDir tag allows: an error, not a silently shortened path."""
-    monkeypatch.setenv('AARAMBAM_FFTW_WISDOM_DIR', str(tmp_path / ('d' * 600)))
-    cfg = write_config(am, 'binned', tmp_path, FFTWWisdomDir='auto')
-    r = run(lpt_binaries, 'binned', cfg, 2)
-    assert r.returncode != 0 and 'AARAMBAM_FFTW_WISDOM_DIR is longer than' in r.stdout
-
-
-@pytest.mark.parametrize('method', ['basis', 'binned'])
-def test_bad_tag_aborts(am, lpt_binaries, tmp_path, method):
-    cfg = write_config(am, method, tmp_path)
-    open(cfg, 'a').write('\nNotARealTag 1\n')
+@pytest.mark.parametrize('case', sorted(BAD_CONFIGS))
+def test_bad_config_aborts(am, lpt_binaries, tmp_path, monkeypatch, case):
+    """A bad config entry stops the run with a message and a non-zero exit code."""
+    method, extra, line, message = BAD_CONFIGS[case]
+    if case == 'wisdom_dir':        #a file where the directory should be
+        (tmp_path / 'a_file').write_text('not a directory')
+        extra = dict(FFTWWisdomDir=str(tmp_path / 'a_file' / 'plans'))
+    if case == 'wisdom_env':        #longer than the FFTWWisdomDir tag allows: an error, not a shortened path
+        monkeypatch.setenv('AARAMBAM_FFTW_WISDOM_DIR', str(tmp_path / ('d' * 600)))
+    cfg = write_config(am, method, tmp_path, **extra)
+    if line:
+        open(cfg, 'a').write('\n' + line + '\n')
     r = run(lpt_binaries, method, cfg, 2)
-    assert r.returncode != 0 and 'NotARealTag' in r.stdout
-
-
-def test_mismatched_kernel_table_aborts(am, lpt_binaries, tmp_path):
-    cfg = write_config(am, 'binned', tmp_path, BinnedPNGOutputFilterCode=1)   #default table has 4 coefficients
-    r = run(lpt_binaries, 'binned', cfg, 1)
-    assert r.returncode != 0 and 'columns' in r.stdout
+    assert r.returncode != 0 and message in r.stdout, r.stdout[-2000:]

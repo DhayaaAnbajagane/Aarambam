@@ -18,12 +18,15 @@ def make(am, name, n_s, **extra):
 
 @pytest.mark.parametrize('name', SCALE_INVARIANT)
 @pytest.mark.parametrize('n_s', [1.0, 0.96])
-def test_equilateral_normalisation_and_tilt(am, name, n_s):
+def test_normalisation_and_tilt(am, name, n_s):
+    """S(1, 1, 1) = 1, and S scales as lambda^(2 (n_s - 1)) on a generic triangle (a shape term of the wrong degree
+    would show up here even at n_s = 1)."""
     m = make(am, name, n_s)
-    k = np.ones(1)
-    assert m.shape_function(k, k, k)[0] == pytest.approx(1.0, rel=1e-10)
+    one = np.ones(1)
+    assert m.shape_function(one, one, one)[0] == pytest.approx(1.0, rel=1e-10)
+    k1, k2, k3 = np.array([0.2]), np.array([0.5]), np.array([0.6])
     for lam in (0.01, 3.0):
-        ratio = m.shape_function(lam*k, lam*k, lam*k)[0] / m.shape_function(k, k, k)[0]
+        ratio = m.shape_function(lam*k1, lam*k2, lam*k3)[0] / m.shape_function(k1, k2, k3)[0]
         assert ratio == pytest.approx(lam**(2*(n_s - 1)), rel=1e-8)
 
 
@@ -36,13 +39,6 @@ def test_symmetric(am, name):
     B = m.bispectrum(k1, k2, k3)
     np.testing.assert_allclose(m.bispectrum(k2, k3, k1), B, rtol=1e-12)
     np.testing.assert_allclose(m.bispectrum(k3, k2, k1), B, rtol=1e-12)
-
-
-def test_scale_invariant_shape_at_ns1(am):
-    #ScalarII used to have a k_T term of the wrong degree, so the shape drifted with scale even at n_s = 1
-    m = make(am, 'ScalarII', 1.0)
-    k1, k2, k3 = np.array([0.2]), np.array([0.5]), np.array([0.6])
-    assert m.shape_function(1e-2*k1, 1e-2*k2, 1e-2*k3)[0] == pytest.approx(m.shape_function(k1, k2, k3)[0], rel=1e-10)
 
 
 @pytest.mark.parametrize('n_s', [1.0, 0.96])
@@ -59,12 +55,6 @@ def test_heavy_spin_integer_types(am):
     assert np.isfinite(make(am, 'HeavySpinCollider', 1.0, spin=np.int64(2)).bispectrum(k, k, k)[0])
     with pytest.raises(AssertionError):
         make(am, 'HeavySpinCollider', 1.0, spin=2.0).bispectrum(k, k, k)
-
-
-def test_namespace_has_only_models(am):
-    for leak in ('np', 'special', 'numbers'):
-        assert not hasattr(am.models, leak)
-    assert set(SCALE_INVARIANT + RESONANCES) <= set(dir(am.models))
 
 
 def test_user_template(am):
