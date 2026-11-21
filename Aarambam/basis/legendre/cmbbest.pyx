@@ -34,9 +34,6 @@ assert GET_SIGNED_NUMPY_INT_TYPE() == np.dtype("i")
 
 
 cdef extern from "tetrapyd.h":
-    void monte_carlo_tetrapyd_weights(double *tetra_weights, int *tetra_i1, int *tetra_i2, int *tetra_i3, int tetra_npts,
-                    double *k_grid, double *k_weights, int k_npts, int n_samples)
-
     void compute_mode_bispectra_covariance(double *bispectra_covariance, 
                     double *tetra_weights, int *tetra_i1, int *tetra_i2, int *tetra_i3, int tetra_npts,
                     int *mode_p1, int *mode_p2, int *mode_p3, int n_modes,
