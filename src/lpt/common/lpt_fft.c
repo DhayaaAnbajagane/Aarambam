@@ -1,6 +1,7 @@
 /* FFT module of the 2LPT executables: grid allocation, FFTW3-MPI plans and their wisdom file, and the FFTs of the
  * non-Gaussian stage with either backend (see lpt_fft.h for the layouts and the API, band_fft.h for the band one). */
 #include <stdio.h>
+#include <limits.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
@@ -21,7 +22,6 @@ static band_fft *Band;              /* FFTBackend band (NGPrecision double); NUL
 int              NGFloat;           /* NGPrecision float */
 unsigned         Lpt_plan_flags = FFTW_ESTIMATE;   /* planner flags of the run (FFTW_MEASURE with a wisdom file) */
 static int       Wisdom_use = 0;                   /* a wisdom file is in use (all ranks) */
-static char     *Wisdom_mark = NULL, *Wisdom_markf = NULL;
 #ifndef AARAMBAM_NO_FLOAT
 static band_fftf *BandF;            /* NGPrecision float: the single-precision band FFT */
 #endif
@@ -274,6 +274,48 @@ static int lpt_wisdom_path(char *path, size_t n)
   return 1;
 }
 
+/* Read a wisdom file on rank 0 and import it on every rank, as text (no export and re-import as with FFTW's own
+ * broadcast); every rank then has the same wisdom, which the collective FFTW3-MPI planning needs. Returns whether the
+ * file was read (on all ranks). */
+static int lpt_wisdom_import_file(const char *path, int single)
+{
+  char *s   = NULL;
+  long  len = -1;
+  int   ok  = 0;
+
+  if(ThisTask == 0)
+    {
+      FILE *f = fopen(path, "rb");
+
+      if(f)
+        {
+          if(fseek(f, 0, SEEK_END) == 0 && (len = ftell(f)) >= 0 && fseek(f, 0, SEEK_SET) == 0 &&
+             (s = malloc(len + 1)) && fread(s, 1, len, f) == (size_t) len)
+            s[len] = 0;
+          else
+            len = -1;
+          fclose(f);
+        }
+    }
+  MPI_Bcast(&len, 1, MPI_LONG, 0, MPI_COMM_WORLD);
+  if(len < 0 || len > INT_MAX - 1)
+    {
+      free(s);
+      return 0;
+    }
+  if(ThisTask != 0 && !(s = malloc(len + 1)))
+    FatalError(1125);
+  MPI_Bcast(s, (int) len + 1, MPI_CHAR, 0, MPI_COMM_WORLD);
+#ifndef AARAMBAM_NO_FLOAT
+  ok = single ? fftwf_import_wisdom_from_string(s) : fftw_import_wisdom_from_string(s);
+#else
+  (void) single;
+  ok = fftw_import_wisdom_from_string(s);
+#endif
+  free(s);
+  return ok;
+}
+
 /* Rank 0: write the accumulated wisdom (merged with the file, in case another run added plans meanwhile) to a
  * temporary file and rename it over the wisdom file, so concurrent runs never see a half-written file. */
 static void lpt_save_wisdom(const char *path)
@@ -292,8 +334,8 @@ static void lpt_save_wisdom(const char *path)
 
 #ifndef AARAMBAM_NO_FLOAT
 /* Single-precision plans (NGPrecision float) are kept in their own file next to the double one,
- * <dir>/fftw3f_wisdom_<cpu>.txt. FFTW's MPI wisdom functions exist only for double, so the broadcast and the gather
- * are done here with the wisdom as a string. */
+ * <dir>/fftw3f_wisdom_<cpu>.txt. FFTW's MPI wisdom functions exist only for double, so the gather is done here with
+ * the wisdom as a string. */
 static void lpt_float_wisdom_path(char *fpath, size_t n, const char *path)
 {
   const char *tag = strstr(path, "/fftw3_wisdom_");
@@ -301,32 +343,8 @@ static void lpt_float_wisdom_path(char *fpath, size_t n, const char *path)
   snprintf(fpath, n, "%.*s/fftw3f_wisdom_%s", (int) (tag - path), path, tag + strlen("/fftw3_wisdom_"));
 }
 
-static void lpt_float_wisdom_load(const char *fpath, char **before, int *loaded)
-{
-  char *s = NULL;
-  int   len = 0;
-
-  if(ThisTask == 0)
-    {
-      *loaded = fftwf_import_wisdom_from_filename(fpath);
-      *before = fftwf_export_wisdom_to_string();
-      s       = *before;
-      len     = s ? (int) strlen(s) + 1 : 0;
-    }
-  MPI_Bcast(&len, 1, MPI_INT, 0, MPI_COMM_WORLD);
-  if(len == 0)
-    return;
-  if(ThisTask != 0)
-    s = malloc(len);
-  MPI_Bcast(s, len, MPI_CHAR, 0, MPI_COMM_WORLD);
-  if(ThisTask != 0)
-    {
-      fftwf_import_wisdom_from_string(s);
-      free(s);
-    }
-}
-
-static void lpt_float_wisdom_keep(const char *fpath, char *before, int loaded, double tplan)
+/* Some rank measured new plans: the single-precision plans of all ranks gathered on rank 0 and saved. Collective. */
+static void lpt_float_wisdom_keep(const char *fpath, double tplan)
 {
   char *mine = fftwf_export_wisdom_to_string(), *all = NULL, tmp[LPT_WISDOM_PATH_LEN + 32];
   int   len  = mine ? (int) strlen(mine) + 1 : 1, *lens = NULL, *offs = NULL, total = 0;
@@ -355,24 +373,15 @@ static void lpt_float_wisdom_keep(const char *fpath, char *before, int loaded, d
         if(lens[r] > 1)
           fftwf_import_wisdom_from_string(all + offs[r]);
 
-      char *after = fftwf_export_wisdom_to_string();
-
-      if(!before || !after || strcmp(before, after) != 0)
+      fftwf_import_wisdom_from_filename(fpath);
+      snprintf(tmp, sizeof(tmp), "%s.tmp.%ld", fpath, (long) getpid());
+      if(!fftwf_export_wisdom_to_filename(tmp) || rename(tmp, fpath) != 0)
         {
-          fftwf_import_wisdom_from_filename(fpath);
-          snprintf(tmp, sizeof(tmp), "%s.tmp.%ld", fpath, (long) getpid());
-          if(!fftwf_export_wisdom_to_filename(tmp) || rename(tmp, fpath) != 0)
-            {
-              remove(tmp);
-              printf("\nCould not write the single-precision FFT plans to %s.\n", fpath);
-            }
-          else
-            printf("\nSingle-precision FFT plans measured in %.1f s and saved to %s\n", tplan, fpath);
+          remove(tmp);
+          printf("\nCould not write the single-precision FFT plans to %s.\n", fpath);
         }
       else
-        printf("\nSingle-precision FFT plans read from %s%s\n", fpath, loaded ? "" : " (no file)");
-      free(after);
-      free(before);
+        printf("\nSingle-precision FFT plans measured in %.1f s and saved to %s\n", tplan, fpath);
       free(lens);
       free(offs);
       free(all);
@@ -549,17 +558,17 @@ static void lpt_make_plans(int band, unsigned flags)
       FatalError(1);
     }
 
-  Forward_plan = fftw_mpi_plan_dft_r2c_3d(Nmesh, Nmesh, Nmesh, plan_grid, (fftw_complex *) plan_grid,
-                                          MPI_COMM_WORLD, flags);
-  Inverse_plan = fftw_mpi_plan_dft_c2r_3d(Nmesh, Nmesh, Nmesh, (fftw_complex *) plan_grid, plan_grid,
-                                          MPI_COMM_WORLD, flags);
+  BF_PLAN_WISDOM_FIRST(Forward_plan, fftw_mpi_plan_dft_r2c_3d(Nmesh, Nmesh, Nmesh, plan_grid, (fftw_complex *) plan_grid,
+                                          MPI_COMM_WORLD, flags));
+  BF_PLAN_WISDOM_FIRST(Inverse_plan, fftw_mpi_plan_dft_c2r_3d(Nmesh, Nmesh, Nmesh, (fftw_complex *) plan_grid, plan_grid,
+                                          MPI_COMM_WORLD, flags));
   if(!band)
     {
-      Forward_plan_t = fftw_mpi_plan_dft_r2c_3d(Nmesh, Nmesh, Nmesh, plan_grid, (fftw_complex *) plan_grid,
-                                                MPI_COMM_WORLD, flags | FFTW_MPI_TRANSPOSED_OUT);
-      Transpose_plan = fftw_mpi_plan_many_transpose(Nmesh, Nmesh, 2 * nzc, FFTW_MPI_DEFAULT_BLOCK,
+      BF_PLAN_WISDOM_FIRST(Forward_plan_t, fftw_mpi_plan_dft_r2c_3d(Nmesh, Nmesh, Nmesh, plan_grid, (fftw_complex *) plan_grid,
+                                                MPI_COMM_WORLD, flags | FFTW_MPI_TRANSPOSED_OUT));
+      BF_PLAN_WISDOM_FIRST(Transpose_plan, fftw_mpi_plan_many_transpose(Nmesh, Nmesh, 2 * nzc, FFTW_MPI_DEFAULT_BLOCK,
                                                     FFTW_MPI_DEFAULT_BLOCK, plan_grid, plan_grid, MPI_COMM_WORLD,
-                                                    flags);
+                                                    flags));
     }
   if(!Forward_plan || !Inverse_plan || (!band && (!Forward_plan_t || !Transpose_plan)))
     {
@@ -575,9 +584,8 @@ static void lpt_make_plans(int band, unsigned flags)
  * NGPrecision float, the single-precision ones. */
 typedef struct
 {
-  int   use, loaded, floaded;
-  char  path[LPT_WISDOM_PATH_LEN], fpath[LPT_WISDOM_PATH_LEN + 8];
-  char *before, *fbefore;      /* rank 0: the wisdom before planning, to tell whether new plans were measured */
+  int  use, loaded, floaded;
+  char path[LPT_WISDOM_PATH_LEN], fpath[LPT_WISDOM_PATH_LEN + 8];
 }
 lpt_wisdom;
 
@@ -591,59 +599,34 @@ static void lpt_wisdom_begin(lpt_wisdom *w)
   Wisdom_use = w->use;
   if(!w->use)
     return;
-  if(ThisTask == 0)
-    {
-      w->loaded = fftw_import_wisdom_from_filename(w->path);
-      w->before = fftw_export_wisdom_to_string();
-    }
-  fftw_mpi_broadcast_wisdom(MPI_COMM_WORLD);
+  w->loaded = lpt_wisdom_import_file(w->path, 0);
 #ifndef AARAMBAM_NO_FLOAT
   if(NGFloat)
     {
       if(ThisTask == 0)
         lpt_float_wisdom_path(w->fpath, sizeof(w->fpath), w->path);
-      lpt_float_wisdom_load(w->fpath, &w->fbefore, &w->floaded);
+      w->floaded = lpt_wisdom_import_file(w->fpath, 1);
     }
 #endif
-  lpt_wisdom_snapshot();       /* this rank's plans before planning, to tell whether any rank measured new ones */
+  lpt_wisdom_snapshot();
 }
 
 /* Plans made after initialize_ffts (the multi-grid stage): lpt_wisdom_snapshot() before planning, then
  * lpt_wisdom_save_new() gathers the plans of all ranks and adds them to the wisdom files if any rank measured new ones.
- * Both collective; nothing without a wisdom file. */
+ * Both collective; nothing without a wisdom file. A plan counts as new when it was not in the wisdom
+ * (BF_PLAN_WISDOM_FIRST), so no wisdom is exported to find out. */
 void lpt_wisdom_snapshot(void)
 {
-  if(!Wisdom_use)
-    return;
-  free(Wisdom_mark);
-  Wisdom_mark = fftw_export_wisdom_to_string();
-#ifndef AARAMBAM_NO_FLOAT
-  free(Wisdom_markf);
-  Wisdom_markf = NGFloat ? fftwf_export_wisdom_to_string() : NULL;
-#endif
+  Bf_new_plans = 0;
 }
 
-/* Whether some rank has plans it did not have at lpt_wisdom_snapshot() (collective); drops the snapshot. */
+/* Whether some rank measured a plan since lpt_wisdom_snapshot() (collective). */
 static int lpt_wisdom_changed(void)
 {
-  char *now;
-  int   changed = 0, any = 0;
+  int any = 0;
 
-  now      = fftw_export_wisdom_to_string();
-  changed |= !Wisdom_mark || !now || strcmp(Wisdom_mark, now) != 0;
-  free(now);
-#ifndef AARAMBAM_NO_FLOAT
-  if(NGFloat)
-    {
-      now      = fftwf_export_wisdom_to_string();
-      changed |= !Wisdom_markf || !now || strcmp(Wisdom_markf, now) != 0;
-      free(now);
-    }
-#endif
-  MPI_Allreduce(&changed, &any, 1, MPI_INT, MPI_LOR, MPI_COMM_WORLD);
-  free(Wisdom_mark);
-  free(Wisdom_markf);
-  Wisdom_mark = Wisdom_markf = NULL;
+  MPI_Allreduce(&Bf_new_plans, &any, 1, MPI_INT, MPI_LOR, MPI_COMM_WORLD);
+  Bf_new_plans = 0;
   return any;
 }
 
@@ -668,7 +651,7 @@ void lpt_wisdom_save_new(const char *what)
           char fpath[LPT_WISDOM_PATH_LEN];
           if(ThisTask == 0)
             lpt_float_wisdom_path(fpath, sizeof(fpath), path);
-          lpt_float_wisdom_keep(fpath, NULL, 1, 0.0);
+          lpt_float_wisdom_keep(fpath, 0.0);
         }
 #endif
     }
@@ -689,30 +672,18 @@ static void lpt_wisdom_end(lpt_wisdom *w, double tplan)
           if(NGFloat)
             printf("\nSingle-precision FFT plans read from %s%s\n", w->fpath, w->floaded ? "" : " (no file)");
 #endif
-          free(w->before);
-          free(w->fbefore);
         }
       return;
     }
   fftw_mpi_gather_wisdom(MPI_COMM_WORLD);
   if(ThisTask == 0)
     {
-      char *after    = fftw_export_wisdom_to_string();
-      int   measured = !w->before || !after || strcmp(w->before, after) != 0;
-
-      if(measured)
-        {
-          lpt_save_wisdom(w->path);
-          printf("\nFFT plans measured in %.1f s and saved to %s\n", tplan, w->path);
-        }
-      else
-        printf("\nFFT plans read from %s%s\n", w->path, w->loaded ? "" : " (no file)");
-      free(w->before);
-      free(after);
+      lpt_save_wisdom(w->path);
+      printf("\nFFT plans measured in %.1f s and saved to %s\n", tplan, w->path);
     }
 #ifndef AARAMBAM_NO_FLOAT
   if(NGFloat)
-    lpt_float_wisdom_keep(w->fpath, w->fbefore, w->floaded, tplan);
+    lpt_float_wisdom_keep(w->fpath, tplan);
 #endif
 }
 

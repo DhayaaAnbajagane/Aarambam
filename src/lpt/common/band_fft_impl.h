@@ -170,10 +170,10 @@ BF_T *BF(create)(int N, int kz_end, const int *row_in_band, int nx, int x0, MPI_
           BF_X(iodim) ty    = {N, b->nzc, b->nzc};
           BF_X(iodim) hy[2] = {{nx, N_nzc, N_nzc}, {b->nkz, 1, 1}};
 
-          b->pz_f = BF_X(plan_many_dft_r2c)(1, n, nx * N, f, NULL, 1, 2 * b->nzc, c, NULL, 1, b->nzc, flags);
-          b->pz_b = BF_X(plan_many_dft_c2r)(1, n, nx * N, c, NULL, 1, b->nzc, f, NULL, 1, 2 * b->nzc, flags);
-          b->py_f = BF_X(plan_guru_dft)(1, &ty, 2, hy, c, c, FFTW_FORWARD, flags);
-          b->py_b = BF_X(plan_guru_dft)(1, &ty, 2, hy, c, c, FFTW_BACKWARD, flags);
+          BF_PLAN_WISDOM_FIRST(b->pz_f, BF_X(plan_many_dft_r2c)(1, n, nx * N, f, NULL, 1, 2 * b->nzc, c, NULL, 1, b->nzc, flags));
+          BF_PLAN_WISDOM_FIRST(b->pz_b, BF_X(plan_many_dft_c2r)(1, n, nx * N, c, NULL, 1, b->nzc, f, NULL, 1, 2 * b->nzc, flags));
+          BF_PLAN_WISDOM_FIRST(b->py_f, BF_X(plan_guru_dft)(1, &ty, 2, hy, c, c, FFTW_FORWARD, flags));
+          BF_PLAN_WISDOM_FIRST(b->py_b, BF_X(plan_guru_dft)(1, &ty, 2, hy, c, c, FFTW_BACKWARD, flags));
           ok      = ok && b->pz_f && b->pz_b && b->py_f && b->py_b;
         }
       if(b->ny > 0)
@@ -181,8 +181,8 @@ BF_T *BF(create)(int N, int kz_end, const int *row_in_band, int nx, int x0, MPI_
           BF_X(iodim) tx = {N, row, row};
           BF_X(iodim) hx = {row, 1, 1};
 
-          b->px_f = BF_X(plan_guru_dft)(1, &tx, 1, &hx, c, c, FFTW_FORWARD, flags);
-          b->px_b = BF_X(plan_guru_dft)(1, &tx, 1, &hx, c, c, FFTW_BACKWARD, flags);
+          BF_PLAN_WISDOM_FIRST(b->px_f, BF_X(plan_guru_dft)(1, &tx, 1, &hx, c, c, FFTW_FORWARD, flags));
+          BF_PLAN_WISDOM_FIRST(b->px_b, BF_X(plan_guru_dft)(1, &tx, 1, &hx, c, c, FFTW_BACKWARD, flags));
           ok      = ok && b->px_f && b->px_b;
         }
       BF_X(free)(c);

@@ -28,6 +28,30 @@
 #include <mpi.h>
 #include <fftw3.h>
 
+/* Planner calls with a wisdom file: the plan is first looked up in the wisdom alone (FFTW_WISDOM_ONLY); only on a
+ * miss is it planned with the given flags, and Bf_new_plans is set, so the caller knows whether the wisdom file needs
+ * writing without exporting the wisdom to compare it. dst = call, where call passes its planner flags as the
+ * variable `flags`. With FFTW_ESTIMATE (no wisdom file) the call is made once, as is. */
+extern int Bf_new_plans;
+#define BF_PLAN_WISDOM_FIRST(dst, call)                                                                        \
+  do                                                                                                            \
+    {                                                                                                           \
+      const unsigned bf_flags0_ = (unsigned) (flags);                                                           \
+      (dst) = NULL;                                                                                             \
+      if(bf_flags0_ != FFTW_ESTIMATE)                                                                           \
+        {                                                                                                       \
+          const unsigned flags = bf_flags0_ | FFTW_WISDOM_ONLY;                                                 \
+          (dst) = (call);                                                                                       \
+        }                                                                                                       \
+      if(!(dst))                                                                                                \
+        {                                                                                                       \
+          if(bf_flags0_ != FFTW_ESTIMATE)                                                                       \
+            Bf_new_plans = 1;                                                                                   \
+          (dst) = (call);                                                                                       \
+        }                                                                                                       \
+    }                                                                                                           \
+  while(0)
+
 typedef struct band_fft band_fft;
 
 /* nx, x0: this rank's slab. flags: FFTW planner flags of the serial transforms (FFTW_ESTIMATE, FFTW_MEASURE ...).

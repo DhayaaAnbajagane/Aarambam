@@ -21,9 +21,11 @@ static void MG(mg_plan_pass)(MG(MgPass) *p, int L, int K, MGC *C, int sign, unsi
   MG_IODIM h0[2] = {{K + 1, LZ, LZ}, {K + 1, 1, 1}}, h1[2] = {{K, LZ, LZ}, {K + 1, 1, 1}};
   MG_IODIM hy[2] = {{L, L * LZ, L * LZ}, {K + 1, 1, 1}};
 
-  p->x0   = MG_GURU_DFT(1, &dx, 2, h0, C, C, sign, flags);
-  p->x1   = K > 0 ? MG_GURU_DFT(1, &dx, 2, h1, C + (L - K) * LZ, C + (L - K) * LZ, sign, flags) : NULL;
-  p->y    = MG_GURU_DFT(1, &dy, 2, hy, C, C, sign, flags);
+  BF_PLAN_WISDOM_FIRST(p->x0, MG_GURU_DFT(1, &dx, 2, h0, C, C, sign, flags));
+  p->x1 = NULL;
+  if(K > 0)
+    BF_PLAN_WISDOM_FIRST(p->x1, MG_GURU_DFT(1, &dx, 2, h1, C + (L - K) * LZ, C + (L - K) * LZ, sign, flags));
+  BF_PLAN_WISDOM_FIRST(p->y, MG_GURU_DFT(1, &dy, 2, hy, C, C, sign, flags));
   p->made = 1;
   if(!p->x0 || !p->y || (K > 0 && !p->x1))
     FatalError(9401);
@@ -62,8 +64,9 @@ static void MG(mg_small_level)(MgCtx *X, const MgPair *P, int p0, int p1, unsign
   MGR        *R   = MG_MALLOC(sizeof(MGR) * L3);
   MGC        *C   = MG_MALLOC(sizeof(MGC) * L * L * LZ);
   MG_IODIM    dz  = {L, 1, 1}, hc = {(ptrdiff_t) L * L, LZ, L}, hr = {(ptrdiff_t) L * L, L, LZ};
-  MGPLAN      pzi = MG_GURU_C2R(1, &dz, 1, &hc, C, R, flags);     /* z lines, all (x, y) */
-  MGPLAN      pzf = MG_GURU_R2C(1, &dz, 1, &hr, R, C, flags);
+  MGPLAN      pzi, pzf;
+  BF_PLAN_WISDOM_FIRST(pzi, MG_GURU_C2R(1, &dz, 1, &hc, C, R, flags));     /* z lines, all (x, y) */
+  BF_PLAN_WISDOM_FIRST(pzf, MG_GURU_R2C(1, &dz, 1, &hr, R, C, flags));
   MG(MgPass) *bw  = calloc(KB + 1, sizeof(MG(MgPass))), *fw = calloc(KB + 1, sizeof(MG(MgPass)));
   MGR       **F   = calloc(n, sizeof(MGR *));
   int        *pos = malloc(sizeof(int) * (X->nm > 0 ? X->nm : 1));          /* band mode m on the L grid */

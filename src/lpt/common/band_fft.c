@@ -13,6 +13,8 @@
 #include <string.h>
 #include "band_fft.h"
 
+int Bf_new_plans = 0;   /* see BF_PLAN_WISDOM_FIRST */
+
 /* double: band_fft_*, FFTW's fftw_* */
 #define BF_T      band_fft
 #define BF(n)     band_fft_##n
