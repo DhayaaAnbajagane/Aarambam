@@ -45,39 +45,15 @@ void print_setup(void)
 }
 
 
-/* -------------------------------------------------------------------------
- * Binned PNG hybrid-kernel support.
+/* The binned kernel (FileWithBinnedKernelValues, written by Aarambam.basis.binned) is
  *
- * The hybrid table written by Decomposer(..., Binned_Nk = ...) with a
- * 'hybrid_*' Binned_filter (Aarambam.basis.binned) represents the quadratic kernel
- * as
+ *   K(k1,k2,k3) = sum_{a,b,c} psi_a(k1) psi_b(k2) H_c(k3) [K0_abc + K1_abc u3 + K2_abc u3^2 + K3_abc u3^3],
  *
- *   K(k1,k2,k3) = sum_{a,b,c} psi_a(k1) psi_b(k2) H_c(k3)
- *                  [K0_abc + K1_abc u3 + K2_abc u3^2 + K3_abc u3^3],
- *
- * where k1 and k2 are the two internal convolution legs, and k3=|k| is the
- * final/output mode.  This is different from the older cell-local polynomial
- * convention where k1 was treated as the output leg.  The expensive FFT work
- * is therefore one convolution for every (a,b) pair.  The k3 polynomial is
- * applied after the convolution, mode by mode.
- *
- * The parameter file should point FileWithBinnedKernelValues at that
- * hybrid text table, BinnedKernel_hybrid_values.txt.
- *
- * BinnedPNGFilter controls the global input-leg basis psi_a,psi_b:
- *   1 = top-hat / Heaviside on k1,k2
- *   2 = linear global interpolation on k1,k2 bin-center nodes
- *   3 = cubic  global interpolation on k1,k2 bin-center nodes
- *
- * BinnedPNGOutputFilter controls the cell-local output model along k3:
- *   1 = K0
- *   2 = K0 + K1 u3
- *   3 = K0 + K1 u3 + K2 u3^2 + K3 u3^3
- *
- * BinnedPNGCoordinate controls both the bin centers and interpolation variable:
- *   1 = k, 2 = log(k).  Use 2: the Python side only supports
- *       Binned_linear_coordinate = 'log', and make_config_binned always writes 2.
- * ------------------------------------------------------------------------- */
+ * with k1, k2 the internal legs, k3 = |k| the output mode, H_c the indicator of k3 bin c and u3 the coordinate
+ * within it. Each (a,b) pair costs one convolution; the k3 polynomial is applied mode by mode afterwards.
+ *   BinnedPNGFilter (psi_a, psi_b):  1 top-hat, 2 linear, 3 cubic interpolation between the bin centres
+ *   BinnedPNGOutputFilter (in u3):   1 K0, 2 up to K1 u3, 3 up to K3 u3^3
+ *   BinnedPNGCoordinate:             1 k, 2 log k (the Python side writes 2, the only one it supports) */
 
 #define BPNG_FILTER_TOPHAT    1
 #define BPNG_FILTER_LINEAR    2
@@ -222,19 +198,12 @@ static void bpng_read_kernel_coefficients_root(void)
       FatalError(9103);
     }
 
-  /* hybrid_values.txt columns are
-   *   i j l k1_center k2_center k3_center
-   *   B[0:ncoef] K[0:ncoef] D[0:ncoef] S[0:ncoef]
-   *   valid_center valid_box
-   * so the K block starts at column 6+ncoef.
-   * For ncoef=1 this is also compatible with the older values.txt layout,
-   * where the K value is column 7.
-   */
+  /* Columns: i j l k1_center k2_center k3_center, B[ncoef] K[ncoef] D[ncoef] S[ncoef], valid_center valid_box;
+   * the K block starts at column 6 + ncoef. */
   nmin = 8 + 4 * BPNG.coeff_count;
 
-  /* Every data row must have exactly the column count implied by BinnedPNGOutputFilter, and every cell must
-   * appear exactly once. Rows used to be skipped silently, so a table written for a different filter gave
-   * all-zero (Gaussian) or misread kernels with a successful exit. */
+  /* Every row must have the column count implied by BinnedPNGOutputFilter and every cell must appear once, so a
+   * table written for another filter is an error, not a wrong kernel. */
   seen = (char *) calloc(nc, 1);
   if(!seen)
     FatalError(9112);

@@ -115,9 +115,8 @@ class Basis:
         print(f"(Finished {(dt.now() - start).total_seconds()}s)\n")
 
     def legendre_basis(self):
-        """Legendre polynomials + one 1/k mode which is orthogonalised. The orthogonalisation coefficients
-        are fixed for each basis set, regardless of the grid specifications.
-        """
+        """The 1D modes: k^(2 + (4 - n_s)/3 (p - 3)) for p <= 3, and P_{p-1}(kbar) minus its value at k = 0 for
+        p >= 4, with kbar = k^((4 - n_s)/3) mapped linearly onto [-1, 1] over [k_min, k_max]."""
 
         n_s = self.parameter_n_scalar
         k_max = self.mode_k_max
@@ -125,19 +124,15 @@ class Basis:
         p_max = self.mode_p_max
         
         scale = (4 - n_s)/3
-        
-        # print("DEBUG: NORMALIZING SO P(k_mid) = 1 IN ALL CASES.")
 
         def basis_function(k):
             # Rescale k to lie in [-1, 1]
             fact = 2 / ( np.power(k_max, scale) -  np.power(k_min, scale) )
             k_bar = -1 + fact * ( np.power(k, scale) -  np.power(k_min, scale) )
-            k_mid = np.sqrt(k_max * k_min)
-            k_mid_b  = -1 + fact * ( np.power(k_mid, scale) -  np.power(k_min, scale) )
             mode_evals = np.zeros((p_max, len(k)))
 
 
-            # Modes number 0-3 are monomials, and 3 to p_max are Legendre polynomials
+            # Modes 0-3 are monomials, modes p >= 4 the Legendre polynomials P_{p-1}
             for p in range(0, p_max):
             
                 if p <= 3:

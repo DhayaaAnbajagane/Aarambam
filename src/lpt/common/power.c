@@ -172,7 +172,7 @@ int compare_transfer_logk(const void *a, const void *b)
 
 void initialize_transferfunction(void)
 {
-  /* Transfer function is meant to be normalizet to 1 at k=0
+  /* Transfer function is meant to be normalized to 1 at k=0
    * No multiple Tf implemented as in power spectrum multiple species
    */
   if(WhichTransfer == 2)
@@ -243,9 +243,8 @@ double PowerSpec(double k)
 {
   double power, alpha, Tf;
 
-  /* WhichSpectrum: 0 = power law k^ns times the tabulated transfer function;
-   * 1/2 = the same times (1 + A_res cos(w_res k + phi_res)) / (1 + A_res cos(w_res ln k + phi_res)).
-   * Cases 1/2 keep the operation order of the former ResBasis code. */
+  /* WhichSpectrum: 0 = power law k^ns times the tabulated transfer function squared; 1 = the same times
+   * (1 + A_res cos(w_res k + phi_res)); 2 = the same times (1 + A_res cos(w_res ln k + phi_res)). */
   switch (WhichSpectrum)
     {
     case 0:
@@ -295,7 +294,7 @@ double PowerSpec(double k)
 
 double PowerSpec_DM_2ndSpecies(double k)
 {
-  /* at the moment, we simply call the Eistenstein & Hu spectrum
+  /* at the moment, we simply call the Eisenstein & Hu spectrum
    * for the second DM species, but this could be replaced with
    * something more physical, say for neutrinos
    */

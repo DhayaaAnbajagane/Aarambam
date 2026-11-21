@@ -700,12 +700,10 @@ static void lpt_wisdom_end(lpt_wisdom *w, double tplan)
 #endif
 }
 
-/* FFTW3-MPI plans of the in-place Nmesh^3 transforms (slab-decomposed in x), the slab sizes, the FFTs of the
- * non-Gaussian stage (FFTBackend fftw: FFTW3-MPI's transposed transform and a transpose; band: band_fft.c;
- * NGPrecision float: band_fft.c in single precision), the band layout and the grid size. With a wisdom file
- * (FFTWWisdomDir, default "auto") the plans are measured (FFTW_MEASURE) once per grid size, rank count and CPU model
- * and kept in the file; later runs read them back and plan instantly. With FFTWWisdomDir none they are
- * FFTW_ESTIMATE plans (no measuring, no file). */
+/* FFTW3-MPI plans of the in-place Nmesh^3 transforms (x-slabs), the slab sizes, the FFTs of the non-Gaussian stage
+ * (FFTBackend fftw: FFTW3-MPI's transposed transform; band, or NGPrecision float: band_fft.c), the band layout and
+ * the grid size. Plans are measured once and kept in the wisdom file (see lpt_wisdom_path), or FFTW_ESTIMATE
+ * without one. */
 void initialize_ffts(void)
 {
   const int  band = lpt_fft_options();

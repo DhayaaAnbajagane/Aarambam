@@ -5,8 +5,9 @@ from . import cmbbest as best
 
 class BasicLegendreDecompose:
     """
-    Legendre (modal) decomposition: expands a template's shape in separable products of Legendre
-    polynomials of the rescaled wavenumbers, with the modified CMB-BEST code, for ``2LPTBasis``.
+    Legendre (modal) decomposition: expands a template's shape in separable products of 1D modes (power
+    laws and Legendre polynomials of the rescaled wavenumbers), with the modified CMB-BEST code, for
+    ``2LPTBasis``.
 
     Combined with a template by ``Decomposer.go``. The 3D modes are picked one at a time (orthogonal
     matching pursuit) and the coefficients are refitted after each pick.
@@ -14,7 +15,7 @@ class BasicLegendreDecompose:
     Parameters
     ----------
     N_modes : int
-        Number of 1D modes (Legendre orders 0 to ``N_modes - 1``).
+        Number of 1D modes: 4 power laws, then Legendre polynomials.
     n_s : float
         Scalar spectral index.
     Lbox : float
@@ -87,7 +88,6 @@ class BasicLegendreDecompose:
         
         model = [best.Model(shape_type = "custom", shape_name = "TMP", shape_function = self.shape_function)]
         
-        # alpha, shape_cov, converg, converg_MSE = basis.basis_expansion(model, rtol = 1e-16, Niter = 1e5, bad_modes = msk)
         res   = basis.basis_expansion(model, rtol = 1e-10, Niter = 1e3, bad_modes = msk, RR_tol = self.args['ModeTol'],
                                       max_modes = self.args['MaxModeCount'])
         alpha, shape_cov, converg, converg_MSE = res
@@ -149,17 +149,13 @@ class BasicLegendreDecompose:
         
         x0 = np.zeros([self.args['N_modes'], 2])
         
-        # Modes number 0-3 are monomials, and 3 to p_max are Legendre polynomials
+        #Row p: P_p at kbar(k = 0), as subtracted from the Legendre modes in cmbbest's legendre_basis
         for p in range(self.args['N_modes']):
-
-            #Just repeats exactly what is done within CMB-BEST here
             kbar_zp  = -1 - 2*k_min_ns/(k_max_ns - k_min_ns)
             coef     = special.eval_legendre(p, kbar_zp)
             x0[p, 0] = coef
 
-        #This is an extra column we kept in case we wanted to null
-        #the x1 (and not just x0) term. We do not use it anywhere.
-        #So just set it to 0.
+        #Unused column (would null the x1 term as well); kept for the file format
         x0[:, 1] = 0 
             
         output = {'AiTable' : np.vstack([range(self.args['N_modes']), x0.T]).T}

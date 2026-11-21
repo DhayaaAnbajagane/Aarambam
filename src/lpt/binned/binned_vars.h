@@ -2,7 +2,6 @@
 #define AARAMBAM_BINNED_VARS_H
 
 /* Binned PNG kernel table (parameters defined in params_binned.c).
- * The parameter file gives explicit file paths rather than a prefix.
  * BinnedPNGFilter: 1=heaviside/top-hat, 2=linear, 3=cubic.
  * BinnedPNGCoordinate: 1=k, 2=log(k).
  * The internal legs k1 and k2 share the k1 edges; k3 (the output leg) has its own.

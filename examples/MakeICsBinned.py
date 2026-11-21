@@ -34,7 +34,6 @@ if __name__ == '__main__':
     print("===================================\n\n")
 
     #Setup the binned decomposition with some default values
-    #  N_modes: sets the highest order the modes go to
     #  n_s: spectral index. Used to account for mild breaking of scale invariance
     #  Lbox: Sim box in Mpc/h
     #  Nmax: The maximum wavenumber (in units of kF = 2*pi/Lbox) the decomposition goes up to.

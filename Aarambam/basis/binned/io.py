@@ -184,7 +184,7 @@ def load_outputs(directory, strict=True):
     table = table[None, :] if table.ndim == 1 else table
 
     if table.shape[1] != 12:
-        raise ValueError(f'Expected 12 legacy columns in {values_path!r}; found {table.shape[1]}.')
+        raise ValueError(f'Expected 12 columns in {values_path!r}; found {table.shape[1]}.')
 
     auxiliary = {
         'B':     table[:, 6].reshape(shape),

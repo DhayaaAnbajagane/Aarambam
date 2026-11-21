@@ -69,7 +69,7 @@ _BINNED_TABLES = ("FileWithBinnedK1Edges               %(BinnedK1EdgesPath)s    
                   "FileWithBinnedKernelValues          %(BinnedKernelValuesPath)s\n"
                   "BinnedPNGFilter                     %(BinnedPNGFilterCode)d         #1,2,3 for top-hat/linear/cubic\n"
                   "BinnedPNGOutputFilter               %(BinnedPNGOutputFilterCode)d   #1,2,3 for constant/linear/cubic\n"
-                  "BinnedPNGCoordinate                 2                               #1,2   for k/log(k). WE ONLY IMPLEMENT LOG(k) FOR NOW\n"
+                  "BinnedPNGCoordinate                 2                               #1,2   for k/log(k); only 2 is supported\n"
                   "BinnedPNGCacheBlockSize             %(BinnedPNGCacheBlockSize)d #Filtered fields kept in memory per block: fewer FFTs, ~that many extra grids\n"
                   "BinnedPNGMultiGrid                  %(BinnedPNGMultiGrid)d         #1: each bin pair on its smallest alias-free grid (same result, faster)")
 

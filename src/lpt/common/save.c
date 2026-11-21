@@ -66,10 +66,8 @@ static void phi_write_slab(const char *name, int total_size, const lpt_real *buf
   free(row);
 }
 
-/* Dump the real-space potential (one file per slab when NTaskWithN > 1). Each rank writes its own slab file
- * in parallel, so no slab is sent through MPI (the former task-0 writer sent each slab as one message with
- * an int count). The header keeps task 0's TotalSizePlusAdditional, broadcast, so the file bytes are those of
- * the former writer. A single-file dump (NTaskWithN <= 1) is still gathered and written by task 0. */
+/* Write the real-space potential: with NTaskWithN > 1 each rank writes its own slab file; otherwise task 0 writes
+ * one file. The header's total size is task 0's TotalSizePlusAdditional. */
 void write_phi(lpt_real *pot, int isNonGaus)
 {
   char buf_will[1100];

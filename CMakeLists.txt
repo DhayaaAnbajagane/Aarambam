@@ -12,10 +12,10 @@ endif()
 
 project(Aarambam C)
 
-# --- Match Makefile flags: -O3 -Wall and GNU extensions (like drand48, M_PI) ---
+# --- Flags: -O3 -Wall and GNU extensions (drand48, M_PI) ---
 set(CMAKE_C_STANDARD 99)
 set(CMAKE_C_STANDARD_REQUIRED ON)
-set(CMAKE_C_EXTENSIONS ON)           # => gnu99, like GCC default in 2LPTPNG
+set(CMAKE_C_EXTENSIONS ON)           # gnu99
 add_compile_options(-O3 -Wall -g)
 
 # Optional: compile for the CPU of the build machine (-march=native: AVX2 / AVX-512 and fused multiply-add).
@@ -191,7 +191,7 @@ function(aarambam_lpt_executable name method_dir)
   install(TARGETS ${name} RUNTIME DESTINATION Aarambam/bin)
 endfunction()
 
-# Modal (Legendre basis) method; the former ResBasis variant is this executable with WhichSpectrum 1/2
+# Modal (Legendre basis) method; ResBasis is this executable with WhichSpectrum 1/2
 aarambam_lpt_executable(2LPTBasis ${LPT_DIR}/modal
   ${LPT_DIR}/modal/main_modal.c ${LPT_DIR}/modal/params_modal.c)
 aarambam_lpt_executable(2LPTBinned ${LPT_DIR}/binned
