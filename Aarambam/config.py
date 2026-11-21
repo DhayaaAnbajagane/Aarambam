@@ -170,7 +170,7 @@ def make_config_basis(Nmesh, Nsample, Nmax, Lbox, FileBase, OutputDir, GlassFile
         Ntot =  Nsample^3, where Ntot is the total number of particles
     Nmax : int
         Maximum wavenumber index or mode cutoff used in the modal expansion. In units of
-        the fundamental frequency of the box. Must be >= Nsample (the C code asserts this);
+        the fundamental frequency of the box. Must be >= Nsample (the C code stops otherwise);
         normally set it equal to Nsample.
     Lbox : float
         Side length of the simulation box in comoving units (e.g. Mpc/h).
@@ -292,7 +292,7 @@ def make_config_resbasis(Nmesh, Nsample, Nmax, Lbox, FileBase, OutputDir, GlassF
         Ntot =  Nsample^3, where Ntot is the total number of particles
     Nmax : int
         Maximum wavenumber index or mode cutoff used in the modal expansion. In units of
-        the fundamental frequency of the box. Must be >= Nsample (the C code asserts this);
+        the fundamental frequency of the box. Must be >= Nsample (the C code stops otherwise);
         normally set it equal to Nsample.
     Lbox : float
         Side length of the simulation box in comoving units (e.g. Mpc/h).
@@ -405,7 +405,7 @@ def make_config_binned(Nmesh, Nsample, Nmax, Lbox, FileBase, OutputDir, GlassFil
         Nyquist wavenumber is ``2*pi/Lbox * Nsample/2``.
     Nmax : int
         Maximum dimensionless wavenumber index used by the generator. Must be
-        >= ``Nsample`` (the C code asserts this); normally set equal to ``Nsample``.
+        >= ``Nsample`` (the C code stops otherwise); normally set equal to ``Nsample``.
     Lbox : float
         Side length of the simulation box in comoving Mpc/h.
     FileBase : str
@@ -473,6 +473,9 @@ def make_config_binned(Nmesh, Nsample, Nmax, Lbox, FileBase, OutputDir, GlassFil
         FFTs of the non-Gaussian term; see ``make_config_basis``.
     NGPrecision : {'double', 'float'}, optional
         Precision of the non-Gaussian stage; see ``make_config_basis``.
+    BinnedPNGMultiGrid : bool or int, optional
+        ``1`` (default): each bin pair is computed on the smallest grid free of aliases for the output modes,
+        which gives the same non-Gaussian term (to ~1e-14) faster. ``0``: every pair on the ``Nmesh`` grid.
 
     Returns
     -------

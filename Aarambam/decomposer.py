@@ -100,6 +100,9 @@ class Decomposer:
             selector = 'Binned_Nk' if basis_kind == 'binned' else 'N_modes'
             raise ValueError(f'{Basis.__name__} is a {basis_kind} basis; initialize Decomposer with {selector}.')
 
+        if outdir is not None and not os.path.isdir(outdir):     #before the (possibly long) decomposition
+            raise FileNotFoundError(f'Output directory {outdir} does not exist')
+
         inpars = self.args.copy()
         inpars.update(**kwargs)
 
@@ -108,7 +111,6 @@ class Decomposer:
         result = instan.go()
 
         if outdir is not None:
-            assert os.path.exists(outdir), f'Path {outdir} does not exist'
             instan.finalize(result, directory = outdir)
 
         return result

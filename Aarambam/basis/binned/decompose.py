@@ -134,13 +134,12 @@ class BasicBinnedDecompose:
         if int(self.args['Binned_adaptive_pilot_N']) < 4:
             raise ValueError('Binned_adaptive_pilot_N must be at least 4.')
 
-        filter_mode(self.args)
-        hybrid_input_kind(self.args) if filter_mode(self.args) == 'hybrid' else None
-        hybrid_output_kind(self.args) if filter_mode(self.args) == 'hybrid' else None
+        if filter_mode(self.args) == 'hybrid':      #raise on unknown interpolation settings
+            hybrid_input_kind(self.args)
+            hybrid_output_kind(self.args)
 
     def _setup_logger(self):
-        level_name  = 'INFO'
-        level       = getattr(logging, level_name, logging.INFO)
+        level       = logging.INFO
         self.logger = logging.getLogger(f'{self.__class__.__module__}.{self.__class__.__name__}')
         self.logger.setLevel(level)
         self.logger.propagate = False
@@ -387,7 +386,10 @@ class BasicBinnedDecompose:
         self.logger.info('Binned kernel tables written to %s.', directory)
 
     def load_binned_tables(self, directory, strict=True):
-        """Load a previously written C-readable table and attach it for evaluation."""
+        """Load a previously written C-readable table and attach it for evaluation.
+
+        Returns the attached decomposition dict, or the loader's status dict (``ok`` False) if the files could not
+        be read."""
         loaded = load_outputs(directory, strict=strict)
         if not loaded.get('ok', False):
             return loaded
@@ -416,4 +418,5 @@ class BasicBinnedDecompose:
             'auxiliary_coefficients':    loaded['auxiliary_coefficients'],
         }
         self._binned_output = out
+        return out
         return out
