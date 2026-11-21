@@ -3,12 +3,14 @@
 Usage:
     python tests/large/run_large_tests.py <bin_dir> <work_dir> [--nproc 8] [--force]
 
-<bin_dir> holds 2LPTBasis and 2LPTBinned (an installed package's Aarambam/bin, or a build dir). The script
-refuses to start if the 1-minute load average is above 25% of the cores, unless --force is given.
+<bin_dir> holds 2LPTBasis and 2LPTBinned (an installed package's Aarambam/bin, or a build dir); AARAMBAM_MPIRUN selects
+the mpirun as for the pytest suite. The script refuses to start if the 1-minute load average is above 25% of the
+cores, unless --force is given.
 
 Checks, for basis, resbasis (Pk_mode 1) and binned:
   * Nmesh = --nmesh (384), Nsample = --nsample (256), i.e. the production 3/2 rule: runs on 1 and on --nproc ranks
-    give identical potentials (rank independence at a realistic size)
+    (FFTWWisdomDir none) give identical potentials, or for the binned NG term with multi-grid, potentials that agree
+    to rounding (rank independence at a realistic size)
   * Nmesh = Nsample = 256 on --nproc ranks: NG/Gaussian rms ratio sane, no NaN
 Memory: ~4 GB per run at 384^3.
 """
@@ -34,11 +36,12 @@ def potential(d, field):
 def run(bindir, method, out, nproc, **kw):
     os.makedirs(out, exist_ok=True)
     d = dict(getattr(U, f'DEFAULT_{method.upper()}_INPUTS'))
-    d.update(OutputDir=out, NWriteoutProcesses=1, SavePotentialField=1, **kw)
+    d.update(OutputDir=out, NWriteoutProcesses=1, SavePotentialField=1, FFTWWisdomDir='none', **kw)
     cfg = os.path.join(out, 'config')
     open(cfg, 'w').write(getattr(U, f'make_config_{method}')(**d))
     env = dict(os.environ, OMP_NUM_THREADS='1')
-    r = subprocess.run(['mpirun', '-np', str(nproc), os.path.join(bindir, EXE[method]), cfg],
+    r = subprocess.run([os.environ.get('AARAMBAM_MPIRUN', 'mpirun'), '-np', str(nproc),
+                        os.path.join(bindir, EXE[method]), cfg],
                        capture_output=True, text=True, env=env)
     if r.returncode:
         sys.exit(f'{method} {out} failed:\n{r.stdout[-3000:]}')
@@ -61,8 +64,9 @@ def main():
         d1, dn = (os.path.join(a.work_dir, f'{method}_{a.nmesh}_np{n}') for n in (1, a.nproc))
         run(a.bin_dir, method, d1, 1, **kw); run(a.bin_dir, method, dn, a.nproc, **kw)
         for f in ('Gauss', 'Nongauss'):
-            same = np.array_equal(potential(d1, f), potential(dn, f))
-            print(f'{method:8s} {a.nmesh}/{a.nsample} {f:8s} np1 == np{a.nproc}: {same}')
+            p1, pn = potential(d1, f), potential(dn, f)
+            diff   = 'identical' if np.array_equal(p1, pn) else f'max rel diff {np.abs(p1 - pn).max() / np.abs(p1).max():.1e}'
+            print(f'{method:8s} {a.nmesh}/{a.nsample} {f:8s} np1 vs np{a.nproc}: {diff}')
 
         d = os.path.join(a.work_dir, f'{method}_256')
         run(a.bin_dir, method, d, a.nproc, Nmesh=256, Nsample=256, Nmax=256, GlassTileFac=4, **extra.get(method, {}))

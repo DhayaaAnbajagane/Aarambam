@@ -111,6 +111,12 @@ void read_transfer_table(void)
       NTransferTable = 0;
       while(fscanf(fd, " %le %le ", &k, &t) == 2)
         {
+          if(!(k > 0) || !(t > 0))      /* interpolated in log k, log T */
+            {
+              printf("The transfer function file '%s' has a row with k = %g, T = %g; both must be positive.\n", buf,
+                     k, t);
+              FatalError(21);
+            }
           TransferTable[NTransferTable].logk = log10(k);
           TransferTable[NTransferTable].logT = log10(t);
           NTransferTable++;
@@ -119,6 +125,12 @@ void read_transfer_table(void)
       fclose(fd);
 
       qsort(TransferTable, NTransferTable, sizeof(struct trans_table), compare_transfer_logk);
+      for(i = 1; i < NTransferTable; i++)
+        if(TransferTable[i].logk == TransferTable[i - 1].logk)
+          {
+            printf("The transfer function file '%s' has k = %g twice.\n", buf, pow(10.0, TransferTable[i].logk));
+            FatalError(22);
+          }
 
       klower = pow(10.0, TransferTable[0].logk);
 
