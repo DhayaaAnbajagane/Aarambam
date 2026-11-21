@@ -605,6 +605,7 @@ static void lpt_wisdom_begin(lpt_wisdom *w)
       lpt_float_wisdom_load(w->fpath, &w->fbefore, &w->floaded);
     }
 #endif
+  lpt_wisdom_snapshot();       /* this rank's plans before planning, to tell whether any rank measured new ones */
 }
 
 /* Plans made after initialize_ffts (the multi-grid stage): lpt_wisdom_snapshot() before planning, then
@@ -622,13 +623,12 @@ void lpt_wisdom_snapshot(void)
 #endif
 }
 
-void lpt_wisdom_save_new(const char *what)
+/* Whether some rank has plans it did not have at lpt_wisdom_snapshot() (collective); drops the snapshot. */
+static int lpt_wisdom_changed(void)
 {
   char *now;
   int   changed = 0, any = 0;
 
-  if(!Wisdom_use)
-    return;
   now      = fftw_export_wisdom_to_string();
   changed |= !Wisdom_mark || !now || strcmp(Wisdom_mark, now) != 0;
   free(now);
@@ -641,7 +641,17 @@ void lpt_wisdom_save_new(const char *what)
     }
 #endif
   MPI_Allreduce(&changed, &any, 1, MPI_INT, MPI_LOR, MPI_COMM_WORLD);
-  if(any)
+  free(Wisdom_mark);
+  free(Wisdom_markf);
+  Wisdom_mark = Wisdom_markf = NULL;
+  return any;
+}
+
+void lpt_wisdom_save_new(const char *what)
+{
+  if(!Wisdom_use)
+    return;
+  if(lpt_wisdom_changed())
     {
       char path[LPT_WISDOM_PATH_LEN];
 
@@ -662,16 +672,28 @@ void lpt_wisdom_save_new(const char *what)
         }
 #endif
     }
-  free(Wisdom_mark);
-  free(Wisdom_markf);
-  Wisdom_mark = Wisdom_markf = NULL;
 }
 
-/* Gather the plans of all ranks and save the files if new plans were measured (rank 0). */
+/* If some rank measured new plans: gather the plans of all ranks and save the files (rank 0). Otherwise nothing
+ * is moved (the usual case once the files exist). */
 static void lpt_wisdom_end(lpt_wisdom *w, double tplan)
 {
   if(!w->use)
     return;
+  if(!lpt_wisdom_changed())
+    {
+      if(ThisTask == 0)
+        {
+          printf("\nFFT plans read from %s%s\n", w->path, w->loaded ? "" : " (no file)");
+#ifndef AARAMBAM_NO_FLOAT
+          if(NGFloat)
+            printf("\nSingle-precision FFT plans read from %s%s\n", w->fpath, w->floaded ? "" : " (no file)");
+#endif
+          free(w->before);
+          free(w->fbefore);
+        }
+      return;
+    }
   fftw_mpi_gather_wisdom(MPI_COMM_WORLD);
   if(ThisTask == 0)
     {
