@@ -33,7 +33,7 @@ Grid sizes
 ----------
 
 * ``Nmax`` (in units of the fundamental mode :math:`2\pi/L_{\rm box}`) sets the largest
-  wavenumber of the decomposition. The executables assert ``Nmax >= Nsample``.
+  wavenumber of the decomposition. The executables stop with an error unless ``Nmax >= Nsample``.
 * The non-Gaussian term is built from products of fields that are band-limited to
   ``Nsample/2``. Using ``Nmesh >= 3/2 Nsample`` keeps the aliased power of those
   products (and the Nyquist planes) out of the sampled modes; ``Nmesh = Nsample`` runs
@@ -50,7 +50,7 @@ Python config writers set both to ``'auto'`` by default.
   * ``0`` computes every per-mode quantity on the fly and uses the least memory.
   * ``1`` precomputes them once.
 
-    * ``2LPTBinned`` tabulates |k|, the output bin and the in-bin coordinate of every sampled
+    * ``2LPTBinned`` tabulates :math:`|k|`, the output bin and the in-bin coordinate of every sampled
       mode (about one extra grid at ``Nmesh = 3/2 Nsample``). The result is bit-identical.
     * ``2LPTBasis`` additionally builds each of the ``N_modes`` mode fields once and keeps
       them in real space, instead of rebuilding and transforming one for every mode pair.
@@ -74,10 +74,12 @@ Python config writers set both to ``'auto'`` by default.
   on it. The non-Gaussian term agrees with ``BinnedPNGMultiGrid 0`` (every pair on the full grid) to
   rounding, :math:`\sim 10^{-14}` relative. It is then independent of the number of ranks to rounding
   rather than bit for bit, because the small-grid pairs are summed over the ranks in a rank-dependent
-  order. ``0`` gives the previous behaviour.
+  order. ``0`` gives the previous behaviour. (The Gaussian potential itself is the same bit for bit on any
+  number of ranks.)
 
 The two internal legs :math:`k_1` and :math:`k_2` always share their bins (``FileWithBinnedK1Edges``); the
-output leg :math:`k_3` has its own (``FileWithBinnedK3Edges``). Parameter files from older versions may still
+output leg :math:`k_3` has its own (``FileWithBinnedK3Edges``); the edges in both files must increase strictly.
+Parameter files from older versions may still
 contain ``FileWithBinnedK2Edges`` and ``BinnedPNGUseInternalSymmetry``; the two tags are accepted and ignored.
 
 One grid is ``8 Nmesh^3`` bytes summed over ranks: 57 MB at :math:`192^3`, 0.46 GB at
@@ -128,7 +130,9 @@ says where the files are kept:
 Measured plans make each FFT 7% (at :math:`1024^3`) to 27% (at :math:`192^3`) faster. They can
 differ from run to run and between rank counts, so ICs made with them agree with ``none`` (and
 with each other) to rounding (:math:`\sim 10^{-16}`) rather than bit for bit; runs that reuse
-the same wisdom file use the same plans. The log says whether the plans were measured or read.
+the same wisdom file use the same plans. The log says whether the plans were measured or read. A run whose
+plans are all in the file neither measures nor rewrites anything, so many runs can share one directory; new
+plans are merged into the file and written atomically.
 
 Building with ``Aarambam_NATIVE=ON`` (see :doc:`installation`) compiles for the build machine's
 CPU (AVX2 / AVX-512 and fused multiply-adds). That gains a few per cent at most, and the
@@ -189,8 +193,9 @@ executables check these limits at startup and stop with a message instead of sil
 * Each MPI rank's grid, about ``Local_nx * Nmesh * 2 (Nmesh/2 + 1)`` reals, must stay below
   :math:`2^{31}` (the code's grid size and the potential files' header are ``int``), i.e. 16 GB
   per grid per rank. Use more ranks for large ``Nmesh``.
-* Each rank writes one snapshot file, whose position block (12 bytes per particle) must fit a
-  4-byte block marker, i.e. fewer than about 179 million particles per rank.
+* There is one snapshot file per rank that holds particles (``FileBase.0``, ``FileBase.1``, ..., in rank order;
+  just ``FileBase`` on one rank). Each file's position block (12 bytes per particle) must fit a 4-byte block
+  marker, i.e. fewer than about 179 million particles per rank.
 * Particle IDs are 32-bit by default, so at most :math:`2^{31}-1` particles in total
   (about :math:`1290^3`). Build with ``Aarambam_64BIT_IDS=ON`` (see :doc:`installation`) to write
   8-byte IDs; the code reading the snapshots must then expect 64-bit IDs.

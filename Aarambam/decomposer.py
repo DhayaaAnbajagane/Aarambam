@@ -94,7 +94,8 @@ class Decomposer:
         return 'legendre'
 
     def go(self, Model, Basis, outdir = None, **kwargs):
-        """Run the selected decomposition for a chosen model and basis."""
+        """Run the selected decomposition for a chosen model and basis; with ``outdir`` (an existing directory,
+        checked before the decomposition starts) also write its tables there."""
         basis_kind = self._basis_kind(Basis)
         if basis_kind != self.kind:
             selector = 'Binned_Nk' if basis_kind == 'binned' else 'N_modes'

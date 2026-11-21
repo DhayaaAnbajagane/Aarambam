@@ -115,8 +115,9 @@ build Aarambam with. The flags:
 * ``--enable-shared`` builds shared libraries; the installed Aarambam executables find them without
   ``LD_LIBRARY_PATH``.
 * ``--enable-sse2 --enable-avx --enable-avx2`` build FFTW's SIMD kernels, which make the FFTs
-  faster (add ``--enable-avx512`` on CPUs that support it). FFTW checks at run time which of them
-  the CPU can use.
+  faster. FFTW checks at run time which of them the CPU can use. ``--enable-avx512`` can be added
+  on CPUs that support it, but it is not always a gain: on a Xeon Gold 6248R (which lowers its clock
+  for AVX-512 code) it made the single-precision build's runs 1-2% slower and the double one no faster.
 
 Optionally, build FFTW a second time in single precision, into the same prefix, for the
 ``NGPrecision float`` option (see :doc:`performance`). From a fresh copy of the source:

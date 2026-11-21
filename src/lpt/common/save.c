@@ -148,7 +148,7 @@ void write_particle_data(void)
 
               MPI_Recv(&numpart, 1, MPI_INT, task, 0, MPI_COMM_WORLD, &status);
 
-              struct part_data *recvbuf = malloc(numpart * sizeof(struct part_data));
+              struct part_data *recvbuf = malloc((numpart > 0 ? numpart : 1) * sizeof(struct part_data));
               if(!recvbuf)
                 {
                   printf("Task 0: failed to allocate the particle buffer of task %d\n", task);

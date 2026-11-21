@@ -72,8 +72,8 @@ lean ones above. Set them explicitly when you know your memory allows more (see
   FFT plans are faster, and they are kept on disk so that only the first run with a given grid
   size, rank count and CPU type pays for measuring them. If many jobs run the same setup, point
   them all at one directory. See `FFT plans <conventions.html#fft-plans>`_.
-* **FFTW build**: build FFTW3 with its SIMD kernels (``--enable-sse2 --enable-avx --enable-avx2``,
-  and ``--enable-avx512`` where available), as in :doc:`installation`.
+* **FFTW build**: build FFTW3 with its SIMD kernels (``--enable-sse2 --enable-avx --enable-avx2``), as in
+  :doc:`installation`. ``--enable-avx512`` is not always faster (see there).
 * **Aarambam_NATIVE**: see :doc:`installation`. Only worth it when all the nodes you run on have
   the same CPU type.
 * **NGPrecision**: see `Single precision`_ below.
@@ -84,6 +84,12 @@ kernel bins below the box's fundamental mode or above the sampled k range have n
 unchanged (those pairs add exactly zero); the log says how many pairs were skipped. With the default kernel
 table, ``Lbox 512`` and ``Nsample 128`` that is 57 of the 210 pairs, and the binned run at :math:`192^3` on 8
 ranks takes 2.68 s instead of 3.25 s.
+
+Some steps are faster without any option: the Gaussian potential's random draws are shared evenly between the
+ranks (before, the ranks holding the low-k planes drew almost all of them), the wisdom files are read once and
+not rewritten unless new plans were measured, and the particle positions are wrapped into the box without
+glibc's slow ``fmod``. At :math:`192^3` / ``Nsample 128`` on 8 ranks (binned, float, fastest settings) these
+took the run from 1.59 s to 1.49 s, with the same ICs bit for bit.
 
 Multi-grid binned stage
 -----------------------

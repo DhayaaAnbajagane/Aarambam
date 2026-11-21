@@ -79,7 +79,7 @@ You may be able to skip the `MPICC=` addition if your computing cluster already 
 * `--enable-mpi` is required: it builds the MPI-parallel FFTs (`fftw3-mpi.h`, `libfftw3_mpi`), which is what Aarambam includes and links against.
 * Keep FFTW's default double precision in this build, i.e. do NOT add `--enable-float` or `--enable-long-double`.
 * `--enable-shared` builds shared libraries; the installed Aarambam executables find them without `LD_LIBRARY_PATH`.
-* `--enable-sse2 --enable-avx --enable-avx2` build FFTW's SIMD kernels, which make the FFTs faster (add `--enable-avx512` on CPUs that support it). FFTW checks at run time which of them the CPU can use.
+* `--enable-sse2 --enable-avx --enable-avx2` build FFTW's SIMD kernels, which make the FFTs faster. FFTW checks at run time which of them the CPU can use. `--enable-avx512` can be added on CPUs that support it, but it is not always a gain: on a Xeon Gold 6248R (which lowers its clock for AVX-512 code) it made single-precision runs 1-2% slower and double-precision ones no faster.
 
 Optionally, for the faster single-precision non-Gaussian stage (`NGPrecision = 'float'`, see the
 [Running faster page](https://aarambam.readthedocs.io/en/latest/performance.html)), build FFTW a second time with
