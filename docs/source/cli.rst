@@ -35,11 +35,14 @@ or, for MPI runs,
   (``Am.utils.make_config_resbasis``) additionally sets ``WhichSpectrum`` to 1
   (linear-:math:`k`) or 2 (log-:math:`k`) and the oscillation parameters
   ``A_res``, ``w_res`` and ``phi_res`` of the primordial power spectrum. With
-  ``WhichSpectrum 0`` (or the tags omitted) the result is identical to ``basis``.
+  ``WhichSpectrum 0`` the result is identical to ``basis``.
 
-The executables stop with a clear message, and a non-zero exit code, on a bad
-or missing config entry, an over-long path, or a kernel table that does not
-match the requested filter. See :doc:`conventions` for size limits.
+A config file has one tag and its value per line; lines starting with ``%`` or
+``#``, and anything after the value, are ignored. Values cannot contain spaces
+(the config writers refuse such paths). The executables stop with a clear
+message, and a non-zero exit code, on a bad or missing config entry, an
+over-long path, or a kernel table that does not match the requested filter.
+See :doc:`conventions` for size limits.
 
 
 Example configs

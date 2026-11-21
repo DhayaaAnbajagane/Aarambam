@@ -29,5 +29,10 @@ int lpt_method_validate(const char *fname)
                       "in parameter file '%s'.\n", fname);
       return 1;
     }
+  if(N_modes < 1)
+    {
+      fprintf(stdout, "Error. N_modes must be at least 1 in parameter file '%s'.\n", fname);
+      return 1;
+    }
   return 0;
 }

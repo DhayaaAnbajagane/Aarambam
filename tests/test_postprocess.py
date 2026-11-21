@@ -24,7 +24,7 @@ def fields():
 
 
 def test_slabs_and_seeds(am, tmp_path, fields):
-    for seed in (7, 42):
+    for seed in (7, -42):                                       #the C code writes the seed with %d
         for t, a in fields.items():
             for x0, nx in ((0, 3), (3, 5)):                     #uneven slabs, written in any order
                 write_slab(tmp_path / f'{t}_potential_{seed}_StartX_{x0:04d}_NumX_{nx}', a[x0:x0+nx] * seed, 8, x0)
@@ -33,7 +33,7 @@ def test_slabs_and_seeds(am, tmp_path, fields):
     out = am.utils.collate_potential(str(tmp_path), seed=7)
     np.testing.assert_array_equal(out['Gauss_potential'], fields['Gauss'] * 7)
     left = sorted(p.name for p in tmp_path.glob('*_potential_*'))
-    assert left and all('_42_' in n for n in left)
+    assert left and all('_-42_' in n for n in left)
 
 
 def test_missing_slab(am, tmp_path, fields):

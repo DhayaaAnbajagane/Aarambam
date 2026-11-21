@@ -89,7 +89,7 @@ void read_parameterfile(char *fname)
           if(sscanf(buf, "%s%s%s", buf1, buf2, buf3) < 2)
             continue;
 
-          if(buf1[0] == '%')
+          if(buf1[0] == '%' || buf1[0] == '#')     /* comment line */
             continue;
 
           for(i = 0, j = -1; i < nt; i++)
@@ -152,6 +152,25 @@ void read_parameterfile(char *fname)
     {
       fprintf(stdout, "Error. ModeTables must be 0 (compute per-mode quantities on the fly) or 1 (precompute "
                       "tables) in parameter file '%s'.\n", fname);
+      errorFlag = 1;
+    }
+
+  /* the k-space indexing (wavenumbers, Nyquist planes, the seed table) assumes an even Nmesh, and the sampled band
+   * must fit on the grid */
+  if(Nmesh < 2 || Nmesh % 2)
+    {
+      fprintf(stdout, "Error. Nmesh must be even (Nmesh = %d) in parameter file '%s'.\n", Nmesh, fname);
+      errorFlag = 1;
+    }
+  if(Nsample < 1 || Nsample > Nmesh)
+    {
+      fprintf(stdout, "Error. Nsample must be between 1 and Nmesh = %d (Nsample = %d) in parameter file '%s'.\n",
+              Nmesh, Nsample, fname);
+      errorFlag = 1;
+    }
+  if(GlassTileFac < 1 || !(Box > 0))
+    {
+      fprintf(stdout, "Error. GlassTileFac must be at least 1 and Box positive in parameter file '%s'.\n", fname);
       errorFlag = 1;
     }
 

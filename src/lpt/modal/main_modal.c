@@ -279,7 +279,7 @@ void displacement_fields(void)
     {
       FILE  *fd;
       char   buf[500];
-      int    n1, n2, n3;
+      int    n1, n2, n3, nread = 0;
       double alpha;
 
       snprintf(buf, sizeof(buf), "%s", FileWithAlphaCoeff);
@@ -304,8 +304,14 @@ void displacement_fields(void)
           AlphaTable[n2][n1][n3] = alpha;
           AlphaTable[n1][n3][n2] = alpha;
           AlphaTable[n1][n2][n3] = alpha;
+          nread++;
         }
 
+      if(!feof(fd) || nread == 0)     /* stopped at an unreadable line, or nothing read: not a zero kernel */
+        {
+          printf("Alpha table '%s': unreadable line after %d rows\n", buf, nread);
+          FatalError(103);
+        }
       fclose(fd);
     }
 
@@ -323,7 +329,8 @@ void displacement_fields(void)
     {
       FILE *fd;
       char  buf[500];
-      int   n1;
+      int   n1, nrows = 0;
+      char *seen = calloc(N_modes, 1);
 
       snprintf(buf, sizeof(buf), "%s", FileWithX0Coeff);
       if(!(fd = fopen(buf, "r")))
@@ -345,12 +352,21 @@ void displacement_fields(void)
                 }
               X0Table[n1][0] = x0;
               X0Table[n1][1] = x1;
+              nrows += !seen[n1];
+              seen[n1] = 1;
             }
           else
             break;
         }
       while(1);
 
+      if(!feof(fd) || nrows != N_modes)     /* every row 0 .. N_modes-1, as written by the Legendre decomposition */
+        {
+          printf("X0 table '%s': %d of the rows 0 .. %d read%s. Was it written for N_modes = %d?\n", buf, nrows,
+                 N_modes - 1, feof(fd) ? "" : " (stopped at an unreadable line)", N_modes);
+          FatalError(104);
+        }
+      free(seen);
       fclose(fd);
     }
 

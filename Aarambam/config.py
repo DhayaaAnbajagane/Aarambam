@@ -139,6 +139,14 @@ def _resolve_auto(value, Nmesh, fast, lean, name):
     return int(value)
 
 
+def _check_tokens(values):
+    """Raise if a string value is empty or contains whitespace: the 2LPT executables read one token per value, so
+    such a path would be cut short."""
+    for name, value in values.items():
+        if isinstance(value, str) and (not value or any(c.isspace() for c in value)):
+            raise ValueError(f"{name} = {value!r}: config values must be non-empty and contain no whitespace")
+
+
 def _resolve_mode_tables(ModeTables, Nmesh, lean = 0):
     """ModeTables 0/1, or 'auto' (1 up to AUTO_FAST_MAX_NMESH, ``lean`` above)."""
     ModeTables = _resolve_auto(ModeTables, Nmesh, 1, lean, 'ModeTables')
@@ -157,11 +165,11 @@ def make_config_basis(Nmesh, Nsample, Nmax, Lbox, FileBase, OutputDir, GlassFile
     Parameters
     ----------
     Nmesh : int
-        Grid points per side of the potential and displacement grids.
+        Grid points per side of the potential and displacement grids; even.
     Nsample : int
         Largest sampled mode: the code keeps modes with ``|k| <= Nsample/2`` (in units of
-        ``2 pi / Lbox``) per axis. Usually the particle count per side; use ``Nmesh >= 3/2 Nsample``
-        for an alias-free non-Gaussian term.
+        ``2 pi / Lbox``) per axis. Usually the particle count per side; at most ``Nmesh``, and
+        ``Nmesh >= 3/2 Nsample`` for an alias-free non-Gaussian term.
     Nmax : int
         Largest wavenumber of the decomposition, in units of ``2 pi / Lbox``. Must be ``>= Nsample``;
         normally equal to it.
@@ -214,6 +222,7 @@ def make_config_basis(Nmesh, Nsample, Nmax, Lbox, FileBase, OutputDir, GlassFile
 
     See the Conventions and Running faster pages of the docs for details on the options.
     """
+    _check_tokens(locals())
     ModeTables = _resolve_mode_tables(ModeTables, Nmesh)
     return textwrap.dedent(DEFAULT_BASIS_CONFIG % locals())
 
@@ -243,6 +252,7 @@ def make_config_resbasis(Nmesh, Nsample, Nmax, Lbox, FileBase, OutputDir, GlassF
         The config text, for ``aarambam 2lpt resbasis``.
     """
 
+    _check_tokens(locals())
     ModeTables = _resolve_mode_tables(ModeTables, Nmesh)
     return textwrap.dedent(DEFAULT_RESBASIS_CONFIG % locals())
 
@@ -279,7 +289,8 @@ def make_config_binned(Nmesh, Nsample, Nmax, Lbox, FileBase, OutputDir, GlassFil
         ``'auto'``: 64 (all bins) for ``Nmesh <= 512``, else 4.
     BinnedPNGMultiGrid : bool, optional
         Compute each bin pair on the smallest alias-free grid (default; same result to ~1e-14,
-        faster). ``False``: every pair on the full grid.
+        faster; ~25 Nsample^3 bytes per rank, switched off by the run if a node lacks the memory).
+        ``False``: every pair on the full grid.
 
     Returns
     -------
@@ -291,6 +302,7 @@ def make_config_binned(Nmesh, Nsample, Nmax, Lbox, FileBase, OutputDir, GlassFil
     ValueError
         If the filter codes disagree with the metadata written next to the kernel table.
     """
+    _check_tokens(locals())
     _check_binned_codes(BinnedKernelValuesPath, BinnedPNGFilterCode, BinnedPNGOutputFilterCode)
     BinnedPNGMultiGrid = int(bool(BinnedPNGMultiGrid))
     ModeTables = _resolve_mode_tables(ModeTables, Nmesh, lean = 1)      #the binned tables cost ~1 grid

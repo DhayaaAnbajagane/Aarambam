@@ -307,7 +307,11 @@ static void bpng_read_and_broadcast_table(void)
       for(axis = 0; axis < 3; axis++)
         {
           if(nedge[axis] < 2)
-            FatalError(9104);
+            {
+              printf("Binned edge file '%s' has %d edges; at least 2 are needed.\n",
+                     axis == 2 ? FileWithBinnedK3Edges : FileWithBinnedK1Edges, nedge[axis]);
+              FatalError(9104);
+            }
 
           BPNG.nk[axis]    = nedge[axis] - 1;
           BPNG.edges[axis] = malloc(nedge[axis] * sizeof(double));
@@ -319,14 +323,22 @@ static void bpng_read_and_broadcast_table(void)
       memcpy(BPNG.edges[1], BPNG.edges[0], nedge[0] * sizeof(double));
       bpng_read_edge_file_root(FileWithBinnedK3Edges, 2);
       for(axis = 0; axis < 3; axis += 2)
-        for(int e = 1; e < nedge[axis]; e++)
-          if(!(BPNG.edges[axis][e] > BPNG.edges[axis][e - 1]))
+        {
+          if(coord_mode == BPNG_COORD_LOG && !(BPNG.edges[axis][0] > 0))
             {
-              printf("Binned edge file '%s': the edges must increase strictly (edge %d is %g after %g).\n",
-                     axis ? FileWithBinnedK3Edges : FileWithBinnedK1Edges, e, BPNG.edges[axis][e],
-                     BPNG.edges[axis][e - 1]);
-              FatalError(9119);
+              printf("Binned edge file '%s': the edges must be positive with BinnedPNGCoordinate 2 (log k).\n",
+                     axis ? FileWithBinnedK3Edges : FileWithBinnedK1Edges);
+              FatalError(9120);
             }
+          for(int e = 1; e < nedge[axis]; e++)
+            if(!(BPNG.edges[axis][e] > BPNG.edges[axis][e - 1]))
+              {
+                printf("Binned edge file '%s': the edges must increase strictly (edge %d is %g after %g).\n",
+                       axis ? FileWithBinnedK3Edges : FileWithBinnedK1Edges, e, BPNG.edges[axis][e],
+                       BPNG.edges[axis][e - 1]);
+                FatalError(9119);
+              }
+        }
 
       ncoef       = ((long long) BPNG.coeff_count) * bpng_ncell();
       BPNG.Kcoeff = malloc(ncoef * sizeof(double));

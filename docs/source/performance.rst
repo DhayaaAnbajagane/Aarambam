@@ -50,9 +50,9 @@ option                          gain                                     cost
                                                                          only on CPUs like the build machine's
 ``NGPrecision float``           binned 15-24%, basis 0-9% at 192^3       NG term to ~1e-6 relative; a second,
                                 (more at larger grids for that stage)    single-precision FFTW build
-``BinnedPNGMultiGrid 1``        binned 14-21% (8 ranks), 32-40%          on by default; the first run measures a
-                                (1 rank) at 192^3                        few more FFT plans; NG term to rounding,
-                                                                         not bit for bit
+``BinnedPNGMultiGrid 1``        binned 14-21% (8 ranks), 32-40%          on by default; ~25 Nsample^3 bytes per
+                                (1 rank) at 192^3                        rank (off by itself if a node lacks it);
+                                                                         NG term to rounding, not bit for bit
 ==============================  =======================================  ========================================
 
 One grid is ``8 Nmesh^3`` bytes summed over all ranks (57 MB at :math:`192^3`, 0.46 GB at

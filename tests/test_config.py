@@ -53,6 +53,12 @@ def test_speed_options_auto(am, method):
             write(**dict(d, ModeTables=bad))
 
 
+def test_whitespace_value_rejected(am):
+    """The 2LPT reader takes one token per value: a path with a space would be cut short."""
+    with pytest.raises(ValueError):
+        am.utils.make_config_binned(**dict(am.utils.DEFAULT_BINNED_INPUTS, OutputDir='/tmp/my runs'))
+
+
 def test_floats_round_trip(am):
     d = dict(am.utils.DEFAULT_BINNED_INPUTS); d.update(Fnl=1e-7, Om=0.30891234567891234, sigma8=0.8)
     cfg = values(am.utils.make_config_binned(**d))

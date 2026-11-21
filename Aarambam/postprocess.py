@@ -99,7 +99,7 @@ def find_potential_files(OutputDir, seed = None):
         ``'Gauss'`` or ``'Nongauss'``.
     """
 
-    pattern = re.compile(r'^(Gauss|Nongauss)_potential_(\d+)(?:_StartX_(\d+)_NumX_(\d+))?$')
+    pattern = re.compile(r'^(Gauss|Nongauss)_potential_(-?\d+)(?:_StartX_(\d+)_NumX_(\d+))?$')
 
     found = {}
     for f in glob.glob(os.path.join(OutputDir, '*_potential_*')):

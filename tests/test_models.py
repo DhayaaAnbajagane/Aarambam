@@ -66,3 +66,11 @@ def test_user_template(am):
     mine, ref = C(n_s=0.96, Lbox=1000., Nmax=256, Binned_progress=False), make(am, 'Local', 0.96)
     k1, k2, k3 = np.array([0.01, 0.3]), np.array([0.5, 0.3]), np.array([0.5, 0.4])
     np.testing.assert_allclose(mine.bispectrum(k1, k2, k3), ref.bispectrum(k1, k2, k3), rtol=1e-12)
+
+    class ZeroAtEquilateral(am.models.ShapeTemplate):     #cannot be normalised at k1 = k2 = k3: an error, not NaNs
+        def raw_shape(self, k1, k2, k3):
+            return (k1 - k2) / k3
+
+    C = type('C', (ZeroAtEquilateral, am.binned.BasicBinnedDecompose), {})
+    with pytest.raises(ValueError):
+        C(n_s=0.96, Lbox=1000., Nmax=256, Binned_progress=False).bispectrum(k1, k2, k3)

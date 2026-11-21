@@ -9,7 +9,8 @@
  *
  *   small  (L <= MG_SMALL_MAX): whole pairs per rank, serial pruned FFTW transforms on the L^3 grid;
  *   medium (MG_SMALL_MAX < L < Nmesh): all ranks together, a band_fft on the L^3 grid per ladder size;
- *   full   (L >= Nmesh, or a medium L with fewer x planes than ranks): the distributed Nmesh^3 path of
+ *   full   (L >= Nmesh, or a medium L with fewer x planes than ranks or whose fields need more memory than the
+ *          full path's cache blocks): the distributed Nmesh^3 path of
  *          binned_ng_impl.h, which skips the pairs done here (bpng_mg_pair_done) and the fields only they use
  *          (bpng_mg_field_needed).
  *
@@ -17,10 +18,15 @@
  * over the ranks and added into the band layout of the NG term. The FFTs use the run's planner flags (FFTW_MEASURE
  * with a wisdom file); plans measured here are added to the wisdom files. */
 
+#include <limits.h>
+#include <unistd.h>
 #include "band_fft.h"
 
 #define MG_SMALL_MAX     128      /* largest grid of the small (per-rank) path: at most 17 MB per real double field */
 #define MG_LADDER_RATIO  1.2      /* successive grid sizes of the ladder */
+#ifndef MG_MEM_FRACTION            /* the tables of every rank on a node may take at most this fraction of its memory */
+#define MG_MEM_FRACTION  0.25
+#endif
 
 static int            MgActive    = 0;
 static int            MgN         = 0;          /* bins of the input legs */
@@ -451,6 +457,53 @@ static int mg_plan_pairs(MgCtx *X, MgPair *P, int *nsmall, int *nmed, int *nfull
       }
   qsort(P, np, sizeof(MgPair), mg_pair_order);
 
+  /* A medium level holds all its fields at once: if they take more than the full path's two cache blocks
+   * (BinnedPNGCacheBlockSize fields of Nmesh^3), its pairs go to the full grid, so the multi-grid stage never needs
+   * more memory than the block size the run chose. */
+  {
+    const int    block  = BinnedPNGCacheBlockSize < 1 ? 1 : (BinnedPNGCacheBlockSize > n ? n : BinnedPNGCacheBlockSize);
+    const double budget = 2.0 * block * Nmesh * (double) Nmesh * (Nmesh / 2 + 1);
+    unsigned char *uses = malloc(n);
+    int            q    = 0;
+
+    if(!uses)
+      FatalError(9427);
+    for(int p0 = 0, p1; p0 < np; p0 = p1)
+      {
+        const int L = P[p0].level;
+        int       nf = 0;
+
+        for(p1 = p0; p1 < np && P[p1].level == L; p1++)
+          ;
+        if(P[p0].rank >= 0)             /* a small level: kept */
+          {
+            for(int p = p0; p < p1; p++)
+              P[q++] = P[p];
+            continue;
+          }
+        memset(uses, 0, n);
+        for(int p = p0; p < p1; p++)
+          uses[P[p].a] = uses[P[p].b] = 1;
+        for(int a = 0; a < n; a++)
+          nf += uses[a];
+        if(nf * (double) L * L * (L / 2 + 1) <= budget)
+          {
+            for(int p = p0; p < p1; p++)
+              P[q++] = P[p];
+            continue;
+          }
+        for(int p = p0; p < p1; p++)    /* to the full grid */
+          {
+            MgPairDone[P[p].a * n + P[p].b] = 0;
+            MgFieldFull[P[p].a] = MgFieldFull[P[p].b] = 1;
+            (*nmed)--;
+            (*nfull)++;
+          }
+      }
+    np = q;
+    free(uses);
+  }
+
   double        *load = calloc(NTask, sizeof(double));
   unsigned char *have = calloc((size_t) NTask * nlev * n, 1);
   if(!load || !have)
@@ -510,8 +563,29 @@ static void mg_add_to_band(MgCtx *X, lpt_complex *out)
     }
 }
 
+/* Whether the tables of mg_build_tables fit. Every rank holds the whole band, about 50 bytes per band mode
+ * (band_s, G, A and the mode lists): ~0.4 GB at Nsample 256, ~3.4 GB at 512 per rank. They must fit the int indexing
+ * and counts, and the ranks of a node together may use at most MG_MEM_FRACTION of its memory. Collective. */
+static int mg_tables_fit(double *gb_node)
+{
+  const long long KB = Nsample / 2, nB = (2 * KB + 1) * (2 * KB + 1) * (KB + 1);
+  const double    bytes = 50.0 * (double) nB;
+  long long       pages = sysconf(_SC_PHYS_PAGES), psize = sysconf(_SC_PAGESIZE);
+  int             nlocal, fit, fit_all;
+  MPI_Comm        node;
+
+  MPI_Comm_split_type(MPI_COMM_WORLD, MPI_COMM_TYPE_SHARED, 0, MPI_INFO_NULL, &node);
+  MPI_Comm_size(node, &nlocal);
+  MPI_Comm_free(&node);
+  *gb_node = nlocal * bytes / 1e9;
+  fit = 2 * nB <= INT_MAX && (pages <= 0 || psize <= 0 || nlocal * bytes <= MG_MEM_FRACTION * (double) pages * psize);
+  MPI_Allreduce(&fit, &fit_all, 1, MPI_INT, MPI_LAND, MPI_COMM_WORLD);
+  return fit_all;
+}
+
 /* The small- and medium-grid pairs, added into out (the band layout of the NG term). Collective. Sets what the
- * full-grid path skips (bpng_mg_pair_done, bpng_mg_field_needed). Does nothing with BinnedPNGMultiGrid 0. */
+ * full-grid path skips (bpng_mg_pair_done, bpng_mg_field_needed). Does nothing with BinnedPNGMultiGrid 0, or when its
+ * tables would not fit (mg_tables_fit): then every pair runs on the full grid. */
 static void bpng_multigrid_pairs(lpt_complex *cpot, lpt_complex *out)
 {
   MgCtx X;
@@ -520,6 +594,14 @@ static void bpng_multigrid_pairs(lpt_complex *cpot, lpt_complex *out)
   MgActive = 0;
   if(!BinnedPNGMultiGrid)
     return;
+  double gb_node;
+  if(!mg_tables_fit(&gb_node))
+    {
+      if(ThisTask == 0)
+        printf("  BinnedPNGMultiGrid: off for this run; its tables would take %.1f GB per node (every rank holds the "
+               "sampled band). All bin pairs run on the full grid.\n", gb_node);
+      return;
+    }
 
   if(ThisTask == 0)
     {

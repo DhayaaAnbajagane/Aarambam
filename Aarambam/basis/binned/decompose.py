@@ -32,7 +32,7 @@ class BasicBinnedDecompose:
     Binned_Nk : int, optional
         Bins per axis (default 20).
     Binned_kmin, Binned_kmax : float, optional
-        k range of the table; default ``2 pi / Lbox`` and ``Nmax`` times that.
+        k range of the table; default ``2 pi / Lbox`` and ``Nmax * 2 pi / Lbox``.
     Binned_filter : str, optional
         Interpolation: ``'heaviside'`` (constant per bin) or ``'hybrid_<a>_k3<b>'``, with ``<a>`` the
         interpolation across k1, k2 bins and ``<b>`` the polynomial within a k3 bin (each ``linear`` or
@@ -171,8 +171,9 @@ class BasicBinnedDecompose:
     def _k_limits(self):
         kmin = self.args['Binned_kmin']
         kmax = self.args['Binned_kmax']
-        kmin = 2.0 * np.pi / float(self.args['Lbox']) if kmin is None else float(kmin)
-        kmax = kmin * int(self.args['Nmax']) if kmax is None else float(kmax)
+        kF   = 2.0 * np.pi / float(self.args['Lbox'])
+        kmin = kF if kmin is None else float(kmin)
+        kmax = kF * int(self.args['Nmax']) if kmax is None else float(kmax)     #the largest mode of the 2LPT run
 
         if kmin <= 0 or kmax <= 0:
             raise ValueError('Binned k limits must be positive.')

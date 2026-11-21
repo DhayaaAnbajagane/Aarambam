@@ -244,6 +244,8 @@ BAD_CONFIGS = {     #case: (method, config inputs, line appended to the config, 
     'kernel_table':  ('binned', dict(BinnedPNGOutputFilterCode=1), '', 'columns'),   #default table has 4 coefficients
     'wisdom_dir':    ('binned', {}, '', 'cannot be created or is not writable'),          #directory set below
     'wisdom_env':    ('binned', dict(FFTWWisdomDir='auto'), '', 'AARAMBAM_FFTW_WISDOM_DIR is longer than'),
+    'odd_nmesh':     ('basis',  dict(Nmesh=33), '', 'Nmesh must be even'),
+    'nsample':       ('binned', dict(Nsample=48, Nmax=48), '', 'Nsample must be between 1 and Nmesh'),
 }
 
 

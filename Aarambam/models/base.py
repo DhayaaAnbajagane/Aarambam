@@ -48,8 +48,12 @@ class ShapeTemplate:
             return 1.0
         if self.normalise != 'equilateral':
             raise ValueError(f"normalise must be 'equilateral' or None, not {self.normalise!r}")
-        one = np.ones(1)
-        return 6 * float(self.raw_shape(one, one, one)[0])
+        one  = np.ones(1)
+        norm = 6 * float(self.raw_shape(one, one, one)[0])
+        if norm == 0 or not np.isfinite(norm):
+            raise ValueError(f"{type(self).__name__}: the shape is {norm} at k1 = k2 = k3 = 1, so it cannot be "
+                             "normalised there; set normalise = None and include the amplitude in raw_shape")
+        return norm
 
     def raw_bispectrum(self, k1, k2, k3):
         """One permutation term of the bispectrum at wavenumbers ``k1, k2, k3`` (h/Mpc):

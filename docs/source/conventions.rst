@@ -32,6 +32,7 @@ comparing measured bispectra (or halo bias) with predictions computed directly f
 Grid sizes
 ----------
 
+* ``Nmesh`` must be even and ``Nsample`` at most ``Nmesh``; the executables check both.
 * ``Nmax`` (in units of the fundamental mode :math:`2\pi/L_{\rm box}`) is the largest wavenumber of
   the decomposition. The executables stop with an error unless ``Nmax >= Nsample``.
 * The non-Gaussian term is built from products of fields band-limited to ``Nsample/2``.
@@ -63,11 +64,15 @@ set ``ModeTables`` and ``BinnedPNGCacheBlockSize`` to ``'auto'`` by default.
   :math:`K_a`, so a product of two has modes up to :math:`K_a + K_b`, and its modes up to
   :math:`K_{\rm out}` are exact on any grid of :math:`L > K_a + K_b + K_{\rm out}` points per side
   (the pair adds nothing above :math:`K_{\rm out}`). Pairs with :math:`L \le 128` run whole on one
-  rank with serial FFTs, larger ones on all ranks with a band FFT of size :math:`L`; the rest stay on
-  the full grid. The non-Gaussian term agrees with ``0`` (every pair on the full grid) to
+  rank with serial FFTs, larger ones on all ranks with a band FFT of size :math:`L` (unless the fields
+  of that size would need more memory than two cache blocks of ``BinnedPNGCacheBlockSize`` full grids);
+  the rest stay on the full grid. The non-Gaussian term agrees with ``0`` (every pair on the full grid) to
   :math:`\sim 10^{-14}` relative. With it on, the result depends on the number of ranks at that
   level rather than not at all, because the small-grid pairs are summed in a rank-dependent order
-  (the Gaussian potential is the same bit for bit on any number of ranks).
+  (the Gaussian potential is the same bit for bit on any number of ranks). Every rank keeps tables of the
+  whole sampled band, about :math:`25\,N_{\rm sample}^3` bytes (0.4 GB at ``Nsample 256``, 3.4 GB at 512);
+  when those of all the ranks on a node would take more than a quarter of its memory, the run says so and
+  puts every pair on the full grid.
 
 ``2LPTBinned`` also skips every pair of bins in which one filtered field has no modes on the grid
 (bins below the fundamental mode or above the sampled range); the log says how many.
