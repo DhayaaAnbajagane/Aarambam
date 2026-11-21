@@ -25,7 +25,8 @@ class BasicLegendreDecompose:
     ModeTol : float
         The mode search stops once the residual variance falls below this fraction of the template's.
     MaxModeCount : int
-        Largest number of 3D modes kept; usually reached before ``ModeTol``.
+        Largest number of 3D modes kept (at least the 20 with all orders <= 3); usually reached before
+        ``ModeTol``.
     **kwargs
         Template parameters.
     """

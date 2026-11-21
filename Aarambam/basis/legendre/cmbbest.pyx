@@ -331,10 +331,11 @@ class Basis:
                         max_modes = None):
         """Expand the shapes of ``model_list`` (``Model`` instances) in the basis by orthogonal matching pursuit.
 
-        ``bad_modes`` (bool mask over the 3D modes) are never picked; the search stops once the residual
-        variance is below ``RR_tol`` of the shape's, at ``max_modes`` modes or when the mode covariance's
-        condition number would exceed ``cond_tol``. ``Niter`` and ``rtol`` control the iterative solve;
-        ``regularization`` is added to its diagonal. Returns ``(alpha, shape_cov, convergence, convergence_MSE)``.
+        ``bad_modes`` (bool mask over the 3D modes) are never picked; the search starts from the 20 modes with all
+        orders <= 3 and stops once the residual variance is below ``RR_tol`` of the shape's, at ``max_modes`` modes
+        or when the mode covariance's condition number would exceed ``cond_tol``. ``Niter`` and ``rtol`` control the
+        iterative solve; ``regularization`` is added to its diagonal. Returns ``(alpha, shape_cov, convergence,
+        convergence_MSE)``.
         """
 
         N_models = len(model_list)
@@ -432,9 +433,9 @@ class Basis:
                                                           QS_tilde[OMP_msk], rtol = rtol, atol=0, maxiter = int(Niter))
                 
                 #Compute the residual, and the correlation of all modes with residuals
-                R  = S - np.sum(Q_tilde[OMP_msk] * alpha_tmp[:, None], axis = 0)
+                R  = S[model_no:model_no + 1] - np.sum(Q_tilde[OMP_msk] * alpha_tmp[:, None], axis = 0)   #this model's
                 RR = np.matmul(R * w[np.newaxis,:], R.T)[0, 0]
-                delta_RR = RR/shape_covariance
+                delta_RR = RR/shape_covariance[model_no:model_no + 1, model_no:model_no + 1]
 
                 #An estimate of how correlated a given function is with all other functions in the basis set
                 #Don't have to account for off-diagonal because it is implicitly removed here.

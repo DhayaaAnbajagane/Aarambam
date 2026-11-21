@@ -22,7 +22,8 @@ class Decomposer:
     ModeTol : float, optional
         Legendre only (required): stop once the residual variance is below this fraction of the template's.
     MaxModeCount : int, optional
-        Legendre only (required): largest number of 3D modes kept; usually reached first.
+        Legendre only (required): largest number of 3D modes kept (at least the 20 with all orders <= 3);
+        usually reached first.
     Binned_Nk : int, optional
         Number of bins per k axis. Selects the binned decomposition.
     Binned_filter : str, optional
