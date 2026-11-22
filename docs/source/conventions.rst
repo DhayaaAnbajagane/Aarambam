@@ -49,7 +49,7 @@ set ``ModeTables`` and ``BinnedPNGCacheBlockSize`` to ``'auto'`` by default.
 
   * ``0`` computes every per-mode quantity on the fly: least memory.
   * ``1`` precomputes them. ``2LPTBinned`` tabulates :math:`|k|`, the output bin and the in-bin
-    coordinate of every sampled mode (about one extra grid; bit-identical result). ``2LPTBasis`` also
+    coordinate of every sampled mode (about one extra grid; same result to rounding). ``2LPTBasis`` also
     keeps the ``N_modes`` mode fields in real space instead of rebuilding them for every mode pair
     (half the FFTs, about ``N_modes`` extra grids, same result to :math:`\sim 10^{-16}`).
   * ``'auto'``: 1 for the binned method; for the modal one, 1 up to ``Nmesh = 512``
@@ -119,7 +119,7 @@ they are done:
   grid for ``Nmesh = 3/2 Nsample``) and gives every rank an equal share of it. It keeps a buffer of
   about :math:`(N_{\rm sample}/N_{\rm mesh})^2` of a grid per rank.
 
-Both give the same ICs to rounding, and bit for bit with ``FFTWWisdomDir none``. ``2LPTFFTCheck``
+Both give the same ICs to rounding. ``2LPTFFTCheck``
 (installed next to the executables) compares them on the ranks it is started on, e.g.
 ``mpirun -np 2 2LPTFFTCheck 48 32`` (grid size, ``Nsample``).
 

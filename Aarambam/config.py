@@ -274,7 +274,7 @@ def make_config_binned(Nmesh, Nsample, Nmax, Lbox, FileBase, OutputDir, GlassFil
     ----------
     (all of make_config_basis except N_modes, AlphaPath, AiPath)
         See ``make_config_basis``. ``ModeTables`` here tabulates the per-mode bin lookups (about one
-        extra grid, bit-identical result); ``'auto'`` is 1 at every ``Nmesh``.
+        extra grid, same result to rounding); ``'auto'`` is 1 at every ``Nmesh``.
     BinnedK1EdgesPath, BinnedK3EdgesPath : str
         Bin edges of the internal legs (k1 and k2 share them) and of the output leg k3.
     BinnedKernelValuesPath : str

@@ -129,8 +129,8 @@ def test_collate_real_output(am, outputs, tmp_path):
 
 @pytest.mark.parametrize('method', ['basis', 'binned'])
 def test_mode_tables_agree(am, lpt_binaries, tmp_path, method):
-    """ModeTables 1 (per-mode tables, cached mode fields) reproduces ModeTables 0: bit for bit for the binned
-    method, to rounding for the modal one. Nmesh 48 > Nsample 32 exercises the out-of-band skipping."""
+    """ModeTables 1 (per-mode tables, cached mode fields) reproduces ModeTables 0 to rounding: the two are different
+    code paths, so the last bit depends on the compiler. Nmesh 48 > Nsample 32 exercises the out-of-band skipping."""
     pot = {}
     for mt in (0, 1):
         d = tmp_path / f'mt{mt}'; d.mkdir()
@@ -139,10 +139,7 @@ def test_mode_tables_agree(am, lpt_binaries, tmp_path, method):
         pot[mt] = {f: potential(str(d), f) for f in ('Gauss', 'Nongauss')}
     np.testing.assert_array_equal(pot[0]['Gauss'], pot[1]['Gauss'])
     a, b = pot[0]['Nongauss'], pot[1]['Nongauss']
-    if method == 'binned':
-        np.testing.assert_array_equal(a, b)
-    else:
-        assert np.abs(a - b).max() <= 1e-12 * np.abs(a).max()
+    assert np.abs(a - b).max() <= 1e-12 * np.abs(a).max()
 
 
 def test_fftw_wisdom_file(am, lpt_binaries, tmp_path, monkeypatch):
