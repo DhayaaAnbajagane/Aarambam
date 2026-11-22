@@ -1,8 +1,9 @@
 name: tests
 
-# Python-only tests from the source tree. The 2LPT executables need FFTW3 (with MPI) + MPI + GSL and the
-# Legendre backend needs the compiled Cython extension, so neither is built here: tests marked
-# `mpi` skip themselves, and tests/conftest.py imports the pure-Python modules directly.
+# python:   the pure-Python tests from the source tree, on every supported Python (tests marked `mpi` and the
+#           Legendre extension tests skip themselves there).
+# compiled: Ubuntu's MPI, FFTW3 (with MPI and single precision) and GSL, `pip install .` (the 2LPT executables,
+#           2LPTFFTCheck and the Cython extension), then every test against the installed package.
 
 on:
   push:
@@ -26,3 +27,33 @@ jobs:
         env:
           OMP_NUM_THREADS: "2"
         run: python -m pytest tests -m "not mpi" -q
+
+  compiled:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install MPI, FFTW3 and GSL
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends openmpi-bin libopenmpi-dev libfftw3-dev libfftw3-mpi-dev libgsl-dev
+      - name: Build and install Aarambam
+        run: python -m pip install -v . pytest
+      - name: Check the installed executables and extension
+        working-directory: ${{ runner.temp }}
+        run: |
+          bin=$(python -c "from importlib.resources import files; print(files('Aarambam') / 'bin')")
+          ls -l "$bin"
+          test -x "$bin/2LPTBasis" && test -x "$bin/2LPTBinned" && test -x "$bin/2LPTFFTCheck"
+          python -c "import Aarambam.basis.legendre.cmbbest"
+          aarambam version
+      - name: Run all tests on the installed package
+        shell: bash
+        env:
+          AARAMBAM_TEST_INSTALLED: "1"
+          OMP_NUM_THREADS: "1"
+        run: |
+          python -m pytest tests -rs | tee pytest.log
+          if grep -q SKIPPED pytest.log; then echo "::error::tests were skipped: a compiled part is missing"; exit 1; fi

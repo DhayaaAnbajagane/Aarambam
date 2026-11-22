@@ -7,6 +7,9 @@ package and ``Aarambam.basis`` are registered as plain namespaces so the pure-Py
 
 Tests that need the compiled 2LPT executables and ``mpirun`` are marked ``mpi`` and are skipped
 unless both are found (see ``lpt_binaries`` below and tests/test_c_smoke.py).
+
+``AARAMBAM_TEST_INSTALLED=1`` tests the installed package instead of the source tree (its compiled
+extension and executables; the GitHub workflow does this after ``pip install .``).
 """
 import importlib, os, shutil, sys, types
 
@@ -16,6 +19,10 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 def _import_aarambam():
+    if os.environ.get('AARAMBAM_TEST_INSTALLED') == '1':    #the installed package (CI): compiled extension, executables
+        sys.path[:] = [p for p in sys.path if os.path.abspath(p or os.getcwd()) != ROOT]
+        import Aarambam  # noqa: F401
+        return
     if ROOT not in sys.path:
         sys.path.insert(0, ROOT)
     try:

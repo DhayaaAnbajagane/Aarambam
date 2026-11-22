@@ -90,10 +90,14 @@ if(NOT FFTW3_INCLUDE_DIR)
                       "the installation docs) and set Aarambam_FFTW3_ROOT to its --prefix.")
 endif()
 
-# the libraries of that same build, next to its include/ directory
+# the libraries of that same build, next to its include/ directory (lib/<arch> for Debian/Ubuntu packages)
 get_filename_component(_FFTW3_PREFIX "${FFTW3_INCLUDE_DIR}" DIRECTORY)
-find_library(FFTW3_MPI_LIBRARY NAMES fftw3_mpi HINTS ${_FFTW3_PREFIX} PATH_SUFFIXES lib lib64 NO_DEFAULT_PATH)
-find_library(FFTW3_LIBRARY     NAMES fftw3     HINTS ${_FFTW3_PREFIX} PATH_SUFFIXES lib lib64 NO_DEFAULT_PATH)
+set(_FFTW3_LIB_SUFFIXES lib lib64)
+if(CMAKE_LIBRARY_ARCHITECTURE)
+  list(APPEND _FFTW3_LIB_SUFFIXES lib/${CMAKE_LIBRARY_ARCHITECTURE})
+endif()
+find_library(FFTW3_MPI_LIBRARY NAMES fftw3_mpi HINTS ${_FFTW3_PREFIX} PATH_SUFFIXES ${_FFTW3_LIB_SUFFIXES} NO_DEFAULT_PATH)
+find_library(FFTW3_LIBRARY     NAMES fftw3     HINTS ${_FFTW3_PREFIX} PATH_SUFFIXES ${_FFTW3_LIB_SUFFIXES} NO_DEFAULT_PATH)
 if(NOT FFTW3_MPI_LIBRARY OR NOT FFTW3_LIBRARY)
   message(FATAL_ERROR "Found ${FFTW3_INCLUDE_DIR}/fftw3-mpi.h, but not libfftw3_mpi and libfftw3 under "
                       "${_FFTW3_PREFIX}/lib. Was FFTW3 built and installed with --enable-mpi?")
@@ -102,7 +106,7 @@ get_filename_component(FFTW3_LIB_DIR ${FFTW3_LIBRARY} DIRECTORY)
 message(STATUS "Aarambam: FFTW3 ${FFTW3_MPI_LIBRARY}")
 # Single-precision FFTW (libfftw3f, the same prefix, built with --enable-float) for NGPrecision float. Optional:
 # without it the executables are built without float support and NGPrecision float stops with a message.
-find_library(FFTW3F_LIBRARY NAMES fftw3f HINTS ${_FFTW3_PREFIX} PATH_SUFFIXES lib lib64 NO_DEFAULT_PATH)
+find_library(FFTW3F_LIBRARY NAMES fftw3f HINTS ${_FFTW3_PREFIX} PATH_SUFFIXES ${_FFTW3_LIB_SUFFIXES} NO_DEFAULT_PATH)
 if(FFTW3F_LIBRARY)
   message(STATUS "Aarambam: single-precision FFTW ${FFTW3F_LIBRARY} (NGPrecision float available)")
   set(FFTW3F_LINK ${FFTW3F_LIBRARY})

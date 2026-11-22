@@ -79,11 +79,19 @@ Running the tests
    AARAMBAM_LPT_BIN=/path/to/Aarambam/bin python -m pytest tests -m mpi     # 32^3 runs, ~1 min
 
 ``AARAMBAM_MPIRUN=/path/to/mpirun`` selects the ``mpirun`` of the MPI the executables were built
-with, if the first one on ``PATH`` is another. ``tests/large/run_large_tests.py`` runs larger
-rank-independence checks and refuses to start on a busy node.
+with, if the first one on ``PATH`` is another. ``AARAMBAM_TEST_INSTALLED=1 python -m pytest tests``
+tests the installed package instead of the source tree, including its compiled Legendre extension;
+the GitHub workflow does this on Ubuntu after ``pip install .``. ``tests/large/run_large_tests.py``
+runs larger rank-independence checks and refuses to start on a busy node.
 
 Installing FFTW3
 ----------------
+
+On Debian or Ubuntu, the system packages are enough (no environment variables needed):
+
+.. code-block:: bash
+
+   sudo apt-get install openmpi-bin libopenmpi-dev libfftw3-dev libfftw3-mpi-dev libgsl-dev
 
 Clusters often provide FFTW3 without its MPI library (``libfftw3_mpi``), or built against another
 MPI than yours. In that case, or without FFTW3 at all, build it:
