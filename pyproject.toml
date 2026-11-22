@@ -1,31 +1,42 @@
 [build-system]
 requires = [
-  "scikit-build-core>=0.9",
+  "scikit-build-core>=0.11",  # PEP 639 license metadata
   "Cython>=3.0",
-  "numpy>=1.22",        # if your Cython uses NumPy; drop if not
+  "numpy>=1.22",        # the Cython extension compiles against NumPy
 ]
 build-backend = "scikit_build_core.build"
 
 [project]
 name = "Aarambam"
-version = "1.0.0"
+version = "1.1.0"
 description = "Aarambam: 2LPT + basis tools"
 readme = "README.md"
-requires-python = ">=3.9"
-license = { text = "GPL-3.0-or-later" }
+requires-python = ">=3.10"
+license = "GPL-3.0-or-later"
+license-files = ["LICENSE"]
 authors = [{ name = "Dhayaa" }]
+dependencies = [
+  "numpy>=1.22",
+  "scipy>=1.12",        # cg(rtol=) in basis/legendre/cmbbest.pyx
+  "tqdm",
+  "joblib",
+  "threadpoolctl",
+]
 
 [project.scripts]
-Aarambam-2LPT-Basis    = "Aarambam.LPT.Basis.cli:main"
-Aarambam-2LPT-ResBasis = "Aarambam.LPT.ResBasis.cli:main"
-Aarambam-2LPT-Binned   = "Aarambam.LPT.Binned.cli:main"
-Aarambam-camb2input          = "Aarambam.bin.camb2input:main"
-Aarambam-collate-potential   = "Aarambam.bin.collate_potential:main"
-Aarambam-make-example-config-basis    = "Aarambam.bin.make_example_config_basis:main"
-Aarambam-make-example-config-resbasis = "Aarambam.bin.make_example_config_resbasis:main"
-Aarambam-make-example-config-binned   = "Aarambam.bin.make_example_config_binned:main"
+aarambam = "Aarambam.cli:main"
+# Older names, kept as aliases (ResBasis runs the modal 2LPTBasis executable)
+Aarambam-2LPT-Basis    = "Aarambam.cli:lpt_basis"
+Aarambam-2LPT-ResBasis = "Aarambam.cli:lpt_resbasis"
+Aarambam-2LPT-Binned   = "Aarambam.cli:lpt_binned"
+Aarambam-camb2input          = "Aarambam.cli:camb2input_main"
+Aarambam-collate-potential   = "Aarambam.cli:collate_main"
+Aarambam-make-example-config-basis    = "Aarambam.cli:example_basis"
+Aarambam-make-example-config-resbasis = "Aarambam.cli:example_resbasis"
+Aarambam-make-example-config-binned   = "Aarambam.cli:example_binned"
 
 [tool.scikit-build]
 # helpful verbosity and wheel tweaks
 build.verbose = true
-wheel.expand-macos-universal-tags = true
+# C sources (src/lpt) are outside the package; the Cython sources are not needed at runtime
+wheel.exclude = ["**/*.pyx", "**/*.c", "**/*.h"]

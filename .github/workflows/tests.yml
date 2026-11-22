@@ -1,0 +1,123 @@
+name: tests
+
+# python:   the pure-Python tests from the source tree, on every supported Python (tests marked `mpi` and the
+#           Legendre extension tests skip themselves there).
+# compiled: the system's MPI and GSL, FFTW3 built from source as in the installation docs (cached), `pip install .`
+#           (the 2LPT executables, 2LPTFFTCheck and the Cython extension), then every test on the installed package:
+#           Ubuntu with Open MPI and with MPICH, and in containers the distributions of HPC clusters, Rocky Linux 8
+#           and 9 (the RHEL family: Midway, Great Lakes) and openSUSE Leap 15.6 (SLES 15 SP6, the base of NERSC
+#           Perlmutter's Cray OS, whose Cray compilers, MPI and FFTW are not testable here).
+
+on:
+  push:
+  pull_request:
+
+env:
+  FFTW_VERSION: "3.3.10"
+
+jobs:
+  python:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install runtime dependencies
+        run: python -m pip install "numpy>=1.22" "scipy>=1.12" tqdm joblib threadpoolctl pytest
+      - name: Run tests
+        env:
+          OMP_NUM_THREADS: "2"
+        run: python -m pytest tests -m "not mpi" -q
+
+  ubuntu:
+    name: compiled (ubuntu, ${{ matrix.mpi }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        mpi: [openmpi, mpich]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install MPI and GSL
+        id: system
+        run: |
+          sudo apt-get update
+          if [ "${{ matrix.mpi }}" = openmpi ]; then mpi="openmpi-bin libopenmpi-dev"; else mpi="mpich libmpich-dev"; fi
+          sudo apt-get install -y --no-install-recommends $mpi libgsl-dev
+          mpicc --version | head -1
+          echo "ubuntu=$(lsb_release -rs)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache FFTW3 built from source
+        id: fftw-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/fftw
+          key: fftw-${{ env.FFTW_VERSION }}-${{ matrix.mpi }}-ubuntu${{ steps.system.outputs.ubuntu }}
+
+      - name: Build FFTW3 from source (double with MPI, then single precision, one prefix)
+        if: steps.fftw-cache.outputs.cache-hit != 'true'
+        working-directory: ${{ runner.temp }}
+        run: |
+          wget -q https://www.fftw.org/fftw-$FFTW_VERSION.tar.gz
+          tar -xzf fftw-$FFTW_VERSION.tar.gz && cd fftw-$FFTW_VERSION
+          ./configure --prefix=$HOME/fftw --enable-mpi --enable-shared --enable-sse2 --enable-avx --enable-avx2 MPICC=mpicc
+          make -j4 && make install && cd ..
+          rm -rf fftw-$FFTW_VERSION && tar -xzf fftw-$FFTW_VERSION.tar.gz && cd fftw-$FFTW_VERSION
+          ./configure --prefix=$HOME/fftw --enable-float --enable-shared --enable-sse --enable-sse2 --enable-avx --enable-avx2
+          make -j4 && make install
+
+      - name: Build and install Aarambam
+        run: Aarambam_FFTW3_ROOT=$HOME/fftw python -m pip install -v . pytest
+
+      - name: Check the installed executables and extension
+        working-directory: ${{ runner.temp }}
+        run: |
+          bin=$(python -c "from importlib.resources import files; print(files('Aarambam') / 'bin')")
+          ls -l "$bin"
+          test -x "$bin/2LPTBasis" && test -x "$bin/2LPTBinned" && test -x "$bin/2LPTFFTCheck"
+          python -c "import Aarambam.basis.legendre.cmbbest"
+          aarambam version
+
+      - name: Run all tests on the installed package
+        shell: bash
+        env:
+          AARAMBAM_TEST_INSTALLED: "1"
+          OMP_NUM_THREADS: "1"
+        run: |
+          python -m pytest tests -rs | tee pytest.log
+          if grep -q SKIPPED pytest.log; then echo "::error::tests were skipped: a compiled part is missing"; exit 1; fi
+
+  distro:
+    name: compiled (${{ matrix.image }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {image: "rockylinux:8",       key: rocky8}
+          - {image: "rockylinux:9",       key: rocky9}
+          - {image: "opensuse/leap:15.6", key: opensuse15.6}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache FFTW3 built from source
+        uses: actions/cache@v4
+        with:
+          path: ci_cache/fftw-*/
+          key: fftw-${{ env.FFTW_VERSION }}-${{ matrix.key }}
+
+      - name: Download the FFTW3 source
+        run: mkdir -p ci_cache && curl -sSL -o ci_cache/fftw-$FFTW_VERSION.tar.gz https://www.fftw.org/fftw-$FFTW_VERSION.tar.gz
+
+      - name: Install the dependencies, Aarambam, and run all tests in the container
+        run: |
+          docker run --rm --shm-size=1g -e FFTW_VERSION -v "$PWD":/src ${{ matrix.image }} bash /src/.github/ci/distro.sh

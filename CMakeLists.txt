@@ -1,67 +1,39 @@
-cmake_minimum_required(VERSION 3.16)
-project(Aarambam C)
+cmake_minimum_required(VERSION 3.18)   # find_* REQUIRED needs 3.18
 
 # --- Compiler: use mpicc ---
+# The compiler must be chosen before project(), otherwise CMake detects the
+# system cc first and only swaps in mpicc at generate time.
 if(DEFINED ENV{Aarambam_CC})
-  set(CMAKE_C_COMPILER $ENV{Aarambam_CC} CACHE FILEPATH "C compiler" FORCE)
+  set(CMAKE_C_COMPILER $ENV{Aarambam_CC})
 else()
   find_program(MPI_C_COMPILER NAMES mpicc REQUIRED)
-  set(CMAKE_C_COMPILER ${MPI_C_COMPILER} CACHE FILEPATH "MPI C compiler" FORCE)
+  set(CMAKE_C_COMPILER ${MPI_C_COMPILER})
 endif()
 
-# --- Match Makefile flags: -O3 -Wall and GNU extensions (like drand48, M_PI) ---
+project(Aarambam C)
+
+# --- Flags: -O3 -Wall and GNU extensions (drand48, M_PI) ---
 set(CMAKE_C_STANDARD 99)
 set(CMAKE_C_STANDARD_REQUIRED ON)
-set(CMAKE_C_EXTENSIONS ON)           # => gnu99, like GCC default in 2LPTPNG
+set(CMAKE_C_EXTENSIONS ON)           # gnu99
 add_compile_options(-O3 -Wall -g)
 
-# --- Sources (OBJS without .o) ---
-set(BASIS_SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR}/Aarambam/LPT/Basis/)
-add_executable(2LPTBasis
-  ${BASIS_SRC_DIR}/main.c
-  ${BASIS_SRC_DIR}/power.c
-  ${BASIS_SRC_DIR}/checkchoose.c
-  ${BASIS_SRC_DIR}/allvars.c
-  ${BASIS_SRC_DIR}/save.c
-  ${BASIS_SRC_DIR}/read_param.c
-  ${BASIS_SRC_DIR}/read_glass.c
-  ${BASIS_SRC_DIR}/nrsrc/nrutil.c
-  ${BASIS_SRC_DIR}/nrsrc/qromb.c
-  ${BASIS_SRC_DIR}/nrsrc/polint.c
-  ${BASIS_SRC_DIR}/nrsrc/trapzd.c
-)
+# Optional: compile for the CPU of the build machine (-march=native: AVX2 / AVX-512 and fused multiply-add).
+# A few per cent faster, but the executables then only run on CPUs with the same instruction sets (leave it
+# OFF if login and compute nodes differ), and results change at the rounding level (fused multiply-adds).
+# Aarambam_NATIVE=ON as an environment variable or -D.
+if(DEFINED ENV{Aarambam_NATIVE})
+  set(_AARAMBAM_NATIVE_DEFAULT "$ENV{Aarambam_NATIVE}")
+else()
+  set(_AARAMBAM_NATIVE_DEFAULT OFF)
+endif()
+option(Aarambam_NATIVE "Compile the 2LPT executables for the build machine's CPU (-march=native)" ${_AARAMBAM_NATIVE_DEFAULT})
+message(STATUS "Aarambam: -march=native: ${Aarambam_NATIVE}")
+if(Aarambam_NATIVE)
+  add_compile_options(-march=native)
+endif()
 
-set(RESBASIS_SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR}/Aarambam/LPT/ResBasis/)
-add_executable(2LPTResBasis
-  ${RESBASIS_SRC_DIR}/main.c
-  ${RESBASIS_SRC_DIR}/power.c
-  ${RESBASIS_SRC_DIR}/checkchoose.c
-  ${RESBASIS_SRC_DIR}/allvars.c
-  ${RESBASIS_SRC_DIR}/save.c
-  ${RESBASIS_SRC_DIR}/read_param.c
-  ${RESBASIS_SRC_DIR}/read_glass.c
-  ${RESBASIS_SRC_DIR}/nrsrc/nrutil.c
-  ${RESBASIS_SRC_DIR}/nrsrc/qromb.c
-  ${RESBASIS_SRC_DIR}/nrsrc/polint.c
-  ${RESBASIS_SRC_DIR}/nrsrc/trapzd.c
-)
-
-set(BINNED_SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR}/Aarambam/LPT/Binned/)
-add_executable(2LPTBinned
-  ${BINNED_SRC_DIR}/main.c
-  ${BINNED_SRC_DIR}/power.c
-  ${BINNED_SRC_DIR}/checkchoose.c
-  ${BINNED_SRC_DIR}/allvars.c
-  ${BINNED_SRC_DIR}/save.c
-  ${BINNED_SRC_DIR}/read_param.c
-  ${BINNED_SRC_DIR}/read_glass.c
-  ${BINNED_SRC_DIR}/nrsrc/nrutil.c
-  ${BINNED_SRC_DIR}/nrsrc/qromb.c
-  ${BINNED_SRC_DIR}/nrsrc/polint.c
-  ${BINNED_SRC_DIR}/nrsrc/trapzd.c
-)
-
-# --- Include paths ---
+# --- Dependencies of the 2LPT executables ---
 # GSL
 if(DEFINED ENV{Aarambam_GSL_ROOT})
   set(GSL_INCLUDE_DIR "$ENV{Aarambam_GSL_ROOT}/include" CACHE PATH "GSL include directory" FORCE)
@@ -76,185 +48,276 @@ else()
     NAMES        gsl/gsl_math.h
     HINTS        ${_GSL_HINT}
     PATH_SUFFIXES include
+    REQUIRED
   )
 endif()
-target_include_directories(2LPTBasis    PRIVATE ${GSL_INCLUDE_DIR})
-target_include_directories(2LPTResBasis PRIVATE ${GSL_INCLUDE_DIR})
-target_include_directories(2LPTBinned   PRIVATE ${GSL_INCLUDE_DIR})
-set(GSL_LIB_DIR "${GSL_INCLUDE_DIR}/../lib" CACHE PATH "GSL library directory" FORCE)
 
-# FFTW2
-if(DEFINED ENV{Aarambam_FFTW2_ROOT})
-  set(_FFTW2_HINT "$ENV{Aarambam_FFTW2_ROOT}")
-else()
-  message(FATAL_ERROR "Environment variable Aarambam_FFTW2_ROOT must be set to your FFTW2 install/build root")
+get_filename_component(_GSL_PREFIX "${GSL_INCLUDE_DIR}" DIRECTORY)
+find_library(GSL_LIBRARY
+  NAMES        gsl
+  HINTS        ${_GSL_PREFIX}
+  PATH_SUFFIXES lib lib64
+  REQUIRED
+)
+get_filename_component(GSL_LIB_DIR ${GSL_LIBRARY} DIRECTORY)
+
+# FFTW3: double precision, built with MPI (fftw3-mpi.h, libfftw3_mpi) against the same MPI as mpicc.
+# Aarambam_FFTW3_ROOT is the --prefix of that build and is then the only place looked in; without it,
+# FFTW3_ROOT / FFTW_DIR / FFTW_ROOT and the system paths are searched for fftw3-mpi.h.
+if(DEFINED ENV{Aarambam_FFTW2_ROOT} AND NOT DEFINED ENV{Aarambam_FFTW3_ROOT})
+  message(WARNING "Aarambam_FFTW2_ROOT is no longer used: Aarambam now uses FFTW3 with MPI (set Aarambam_FFTW3_ROOT)")
 endif()
 
-find_path(FFTW2_INCLUDE_DIR
-  NAMES        dfftw.h
-  HINTS        ${_FFTW2_HINT}
+# Include and library directories of the MPI compiler wrapper (Open MPI: --showme, MPICH: -show). Distribution
+# packages (RHEL/Rocky, SUSE) put FFTW's MPI header and library there, apart from the serial FFTW.
+set(_MPI_INC_DIRS "")
+set(_MPI_LIB_DIRS "")
+execute_process(COMMAND ${CMAKE_C_COMPILER} --showme OUTPUT_VARIABLE _MPI_SHOW ERROR_QUIET RESULT_VARIABLE _MPI_RC)
+if(NOT _MPI_RC EQUAL 0)
+  execute_process(COMMAND ${CMAKE_C_COMPILER} -show OUTPUT_VARIABLE _MPI_SHOW ERROR_QUIET RESULT_VARIABLE _MPI_RC)
+endif()
+if(_MPI_RC EQUAL 0)
+  string(REGEX MATCHALL "-I[^ \t\r\n]+" _flags "${_MPI_SHOW}")
+  foreach(_f ${_flags})
+    string(SUBSTRING "${_f}" 2 -1 _d)
+    list(APPEND _MPI_INC_DIRS "${_d}")
+  endforeach()
+  string(REGEX MATCHALL "-L[^ \t\r\n]+" _flags "${_MPI_SHOW}")
+  foreach(_f ${_flags})
+    string(SUBSTRING "${_f}" 2 -1 _d)
+    list(APPEND _MPI_LIB_DIRS "${_d}")
+  endforeach()
+endif()
+
+if(DEFINED ENV{Aarambam_FFTW3_ROOT})
+  set(_FFTW3_HINT "$ENV{Aarambam_FFTW3_ROOT}")
+  set(_FFTW3_PATHS NO_DEFAULT_PATH)
+else()
+  foreach(_var FFTW3_ROOT FFTW_DIR FFTW_ROOT)
+    if(DEFINED ENV{${_var}})
+      list(APPEND _FFTW3_HINT "$ENV{${_var}}")
+    endif()
+  endforeach()
+  list(APPEND _FFTW3_HINT ${_MPI_INC_DIRS})
+endif()
+
+find_path(FFTW3_INCLUDE_DIR
+  NAMES        fftw3-mpi.h
+  HINTS        ${_FFTW3_HINT}
   PATH_SUFFIXES include
-  REQUIRED
+  ${_FFTW3_PATHS}
 )
-target_include_directories(2LPTBasis    PRIVATE ${FFTW2_INCLUDE_DIR})
-target_include_directories(2LPTResBasis PRIVATE ${FFTW2_INCLUDE_DIR})
-target_include_directories(2LPTBinned   PRIVATE ${FFTW2_INCLUDE_DIR})
+if(NOT FFTW3_INCLUDE_DIR)
+  message(FATAL_ERROR "FFTW3 with MPI support (fftw3-mpi.h) was not found. Build FFTW3 with --enable-mpi (see "
+                      "the installation docs) and set Aarambam_FFTW3_ROOT to its --prefix.")
+endif()
 
-find_library(_FFTW2_LIB
-  NAMES        fftw  dfftw
-  HINTS        ${_FFTW2_HINT}
-  PATH_SUFFIXES lib
-  REQUIRED
-)
-get_filename_component(FFTW2_LIB_DIR ${_FFTW2_LIB} DIRECTORY)
+# the libraries of that same build, next to its include/ directory (lib/<arch> for Debian/Ubuntu packages)
+get_filename_component(_FFTW3_PREFIX "${FFTW3_INCLUDE_DIR}" DIRECTORY)
+set(_FFTW3_LIB_SUFFIXES lib lib64)
+if(CMAKE_LIBRARY_ARCHITECTURE)
+  list(APPEND _FFTW3_LIB_SUFFIXES lib/${CMAKE_LIBRARY_ARCHITECTURE})
+endif()
+find_library(FFTW3_MPI_LIBRARY NAMES fftw3_mpi HINTS ${_FFTW3_PREFIX} PATH_SUFFIXES ${_FFTW3_LIB_SUFFIXES} NO_DEFAULT_PATH)
+find_library(FFTW3_LIBRARY     NAMES fftw3     HINTS ${_FFTW3_PREFIX} PATH_SUFFIXES ${_FFTW3_LIB_SUFFIXES} NO_DEFAULT_PATH)
+set(_FFTW3_SPLIT OFF)
+if((NOT FFTW3_MPI_LIBRARY OR NOT FFTW3_LIBRARY) AND NOT DEFINED ENV{Aarambam_FFTW3_ROOT})
+  # distribution packages: libfftw3_mpi in the MPI library directory, the serial libraries in the system paths
+  set(_FFTW3_SPLIT ON)
+  find_library(FFTW3_MPI_LIBRARY NAMES fftw3_mpi HINTS ${_MPI_LIB_DIRS})
+  find_library(FFTW3_LIBRARY     NAMES fftw3)
+endif()
+if(NOT FFTW3_MPI_LIBRARY OR NOT FFTW3_LIBRARY)
+  message(FATAL_ERROR "Found ${FFTW3_INCLUDE_DIR}/fftw3-mpi.h, but not libfftw3_mpi and libfftw3 under "
+                      "${_FFTW3_PREFIX}/lib. Was FFTW3 built and installed with --enable-mpi?")
+endif()
+get_filename_component(FFTW3_LIB_DIR ${FFTW3_LIBRARY} DIRECTORY)
+get_filename_component(_FFTW3_MPI_LIB_DIR ${FFTW3_MPI_LIBRARY} DIRECTORY)
+list(APPEND FFTW3_LIB_DIR ${_FFTW3_MPI_LIB_DIR})
+list(REMOVE_DUPLICATES FFTW3_LIB_DIR)
+message(STATUS "Aarambam: FFTW3 ${FFTW3_MPI_LIBRARY}")
+# Single-precision FFTW (libfftw3f, the same prefix, built with --enable-float) for NGPrecision float. Optional:
+# without it the executables are built without float support and NGPrecision float stops with a message.
+if(_FFTW3_SPLIT)
+  find_library(FFTW3F_LIBRARY NAMES fftw3f)
+else()
+  find_library(FFTW3F_LIBRARY NAMES fftw3f HINTS ${_FFTW3_PREFIX} PATH_SUFFIXES ${_FFTW3_LIB_SUFFIXES} NO_DEFAULT_PATH)
+endif()
+if(FFTW3F_LIBRARY)
+  message(STATUS "Aarambam: single-precision FFTW ${FFTW3F_LIBRARY} (NGPrecision float available)")
+  set(FFTW3F_LINK ${FFTW3F_LIBRARY})
+else()
+  message(WARNING "Aarambam: no libfftw3f under ${_FFTW3_PREFIX}: building without NGPrecision float. To enable it, "
+                  "build FFTW3 once more with --enable-float into the same prefix (see the installation docs).")
+  set(FFTW3F_LINK "")
+endif()
 
-# MPI
+# MPI: mpicc links it; its library directory is found for the run path of the installed executables
 if(DEFINED ENV{Aarambam_OPENMPI_ROOT})
-  set(OPENMPI_LIB_DIR "$ENV{Aarambam_OPENMPI_ROOT}/lib" CACHE PATH "OpenMPI library directory" FORCE)
+  find_library(OPENMPI_MPI_LIB
+    NAMES mpi mpich
+    HINTS "$ENV{Aarambam_OPENMPI_ROOT}"
+    PATH_SUFFIXES lib lib64
+    NO_DEFAULT_PATH
+    REQUIRED
+  )
 else()
   # split the colon‐delimited env vars into a CMake list and combine
-  string(REPLACE ":" ";" _LD_PATHS  $ENV{LD_LIBRARY_PATH})
+  string(REPLACE ":" ";" _LD_PATHS  "$ENV{LD_LIBRARY_PATH}")
   string(REPLACE ":" ";" _LIB_PATHS "$ENV{LIBRARY_PATH}")
   list(APPEND _SEARCH_PATHS ${_LD_PATHS} ${_LIB_PATHS})
 
-  # look for libmpi.so (or .dylib/.a) on your LD_LIBRARY_PATH or LIBRARY_PATH
+  # look for the library where mpicc links it from, next to mpicc, then on your LD_LIBRARY_PATH or LIBRARY_PATH, then
+  # the system paths
+  get_filename_component(_MPICC_BIN_DIR "${CMAKE_C_COMPILER}" DIRECTORY)
   find_library(OPENMPI_MPI_LIB
-    NAMES mpi
+    NAMES mpi mpich
+    HINTS ${_MPI_LIB_DIRS} "${_MPICC_BIN_DIR}/../lib" "${_MPICC_BIN_DIR}/../lib64"
     PATHS ${_SEARCH_PATHS}
     REQUIRED
   )
-
-  # strip off the filename to get the lib directory
-  get_filename_component(OPENMPI_LIB_DIR ${OPENMPI_MPI_LIB} DIRECTORY)
 endif()
+# strip off the filename to get the lib directory
+get_filename_component(OPENMPI_LIB_DIR ${OPENMPI_MPI_LIB} DIRECTORY)
 
-# Local headers
-target_include_directories(2LPTBasis    PRIVATE ${BASIS_SRC_DIR}    ${BASIS_SRC_DIR}/nrsrs)
-target_include_directories(2LPTResBasis PRIVATE ${RESBASIS_SRC_DIR} ${RESBASIS_SRC_DIR}/nrsrs)
-target_include_directories(2LPTBinned   PRIVATE ${BINNED_SRC_DIR}   ${BINNED_SRC_DIR}/nrsrs)
+# --- 2LPT executables: src/lpt/common (shared by all) + one directory per method ---
+set(LPT_DIR ${CMAKE_CURRENT_SOURCE_DIR}/src/lpt)
+set(LPT_COMMON_SRC
+  ${LPT_DIR}/common/allvars.c
+  ${LPT_DIR}/common/read_param.c
+  ${LPT_DIR}/common/power.c
+  ${LPT_DIR}/common/lpt_core.c
+  ${LPT_DIR}/common/lpt_fft.c
+  ${LPT_DIR}/common/band_fft.c
+  ${LPT_DIR}/common/save.c
+  ${LPT_DIR}/common/read_glass.c
+  ${LPT_DIR}/common/nrsrc/nrutil.c
+  ${LPT_DIR}/common/nrsrc/qromb.c
+  ${LPT_DIR}/common/nrsrc/polint.c
+  ${LPT_DIR}/common/nrsrc/trapzd.c
+)
 
-# --- Preprocessor options (OPT / OPTIONS in the Makefile) ---
-# Default Makefile switches:
-target_compile_definitions(2LPTBasis PRIVATE
-  NO64BITID=1
+# Preprocessor options (OPT / OPTIONS in the original 2LPTic Makefile)
+# Particle IDs: 32-bit by default (the executables stop if TotNumPart > 2^31-1). Set Aarambam_64BIT_IDS=ON
+# (environment variable or -D) to write 8-byte IDs; the snapshot readers then need to expect 64-bit IDs.
+if(DEFINED ENV{Aarambam_64BIT_IDS})
+  set(_AARAMBAM_64BIT_IDS_DEFAULT "$ENV{Aarambam_64BIT_IDS}")
+else()
+  set(_AARAMBAM_64BIT_IDS_DEFAULT OFF)
+endif()
+option(Aarambam_64BIT_IDS "Write 64-bit particle IDs in the snapshots" ${_AARAMBAM_64BIT_IDS_DEFAULT})
+message(STATUS "Aarambam: 64-bit particle IDs: ${Aarambam_64BIT_IDS}")
+
+set(LPT_DEFINITIONS
   CORRECT_CIC=1
   # PRODUCEGAS=1   # uncomment if you want this default ON
   # ONLY_ZA=1      # uncomment if you want this default ON
 )
+if(NOT Aarambam_64BIT_IDS)
+  list(APPEND LPT_DEFINITIONS NO64BITID=1)
+endif()
+if(NOT FFTW3F_LIBRARY)
+  list(APPEND LPT_DEFINITIONS AARAMBAM_NO_FLOAT=1)
+endif()
+set(LPT_INCLUDE_DIRS ${LPT_DIR}/common ${LPT_DIR}/common/nrsrc ${GSL_INCLUDE_DIR} ${FFTW3_INCLUDE_DIR})
 
-target_compile_definitions(2LPTResBasis PRIVATE
-  NO64BITID=1
-  CORRECT_CIC=1
-  # PRODUCEGAS=1   # uncomment if you want this default ON
-  # ONLY_ZA=1      # uncomment if you want this default ON
-)
+# Code shared by all methods, compiled once
+add_library(lptcore OBJECT ${LPT_COMMON_SRC})
+target_include_directories(lptcore PRIVATE ${LPT_INCLUDE_DIRS})
+target_compile_definitions(lptcore PRIVATE ${LPT_DEFINITIONS})
 
-target_compile_definitions(2LPTBinned PRIVATE
-  NO64BITID=1
-  CORRECT_CIC=1
-  # PRODUCEGAS=1   # uncomment if you want this default ON
-  # ONLY_ZA=1      # uncomment if you want this default ON
-)
+function(aarambam_lpt_executable name method_dir)
+  add_executable(${name} ${ARGN} $<TARGET_OBJECTS:lptcore>)
+  target_include_directories(${name} PRIVATE ${method_dir} ${LPT_INCLUDE_DIRS})
+  target_compile_definitions(${name} PRIVATE ${LPT_DEFINITIONS})
+  target_link_directories(${name} PRIVATE ${OPENMPI_LIB_DIR} ${GSL_LIB_DIR} ${FFTW3_LIB_DIR})
+  target_link_libraries(${name} PRIVATE ${FFTW3_MPI_LIBRARY} ${FFTW3_LIBRARY} ${FFTW3F_LINK} gsl gslcblas m)   # MPI: linked by mpicc
+  # Installed binaries must find libmpi / libgsl / libfftw3 without LD_LIBRARY_PATH
+  set_target_properties(${name} PROPERTIES INSTALL_RPATH "${OPENMPI_LIB_DIR};${GSL_LIB_DIR};${FFTW3_LIB_DIR}")
+  install(TARGETS ${name} RUNTIME DESTINATION Aarambam/bin)
+endfunction()
 
+# Modal (Legendre basis) method; ResBasis is this executable with WhichSpectrum 1/2
+aarambam_lpt_executable(2LPTBasis ${LPT_DIR}/modal
+  ${LPT_DIR}/modal/main_modal.c ${LPT_DIR}/modal/params_modal.c)
+aarambam_lpt_executable(2LPTBinned ${LPT_DIR}/binned
+  ${LPT_DIR}/binned/main.c ${LPT_DIR}/binned/params_binned.c)
 
-# --- Link directories (LIBS part: -L...) ---
-target_link_directories(2LPTBasis PRIVATE
-  ${OPENMPI_LIB_DIR}
-  ${GSL_LIB_DIR}
-  ${FFTW2_LIB_DIR}
-)
-target_link_directories(2LPTResBasis PRIVATE
-  ${OPENMPI_LIB_DIR}
-  ${GSL_LIB_DIR}
-  ${FFTW2_LIB_DIR}
-)
-target_link_directories(2LPTBinned PRIVATE
-  ${OPENMPI_LIB_DIR}
-  ${GSL_LIB_DIR}
-  ${FFTW2_LIB_DIR}
-)
-
-# --- Link libraries ---
-target_link_libraries(2LPTBasis PRIVATE
-  m
-  mpi
-  drfftw_mpi dfftw_mpi drfftw dfftw
-  gsl gslcblas
-)
-
-target_link_libraries(2LPTResBasis PRIVATE
-  m
-  mpi
-  drfftw_mpi dfftw_mpi drfftw dfftw
-  gsl gslcblas
-)
-
-target_link_libraries(2LPTBinned PRIVATE
-  m
-  mpi
-  drfftw_mpi dfftw_mpi drfftw dfftw
-  gsl gslcblas
-)
-
-install(TARGETS 2LPTBasis    RUNTIME DESTINATION Aarambam/bin)
-install(TARGETS 2LPTResBasis RUNTIME DESTINATION Aarambam/bin)
-install(TARGETS 2LPTBinned   RUNTIME DESTINATION Aarambam/bin)
-
+# Check of the band FFT backend against FFTW3-MPI (tests/test_c_smoke.py runs it on 1-7 ranks)
+add_executable(2LPTFFTCheck ${LPT_DIR}/check/fft_check.c ${LPT_DIR}/common/band_fft.c)
+target_include_directories(2LPTFFTCheck PRIVATE ${LPT_DIR}/common ${FFTW3_INCLUDE_DIR})
+target_compile_definitions(2LPTFFTCheck PRIVATE ${LPT_DEFINITIONS})
+target_link_directories(2LPTFFTCheck PRIVATE ${OPENMPI_LIB_DIR} ${FFTW3_LIB_DIR})
+target_link_libraries(2LPTFFTCheck PRIVATE ${FFTW3_MPI_LIBRARY} ${FFTW3_LIBRARY} ${FFTW3F_LINK} m)
+set_target_properties(2LPTFFTCheck PROPERTIES INSTALL_RPATH "${OPENMPI_LIB_DIR};${FFTW3_LIB_DIR}")
+install(TARGETS 2LPTFFTCheck RUNTIME DESTINATION Aarambam/bin)
 
 # ─── CMB-BEST Python Extension ──────────────────────────────────────────────
-
-find_package(Python3 REQUIRED COMPONENTS Interpreter Development.Module NumPy)
-find_package(OpenMP)  # for -fopenmp
-
-# paths
-set(CMB_SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR}/Aarambam/basis/legendre)
-set(CMB_PYX    ${CMB_SRC_DIR}/cmbbest.pyx)
-set(CMB_C      ${CMAKE_CURRENT_BINARY_DIR}/Aarambam/basis/legendre/cmbbest.c)
-
-# 1 generate cmbbest.c
-add_custom_command(
-  OUTPUT ${CMB_C}
-  COMMAND ${Python3_EXECUTABLE} -m cython -3 --fast-fail -o ${CMB_C} ${CMB_PYX}
-  DEPENDS ${CMB_PYX} ${CMB_SRC_DIR}/tetrapyd.c ${CMB_SRC_DIR}/arrays.c
-  COMMENT "Cythonizing ${CMB_PYX}"
-  VERBATIM
-)
-
-# 2 build the extension
-if(COMMAND Python3_add_library)
-  Python3_add_library(cmbbest MODULE WITH_SOABI
-    ${CMB_C}
-    ${CMB_SRC_DIR}/tetrapyd.c
-    ${CMB_SRC_DIR}/arrays.c
-  )
+# Aarambam_PYTHON_EXTENSION=OFF (environment variable or -D) builds only the C executables, e.g. where no Python
+# development files are installed; the Legendre decomposition then cannot be used.
+if(DEFINED ENV{Aarambam_PYTHON_EXTENSION})
+  set(_AARAMBAM_PYEXT_DEFAULT "$ENV{Aarambam_PYTHON_EXTENSION}")
 else()
-  add_library(cmbbest MODULE
-    ${CMB_C}
-    ${CMB_SRC_DIR}/tetrapyd.c
-    ${CMB_SRC_DIR}/arrays.c
-  )
-  # fallback suffix
-  execute_process(
-    COMMAND ${Python3_EXECUTABLE} -c
-      "import sysconfig; print(sysconfig.get_config_var('EXT_SUFFIX') or '.so', end='')"
-    OUTPUT_VARIABLE _ext
-  )
-  set_target_properties(cmbbest PROPERTIES SUFFIX "${_ext}")
+  set(_AARAMBAM_PYEXT_DEFAULT ON)
 endif()
+option(Aarambam_PYTHON_EXTENSION "Build the Cython extension of the Legendre decomposition" ${_AARAMBAM_PYEXT_DEFAULT})
+if(Aarambam_PYTHON_EXTENSION)
 
-# 3 include & link
-target_include_directories(cmbbest PRIVATE
-  ${Python3_NumPy_INCLUDE_DIRS}
-  ${CMB_SRC_DIR}
-)
-if(OpenMP_C_FOUND)
+  find_package(Python3 REQUIRED COMPONENTS Interpreter Development.Module NumPy)
+  find_package(OpenMP REQUIRED COMPONENTS C)  # tetrapyd.c includes omp.h unconditionally
+
+  # paths
+  set(CMB_SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR}/Aarambam/basis/legendre)
+  set(CMB_PYX    ${CMB_SRC_DIR}/cmbbest.pyx)
+  set(CMB_C      ${CMAKE_CURRENT_BINARY_DIR}/Aarambam/basis/legendre/cmbbest.c)
+
+  # 1 generate cmbbest.c (the Makefile generator does not create the output dir)
+  file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/Aarambam/basis/legendre)
+  add_custom_command(
+    OUTPUT ${CMB_C}
+    COMMAND ${Python3_EXECUTABLE} -m cython -3 --fast-fail -o ${CMB_C} ${CMB_PYX}
+    DEPENDS ${CMB_PYX} ${CMB_SRC_DIR}/tetrapyd.c ${CMB_SRC_DIR}/arrays.c
+    COMMENT "Cythonizing ${CMB_PYX}"
+    VERBATIM
+  )
+
+  # 2 build the extension
+  if(COMMAND Python3_add_library)
+    Python3_add_library(cmbbest MODULE WITH_SOABI
+      ${CMB_C}
+      ${CMB_SRC_DIR}/tetrapyd.c
+      ${CMB_SRC_DIR}/arrays.c
+    )
+  else()
+    add_library(cmbbest MODULE
+      ${CMB_C}
+      ${CMB_SRC_DIR}/tetrapyd.c
+      ${CMB_SRC_DIR}/arrays.c
+    )
+    # fallback suffix
+    execute_process(
+      COMMAND ${Python3_EXECUTABLE} -c
+        "import sysconfig; print(sysconfig.get_config_var('EXT_SUFFIX') or '.so', end='')"
+      OUTPUT_VARIABLE _ext
+    )
+    set_target_properties(cmbbest PROPERTIES SUFFIX "${_ext}")
+  endif()
+
+  # 3 include & link
+  target_include_directories(cmbbest PRIVATE
+    ${Python3_NumPy_INCLUDE_DIRS}
+    ${CMB_SRC_DIR}
+  )
   target_link_libraries(cmbbest PRIVATE OpenMP::OpenMP_C)
-  target_compile_options(cmbbest PRIVATE -fopenmp)
-  target_link_options(cmbbest PRIVATE -fopenmp)
-endif()
+  # mpicc (the project's compiler) adds MPI, which the extension does not use: without --as-needed, importing
+  # Aarambam would need the MPI library on the loader path
+  if(NOT APPLE)
+    target_link_options(cmbbest PRIVATE "LINKER:--as-needed")
+  endif()
 
-# 4 install into your package
-install(TARGETS cmbbest
-  RUNTIME DESTINATION Aarambam/basis/legendre      # no-op on MODULE, but fine
-  LIBRARY DESTINATION Aarambam/basis/legendre      # .so goes here under site-packages/Aarambam/basis
-)
+  # 4 install into your package
+  install(TARGETS cmbbest
+    RUNTIME DESTINATION Aarambam/basis/legendre      # no-op on MODULE, but fine
+    LIBRARY DESTINATION Aarambam/basis/legendre      # .so goes here under site-packages/Aarambam/basis
+  )
+endif()

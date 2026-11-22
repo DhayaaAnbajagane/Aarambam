@@ -1,4 +1,4 @@
-"""C-table serialization and loading for Aarambam binned kernels."""
+"""Writing and reading the text tables of the binned decomposition (the files read by ``2LPTBinned``)."""
 
 import os
 
@@ -74,7 +74,6 @@ def _write_metadata(out, directory, args):
         handle.write(f'enforce_triangle_box {int(bool(args["Binned_enforce_triangle"]))}\n')
         handle.write(f'enforce_triangle_center {int(bool(args["Binned_center_triangle_only"]))}\n')
         handle.write(f'k1_edges_file {PREFIX}_k1_edges.txt\n')
-        handle.write(f'k2_edges_file {PREFIX}_k2_edges.txt\n')
         handle.write(f'k3_edges_file {PREFIX}_k3_edges.txt\n')
         handle.write(f'values_file {PREFIX}_values.txt\n')
         if mode == 'hybrid':
@@ -106,6 +105,10 @@ def _write_values_text(out, directory):
 
 def _write_hybrid_text(out, directory):
     if out['filter_mode'] != 'hybrid':
+        #Don't leave a hybrid table from an earlier run next to this heaviside one,
+        #since the default config points the C code at the hybrid file
+        stale = os.path.join(directory, f'{PREFIX}_hybrid_values.txt')
+        if os.path.exists(stale): os.remove(stale)
         return
 
     edges             = out['edges']
@@ -133,12 +136,13 @@ def _write_hybrid_text(out, directory):
 
 
 def write_outputs(out, directory, args):
-    """Always write the complete C-readable B/K/D/S table set."""
+    """Write the edge files, the value and hybrid-coefficient tables and the metadata of decomposition ``out``
+    into ``directory`` (created if needed). ``args`` are the decomposition settings, recorded in the metadata."""
     directory = os.path.abspath(directory)
     os.makedirs(directory, exist_ok=True)
 
-    for axis, edge in enumerate(out['edges'], start=1):
-        np.savetxt(os.path.join(directory, f'{PREFIX}_k{axis}_edges.txt'), edge, fmt='%.17e')
+    for axis in (1, 3):                 # k2 shares the k1 edges
+        np.savetxt(os.path.join(directory, f'{PREFIX}_k{axis}_edges.txt'), out['edges'][axis - 1], fmt='%.17e')
 
     _write_values_text(out, directory)
     _write_hybrid_text(out, directory)
@@ -154,12 +158,15 @@ def _load_edge(directory, axis):
 
 
 def load_outputs(directory, strict=True):
-    """Load C-readable tables written by :func:`write_outputs`."""
+    """Read the tables in ``directory`` written by :func:`write_outputs`.
+
+    With ``strict=False``, a missing file gives ``{'ok': False, ...}`` instead of an error."""
     directory = os.path.abspath(directory)
     metadata  = _parse_metadata(_metadata_path(directory))
 
     try:
-        edges = tuple(_load_edge(directory, axis) for axis in [1, 2, 3])
+        k12   = _load_edge(directory, 1)            # k2 shares the k1 edges
+        edges = (k12, k12.copy(), _load_edge(directory, 3))
     except FileNotFoundError:
         if strict:
             raise
@@ -177,7 +184,7 @@ def load_outputs(directory, strict=True):
     table = table[None, :] if table.ndim == 1 else table
 
     if table.shape[1] != 12:
-        raise ValueError(f'Expected 12 legacy columns in {values_path!r}; found {table.shape[1]}.')
+        raise ValueError(f'Expected 12 columns in {values_path!r}; found {table.shape[1]}.')
 
     auxiliary = {
         'B':     table[:, 6].reshape(shape),

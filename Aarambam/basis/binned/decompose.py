@@ -1,4 +1,4 @@
-"""Public binned-bispectrum decomposition backend for Aarambam."""
+"""Binned decomposition of a bispectrum template into the tables read by ``2LPTBinned``."""
 
 import itertools
 import logging
@@ -14,54 +14,50 @@ __all__ = ['BasicBinnedDecompose']
 
 
 class BasicBinnedDecompose:
-    """Decompose a primordial bispectrum into C-compatible binned tables.
+    """Binned decomposition: tabulates a template's kernel on 3D bins for ``2LPTBinned``.
 
-    The class is intended to be combined with an Aarambam bispectrum model by
-    multiple inheritance. It evaluates the model bispectrum, shape function,
-    kernel denominator and quadratic kernel on a three-dimensional product grid,
-    then constructs the interpolation coefficients consumed by the binned PNG
-    initial-condition implementation.
-
-    Bin edges are placed adaptively in ``log(k)`` using the roughness of the
-    quadratic kernel. The first two kernel legs share the same edges, table
-    values are sampled at geometric bin centers, and the kernel is defined as
-
-    ``K = B / [(P1 P2 + P1 P3 + P2 P3) / 3]``
-
-    with a unit primordial-power amplitude.
+    Combined with a template by ``Decomposer.go``. The kernel is
+    ``K = B / [(P1 P2 + P1 P3 + P2 P3) / 3]`` with ``P(k) = k^(n_s - 4)``. Its values are taken at the
+    geometric bin centres, and the bin edges are placed in log k where the kernel varies most. The
+    internal legs k1 and k2 share their bins.
 
     Parameters
     ----------
     n_s : float
-        Scalar spectral index used to construct the primordial power spectrum,
-        ``P_phi(k) = k**(n_s - 4)``.
+        Scalar spectral index.
     Lbox : float
-        Side length of the simulation box. When ``Binned_kmin`` is not supplied,
-        the minimum tabulated wavenumber is ``2 pi / Lbox``.
+        Box side in Mpc/h.
     Nmax : int
-        Maximum dimensionless wavenumber index. When ``Binned_kmax`` is not
-        supplied, the maximum tabulated wavenumber is
-        ``(2 pi / Lbox) * Nmax``.
+        Largest wavenumber, in units of ``2 pi / Lbox``.
+    Binned_Nk : int, optional
+        Bins per axis (default 20).
+    Binned_kmin, Binned_kmax : float, optional
+        k range of the table; default ``2 pi / Lbox`` and ``Nmax * 2 pi / Lbox``.
+    Binned_filter : str, optional
+        Interpolation: ``'heaviside'`` (constant per bin) or ``'hybrid_<a>_k3<b>'``, with ``<a>`` the
+        interpolation across k1, k2 bins and ``<b>`` the polynomial within a k3 bin (each ``linear`` or
+        ``cubic``). Default ``'hybrid_cubic_k3cubic'``.
+    Binned_hybrid_input_interpolator, Binned_hybrid_output_filter : str, optional
+        ``<a>`` and ``<b>`` when ``Binned_filter`` does not set them (e.g. plain ``'hybrid'``).
+    Binned_linear_coordinate : str, optional
+        Interpolation coordinate; only ``'log'`` (log k) is supported.
+    Binned_enforce_triangle : bool, optional
+        Zero the cells that contain no closed triangle (default False).
+    Binned_center_triangle_only : bool, optional
+        Zero the cells whose centre is not a closed triangle (default False).
+    Binned_progress : bool, optional
+        Show a progress bar (default True).
+    Binned_adaptive_pilot_N : int, optional
+        Points per axis of the grid on which the kernel is sampled to place the edges (default 256).
     **kwargs
-        Model parameters and binned-backend options. Supported backend options
-        are listed in :attr:`DEFAULTS`.
+        Template parameters.
 
-    Attributes
-    ----------
-    args : dict
-        Validated model and backend configuration.
-    logger : logging.Logger
-        Logger used for edge-generation, table-building and output messages.
-    _binned_output : dict
-        Most recent in-memory decomposition returned by :meth:`go`. This
-        attribute is created only after a successful call to :meth:`go` or
-        :meth:`load_binned_tables`.
-
-    Notes
-    -----
-    The class does not define a physical bispectrum model by itself. The combined
-    model class must provide either ``bispectrum(k1, k2, k3)`` or
-    ``raw_bispectrum(k1, k2, k3)``.
+    Raises
+    ------
+    TypeError
+        For an unknown ``Binned_*`` keyword.
+    ValueError
+        For invalid sizes or interpolation settings.
     """
 
     DEFAULTS = {
@@ -79,33 +75,6 @@ class BasicBinnedDecompose:
     }
 
     def __init__(self, n_s, Lbox, Nmax, **kwargs):
-        """Initialize the binned decomposition backend.
-
-        Parameters
-        ----------
-        n_s : float
-            Scalar spectral index entering ``P_phi(k) = k**(n_s - 4)``.
-        Lbox : float
-            Positive simulation-box side length.
-        Nmax : int
-            Positive maximum wavenumber index used to set the default upper
-            tabulation limit.
-        **kwargs
-            Model parameters and optional binned settings. Recognized binned
-            settings are ``Binned_Nk``, ``Binned_kmin``, ``Binned_kmax``,
-            ``Binned_filter``, ``Binned_hybrid_input_interpolator``,
-            ``Binned_hybrid_output_filter``, ``Binned_linear_coordinate``,
-            ``Binned_enforce_triangle``, ``Binned_center_triangle_only``,
-            ``Binned_progress`` and ``Binned_adaptive_pilot_N``.
-
-        Raises
-        ------
-        TypeError
-            If an unrecognized keyword beginning with ``Binned_`` is supplied.
-        ValueError
-            If the box size, maximum wavenumber index, bin count, adaptive pilot
-            resolution or interpolation settings are invalid.
-        """
         unknown = sorted(name for name in kwargs if name.startswith('Binned_') and name not in self.DEFAULTS)
         if unknown:
             raise TypeError(f'Unknown binned options: {unknown}.')
@@ -124,23 +93,22 @@ class BasicBinnedDecompose:
 
     def _validate_settings(self):
         if self.args.get('n_s') is None:
-            raise ValueError('n_s is required for BinnedBasisDecompose.')
+            raise ValueError('n_s is required for BasicBinnedDecompose.')
         if self.args.get('Lbox') is None or float(self.args['Lbox']) <= 0:
-            raise ValueError('Lbox must be positive for BinnedBasisDecompose.')
+            raise ValueError('Lbox must be positive for BasicBinnedDecompose.')
         if self.args.get('Nmax') is None or int(self.args['Nmax']) <= 0:
-            raise ValueError('Nmax must be positive for BinnedBasisDecompose.')
+            raise ValueError('Nmax must be positive for BasicBinnedDecompose.')
         if int(self.args['Binned_Nk']) <= 0:
             raise ValueError('Binned_Nk must be positive.')
         if int(self.args['Binned_adaptive_pilot_N']) < 4:
             raise ValueError('Binned_adaptive_pilot_N must be at least 4.')
 
-        filter_mode(self.args)
-        hybrid_input_kind(self.args) if filter_mode(self.args) == 'hybrid' else None
-        hybrid_output_kind(self.args) if filter_mode(self.args) == 'hybrid' else None
+        if filter_mode(self.args) == 'hybrid':      #raise on unknown interpolation settings
+            hybrid_input_kind(self.args)
+            hybrid_output_kind(self.args)
 
     def _setup_logger(self):
-        level_name  = 'INFO'
-        level       = getattr(logging, level_name, logging.INFO)
+        level       = logging.INFO
         self.logger = logging.getLogger(f'{self.__class__.__module__}.{self.__class__.__name__}')
         self.logger.setLevel(level)
         self.logger.propagate = False
@@ -162,7 +130,7 @@ class BasicBinnedDecompose:
         return type(self).__name__
 
     def bispectrum(self, k1, k2, k3):
-        """Symmetrize models that provide only ``raw_bispectrum``."""
+        """Bispectrum at ``k1, k2, k3``: the template's ``raw_bispectrum`` summed over the six permutations."""
         if not hasattr(self, 'raw_bispectrum'):
             raise NotImplementedError('The model must define bispectrum() or raw_bispectrum().')
 
@@ -175,20 +143,22 @@ class BasicBinnedDecompose:
         return output
 
     def shape_function(self, k1, k2, k3):
+        """Shape ``S = B (k1 k2 k3)^2`` at ``k1, k2, k3``."""
         return self.bispectrum(k1, k2, k3) * (np.asarray(k1) * np.asarray(k2) * np.asarray(k3))**2
 
     def primordial_power(self, k):
-        """Return the Aarambam power-law primordial spectrum with A_phi = 1."""
+        """Primordial power ``k^(n_s - 4)`` (unit amplitude) at wavenumbers ``k``."""
         return np.power(np.asarray(k, dtype=float), float(self.args['n_s']) - 4.0)
 
     def kernel_denominator(self, k1, k2, k3):
+        """Denominator of ``kernel``: ``(P1 P2 + P1 P3 + P2 P3) / 3`` at ``k1, k2, k3``."""
         P1 = self.primordial_power(k1)
         P2 = self.primordial_power(k2)
         P3 = self.primordial_power(k3)
         return (P1 * P2 + P1 * P3 + P2 * P3) / 3.0
 
     def kernel(self, k1, k2, k3):
-        """Return K = B / mean(P1 P2 + permutations), with safe division."""
+        """Kernel ``K = B / kernel_denominator`` at ``k1, k2, k3``; 0 where it is not finite."""
         B       = np.asarray(self.bispectrum(k1, k2, k3), dtype=float)
         D       = np.asarray(self.kernel_denominator(k1, k2, k3), dtype=float)
         B, D    = np.broadcast_arrays(B, D)
@@ -201,8 +171,9 @@ class BasicBinnedDecompose:
     def _k_limits(self):
         kmin = self.args['Binned_kmin']
         kmax = self.args['Binned_kmax']
-        kmin = 2.0 * np.pi / float(self.args['Lbox']) if kmin is None else float(kmin)
-        kmax = kmin * int(self.args['Nmax']) if kmax is None else float(kmax)
+        kF   = 2.0 * np.pi / float(self.args['Lbox'])
+        kmin = kF if kmin is None else float(kmin)
+        kmax = kF * int(self.args['Nmax']) if kmax is None else float(kmax)     #the largest mode of the 2LPT run
 
         if kmin <= 0 or kmax <= 0:
             raise ValueError('Binned k limits must be positive.')
@@ -211,7 +182,7 @@ class BasicBinnedDecompose:
         return kmin, kmax
 
     def generate_edges(self):
-        """Build roughness-adaptive edges in log(k) for all three axes."""
+        """Bin edges of the three axes, placed in log k where the kernel varies most (k1 and k2 equal)."""
         kmin, kmax = self._k_limits()
         builder    = AdaptiveProductGrid(self.kernel, self.args['Binned_Nk'], kmin, kmax, pilot_N=self.args['Binned_adaptive_pilot_N'], logger=self.logger)
         edges      = builder.build()
@@ -236,7 +207,8 @@ class BasicBinnedDecompose:
         return {'B': self.bispectrum, 'K': self.kernel, 'denom': self.kernel_denominator, 'S': self.shape_function}
 
     def generate_table(self, edges):
-        """Evaluate center values and the selected C-compatible coefficients."""
+        """Kernel, bispectrum, denominator and shape at the bin centres, with their interpolation
+        coefficients, for the three edge arrays ``edges``."""
         valid_center, valid_box = self._triangle_masks(edges)
         interpolator           = BinnedProductInterpolator(self.args, self._quantity_callbacks())
         table                  = interpolator.build(edges, valid_center, valid_box, progress=bool(self.args['Binned_progress']))
@@ -255,7 +227,19 @@ class BasicBinnedDecompose:
         }
 
     def evaluate_binned_quantity(self, name, k1, k2, k3, out=None, fill_value=0.0):
-        """Evaluate one in-memory binned quantity returned by :meth:`go`."""
+        """Interpolate a tabulated quantity at ``k1, k2, k3``.
+
+        Parameters
+        ----------
+        name : {'K', 'B', 'denom', 'S'}
+            Kernel, bispectrum, kernel denominator or shape.
+        k1, k2, k3 : array_like
+            Wavenumbers.
+        out : dict, optional
+            Table from :meth:`go` or :meth:`load_binned_tables`; default the last one made.
+        fill_value : float, optional
+            Value outside the table (default 0).
+        """
         if out is None:
             if not hasattr(self, '_binned_output'):
                 raise ValueError('No binned table is attached. Run go() or pass out=... first.')
@@ -274,15 +258,15 @@ class BasicBinnedDecompose:
         return interpolator.evaluate(k1, k2, k3, out['edges'], values, coefficients=coefficients, fill_value=fill_value, input_kind=out['hybrid_input_interpolator'])
 
     def evaluate_binned_kernel(self, k1, k2, k3, out=None, fill_value=0.0):
-        """Evaluate the reconstructed kernel from an in-memory binned table."""
+        """``evaluate_binned_quantity('K', ...)``: the interpolated kernel."""
         return self.evaluate_binned_quantity('K', k1, k2, k3, out=out, fill_value=fill_value)
 
     def evaluate_binned_shape(self, k1, k2, k3, out=None, fill_value=0.0):
-        """Evaluate the reconstructed shape function from an in-memory binned table."""
+        """``evaluate_binned_quantity('S', ...)``: the interpolated shape."""
         return self.evaluate_binned_quantity('S', k1, k2, k3, out=out, fill_value=fill_value)
 
     def generate_limit_comparison(self, out):
-        """Evaluate true and binned S and K in three standard limits."""
+        """Exact and binned S and K of table ``out`` in the squeezed, equilateral and folded limits."""
         kmin, kmax = self._k_limits()
         kbin       = np.geomspace(kmin, kmax / 2.0, 100)
         kfixed     = np.full_like(kbin, kmin)
@@ -302,47 +286,24 @@ class BasicBinnedDecompose:
         }
 
     def go(self):
-        """Compute the binned decomposition and standard-limit comparisons.
-
-        The method generates the adaptive edges, samples all supported
-        quantities, constructs the interpolation coefficients and evaluates the
-        exact and reconstructed shape and kernel in squeezed, equilateral and
-        folded configurations. No files are written; use :meth:`finalize` to
-        serialize the returned tables.
+        """Build the bin edges and tables. Writes nothing; see :meth:`finalize`.
 
         Returns
         -------
-        out : dict
-            In-memory binned decomposition containing: 
-
-            ``edges``
-                Tuple of the three bin-edge arrays.
-            ``K`` and ``K_coeff``
-                Kernel values at bin centers and their interpolation
-                coefficients.
-            ``auxiliary`` and ``auxiliary_coefficients``
-                Corresponding values and coefficients for the bispectrum ``B``,
-                denominator ``denom`` and shape function ``S``.
-            ``valid_center`` and ``valid_box``
-                Triangle-validity masks for bin centers and product cells.
-            ``filter_mode``, ``hybrid_input_interpolator`` and
-            ``hybrid_output_filter``
-                Normalized interpolation metadata.
-            ``K_original``, ``K_apprx``, ``S_original`` and ``S_apprx``
-                Arrays of shape ``(100, 3)`` containing exact and reconstructed
-                values in squeezed, equilateral and folded limits.
-            ``kbin``
-                The 100 logarithmically spaced wavenumbers used for those limit
-                comparisons.
-
-        Notes
-        -----
-        The returned dictionary is also attached to ``self._binned_output`` so
-        that :meth:`evaluate_binned_quantity` can be called without explicitly
-        passing ``out``.
+        dict
+            ``edges`` (the three edge arrays), ``K`` and ``K_coeff`` (kernel at the bin centres and its
+            interpolation coefficients), ``auxiliary`` and ``auxiliary_coefficients`` (the same for ``B``,
+            ``denom`` and ``S``), ``valid_center`` and ``valid_box`` (triangle masks), the filter
+            metadata, and ``K_original``, ``K_apprx``, ``S_original``, ``S_apprx`` (shape ``(100, 3)``:
+            exact and binned values in the squeezed, equilateral and folded limits at the wavenumbers
+            ``kbin``).
         """
         self.logger.info('Starting binned decomposition for %s.', self._model_name())
-        out                      = self.generate_table(self.generate_edges())
+        edges                    = self.generate_edges()
+        if len(edges[0]) != len(edges[1]) or not np.array_equal(edges[0], edges[1]):
+            raise ValueError('The internal legs k1 and k2 must share their bin edges (generate_edges returned '
+                             'different k1 and k2 edges).')
+        out                      = self.generate_table(edges)
         out['template']          = self._model_name()
         out['kernel_definition'] = 'B_over_mean_P1P2_plus_perms'
         out.update(self.generate_limit_comparison(out))
@@ -351,38 +312,16 @@ class BasicBinnedDecompose:
         return out
 
     def finalize(self, out, directory):
-        """Write a completed decomposition to C-readable text tables.
-
-        Parameters
-        ----------
-        out : dict
-            Decomposition dictionary returned by :meth:`go` or reconstructed by
-            :meth:`load_binned_tables`. It must contain the bin edges, kernel
-            values and coefficients, validity masks, auxiliary ``B``, ``denom``
-            and ``S`` tables, and interpolation metadata expected by
-            :func:`write_outputs`.
-        directory : str or os.PathLike
-            Destination directory. Missing directories are created by the output
-            writer. Existing files with the standard ``BinnedKernel`` prefix are
-            replaced.
-
-        Returns
-        -------
-        None
-            The method writes the table files and logs their destination.
-
-        See Also
-        --------
-        go
-            Construct the in-memory decomposition.
-        load_binned_tables
-            Load previously written tables for interpolation.
-        """
+        """Write the tables of ``out`` (from :meth:`go`) into ``directory`` (created if needed), replacing
+        earlier ``BinnedKernel_*`` files there."""
         write_outputs(out, directory, self.args)
         self.logger.info('Binned kernel tables written to %s.', directory)
 
     def load_binned_tables(self, directory, strict=True):
-        """Load a previously written C-readable table and attach it for evaluation."""
+        """Read the tables in ``directory`` (written by :meth:`finalize`) for :meth:`evaluate_binned_quantity`.
+
+        Returns the table dict. With ``strict=False`` a missing file returns ``{'ok': False, ...}`` instead
+        of raising."""
         loaded = load_outputs(directory, strict=strict)
         if not loaded.get('ok', False):
             return loaded

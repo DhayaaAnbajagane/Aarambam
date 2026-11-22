@@ -26,6 +26,7 @@ np.import_array()
 
 # A trick to find out which integer dtype to use
 def GET_SIGNED_NUMPY_INT_TYPE():
+    """Return the numpy dtype that matches a C int (used to check the Cython int arrays)."""
     cdef int tmp
     return np.asarray(<int[:1]>(&tmp)).dtype
 # If the below fails, there might be problems using int arrays in Cython
@@ -33,9 +34,6 @@ assert GET_SIGNED_NUMPY_INT_TYPE() == np.dtype("i")
 
 
 cdef extern from "tetrapyd.h":
-    void monte_carlo_tetrapyd_weights(double *tetra_weights, int *tetra_i1, int *tetra_i2, int *tetra_i3, int tetra_npts,
-                    double *k_grid, double *k_weights, int k_npts, int n_samples)
-
     void compute_mode_bispectra_covariance(double *bispectra_covariance, 
                     double *tetra_weights, int *tetra_i1, int *tetra_i2, int *tetra_i3, int tetra_npts,
                     int *mode_p1, int *mode_p2, int *mode_p3, int n_modes,
@@ -48,12 +46,25 @@ cdef extern from "tetrapyd.h":
     
 
 def get_cond(i, OMP_msk, QQ_tilde):
+    """Condition number of the mode covariance QQ_tilde restricted to the selected modes plus mode i."""
     m = OMP_msk.copy()
     m[i] = True
     return np.linalg.cond(QQ_tilde[np.ix_(m, m)])
 
 class Basis:
-    ''' Class for CMBBEST's basis set'''
+    """Legendre basis of CMB-BEST (modified), on a tetrapyd grid of triangles.
+
+    Parameters
+    ----------
+    k_min, k_max : float
+        Range of the basis.
+    parameter_n_scalar : float
+        Scalar spectral index; the modes are polynomials of ``k^((4 - n_s)/3)``.
+    mode_p_max : int
+        Number of 1D modes.
+    k_grid_size : int
+        Points of the 1D k grid used for the inner products.
+    """
 
     def __init__(self, k_min, k_max, parameter_n_scalar, mode_p_max, k_grid_size):
         
@@ -73,6 +84,9 @@ class Basis:
         self.tetrapyd_grid_size = self.tetrapyd_grid.shape[1]
         self.tetrapyd_grid_weights = np.prod(self.k_weights[self.tetrapyd_indices], axis = 0)
         
+        #Orderings of each (k1 >= k2 >= k3) point. Not applied: the weights below count every ordered triangle once,
+        #so, relative to a generic triangle, isosceles ones weigh 2x and equilateral ones 6x more than in an
+        #integral over all orderings.
         sym_factors = np.zeros_like(self.tetrapyd_grid_weights)
         p1, p2, p3  = self.tetrapyd_indices
         sym_factors[(p1 != p2) & (p2 != p3)] = 6
@@ -101,9 +115,8 @@ class Basis:
         print(f"(Finished {(dt.now() - start).total_seconds()}s)\n")
 
     def legendre_basis(self):
-        # Legendre polynomials + one 1/k mode which is orthogonalised
-        # Note that the coefficients of orthogonalisation is fixed
-        # for each basis set, regardless of the grid specifications
+        """The 1D modes: k^(2 + (4 - n_s)/3 (p - 3)) for p <= 3, and P_{p-1}(kbar) minus its value at k = 0 for
+        p >= 4, with kbar = k^((4 - n_s)/3) mapped linearly onto [-1, 1] over [k_min, k_max]."""
 
         n_s = self.parameter_n_scalar
         k_max = self.mode_k_max
@@ -111,19 +124,15 @@ class Basis:
         p_max = self.mode_p_max
         
         scale = (4 - n_s)/3
-        
-        # print("DEBUG: NORMALIZING SO P(k_mid) = 1 IN ALL CASES.")
 
         def basis_function(k):
             # Rescale k to lie in [-1, 1]
             fact = 2 / ( np.power(k_max, scale) -  np.power(k_min, scale) )
             k_bar = -1 + fact * ( np.power(k, scale) -  np.power(k_min, scale) )
-            k_mid = np.sqrt(k_max * k_min)
-            k_mid_b  = -1 + fact * ( np.power(k_mid, scale) -  np.power(k_min, scale) )
             mode_evals = np.zeros((p_max, len(k)))
 
 
-            # Modes number 0-3 are monomials, and 3 to p_max are Legendre polynomials
+            # Modes 0-3 are monomials, modes p >= 4 the Legendre polynomials P_{p-1}
             for p in range(0, p_max):
             
                 if p <= 3:
@@ -144,7 +153,7 @@ class Basis:
     
 
     def create_k_grid(self, grid_type="uniform"):
-        # Creates a 1D grid of k's from mode_k_min to mode_k_max
+        """Creates a 1D grid of k's from mode_k_min to mode_k_max."""
 
         if grid_type == "uniform":
             # Create a uniform one-dimensional k grid 
@@ -167,10 +176,10 @@ class Basis:
     
 
     def create_tetrapyd_grid(self, include_borderline=False):
-        # Creates a 3D grid of k's confined in a 'tetrapyd', satisfying
-        # k_max >= k_1 >= k_2 >= k_3 >= k_min  and  k_2 + k_3 >= k_1 
-        # if include_borderline is True, keep points that are outside the tetrapyd but
-        # its voxel intersects the tetrapyd.
+        """Creates a 3D grid of k's confined in a 'tetrapyd', satisfying k_max >= k_1 >= k_2 >= k_3 >=
+        k_min and k_2 + k_3 >= k_1. If include_borderline is True, also keep points outside the
+        tetrapyd whose voxel intersects it.
+        """
 
         Nk = self.k_grid_size
         k_grid = self.k_grid
@@ -185,7 +194,7 @@ class Basis:
 
         if include_borderline:
             # 1D bounds for k grid points
-            interval_bounds = self.mode_k_min
+            interval_bounds = np.zeros(len(k_grid) + 1)
             interval_bounds[0] =  k_grid[0]
             interval_bounds[1:-1] = (k_grid[:-1] + k_grid[1:]) / 2
             interval_bounds[-1] = self.mode_k_max
@@ -214,8 +223,7 @@ class Basis:
 
 
     def create_mode_indices(self, p_max=None):
-        # Creates 3D indices for mode bispectra
-        # If p_max=None, use self.mode_p_max
+        """Creates 3D indices for mode bispectra (p_max = None uses self.mode_p_max)."""
 
         # Vectorise the 1D mode indices to 3D
         if p_max is None:
@@ -235,7 +243,7 @@ class Basis:
         return mode_indices, mode_symmetry_factor
 
     def evaluate_mode_bispectra(self):
-        # Evaluate mode bispectra ('Q') on a 3D tetrapyd grid
+        """Evaluate mode bispectra ('Q') on a 3D tetrapyd grid."""
 
         p1, p2, p3 = self.mode_indices
         
@@ -258,8 +266,9 @@ class Basis:
         return mode_bispectra_evaluations
     
     def evaluate_modal_basis_on_grid(self, k1, k2, k3):
-        # Returns a (n_modes) X (shape of k1) sized array contianing
-        # 3D mode functions evaluations on a given k1, k2, k3 grid
+        """Returns a (n_modes) X (shape of k1) sized array containing 3D mode functions evaluations on
+        a given k1, k2, k3 grid.
+        """
 
         p1, p2, p3 = self.mode_indices
         evals_k1 = self.mode_functions(k1)
@@ -274,8 +283,9 @@ class Basis:
 
 
     def evaluate_modal_bispectra_on_grid(self, coeffs, k1, k2, k3):
-        # Returns a (n_coeffs) X (shape of k1) sized array contianing
-        # 3D modal bispectrum evaluations on a given k1, k2, k3 grid
+        """Returns a (n_coeffs) X (shape of k1) sized array containing 3D modal bispectrum evaluations
+        on a given k1, k2, k3 grid.
+        """
 
         basis_evals = self.evaluate_modal_basis_on_grid(k1, k2, k3)
         bisp_evals = np.matmul(coeffs, basis_evals)
@@ -284,8 +294,7 @@ class Basis:
 
 
     def compute_mode_bispectra_covariance_C(self):
-        # Evaluate the covariance matrix ('QQ') between mode bispectra
-        # (QQ)_{mn} := <Q_m, Q_n>
+        """Evaluate the covariance matrix ('QQ') between mode bispectra (QQ)_{mn} := <Q_m, Q_n>."""
 
         i1, i2, i3 = self.tetrapyd_indices
         p1, p2, p3 = self.mode_indices
@@ -320,7 +329,14 @@ class Basis:
     def basis_expansion(self, model_list, regularization = 0, Niter = 1e4, 
                         rtol = 1e-12, bad_modes = False, RR_tol = 1e-2, cond_tol = 1e9,
                         max_modes = None):
-        # Expand given model shape functions with respect to separable basis
+        """Expand the shapes of ``model_list`` (``Model`` instances) in the basis by orthogonal matching pursuit.
+
+        ``bad_modes`` (bool mask over the 3D modes) are never picked; the search starts from the 20 modes with all
+        orders <= 3 and stops once the residual variance is below ``RR_tol`` of the shape's, at ``max_modes`` modes
+        or when the mode covariance's condition number would exceed ``cond_tol``. ``Niter`` and ``rtol`` control the
+        iterative solve; ``regularization`` is added to its diagonal. Returns ``(alpha, shape_cov, convergence,
+        convergence_MSE)``.
+        """
 
         N_models = len(model_list)
         N_modes = self.mode_indices.shape[1]
@@ -374,10 +390,8 @@ class Basis:
         badinds = np.where(badmask)[0]
         print("Zeroing out mode inds", badinds, "\n")
 
-        #Try to get a SLURM env variable, else default to os.cpu_count()
+        #Number of joblib workers for the condition-number scan: the SLURM allocation, else os.cpu_count()
         cpus_allocated = int(os.environ.get("SLURM_CPUS_ON_NODE", os.cpu_count()))
-        os.environ["MKL_NUM_THREADS"] = str(cpus_allocated)
-        os.environ["OMP_NUM_THREADS"] = str(cpus_allocated)
 
         for bi in badinds:
             QQ_temp[bi, :] = 0 #Lie to algorithm and say this mode is uncorrelated with everything else
@@ -419,9 +433,9 @@ class Basis:
                                                           QS_tilde[OMP_msk], rtol = rtol, atol=0, maxiter = int(Niter))
                 
                 #Compute the residual, and the correlation of all modes with residuals
-                R  = S - np.sum(Q_tilde[OMP_msk] * alpha_tmp[:, None], axis = 0)
+                R  = S[model_no:model_no + 1] - np.sum(Q_tilde[OMP_msk] * alpha_tmp[:, None], axis = 0)   #this model's
                 RR = np.matmul(R * w[np.newaxis,:], R.T)[0, 0]
-                delta_RR = RR/shape_covariance
+                delta_RR = RR/shape_covariance[model_no:model_no + 1, model_no:model_no + 1]
 
                 #An estimate of how correlated a given function is with all other functions in the basis set
                 #Don't have to account for off-diagonal because it is implicitly removed here.
@@ -433,13 +447,13 @@ class Basis:
                     print(f"\n HIT LIMIT OF VAR_RES/VAR_TOT = {RR_tol:0.4e}. ENDING SEARCH", flush = True)
                     break
 
-                if np.sum(OMP_msk) == max_modes - 1: 
+                if (max_modes > 0) and (np.sum(OMP_msk) >= max_modes): 
                     print("\n USED ALL AVAILABLE MODES", flush = True)
                     break
 
                 cond_here = get_cond(np.where(OMP_msk)[0][0], OMP_msk, QQ_tilde) #Use existing True ind just so we can get cond of full matrix
                 with threadpoolctl.threadpool_limits(limits = 1):
-                    cond  = joblib.Parallel(n_jobs = os.cpu_count())(joblib.delayed(get_cond)(i, OMP_msk, QQ_tilde) 
+                    cond  = joblib.Parallel(n_jobs = cpus_allocated)(joblib.delayed(get_cond)(i, OMP_msk, QQ_tilde) 
                                                                      for i in np.where(np.invert(OMP_msk))[0])    
                 fcond     = cond/cond_here - 1
 
@@ -491,8 +505,9 @@ class Basis:
 
 
     def compute_QS_C(self, S):
-        # Evaluate the inner product('QS') between mode bispectra and shape functions
-        # (QS)_{in} := <S_i, Q_n}
+        """Evaluate the inner product('QS') between mode bispectra and shape functions (QS)_{in} :=
+        <S_i, Q_n>.
+        """
 
         i1, i2, i3 = self.tetrapyd_indices
         p1, p2, p3 = self.mode_indices
@@ -535,7 +550,18 @@ class Basis:
 
 
 class Model:
-    ''' Class for the bispectrum template or model of interest '''
+    """A shape to decompose.
+
+    Parameters
+    ----------
+    shape_type : str
+        ``'custom'`` (pass ``shape_function = S(k1, k2, k3)``), ``'custom_shape_evals'`` (pass
+        ``grid_k_1, grid_k_2, grid_k_3`` and ``shape_function_values``, interpolated linearly), or a preset
+        ``'local'``, ``'equilateral'``, ``'orthogonal'`` (optional ``parameter_A_scalar``,
+        ``parameter_n_scalar``, ``parameter_k_pivot``).
+    shape_name : str, optional
+        Label.
+    """
 
     def __init__(self, shape_type, **kwargs):
         self.shape_type = shape_type.lower()
@@ -592,7 +618,7 @@ class Model:
         
 
     def custom_shape_function_from_evals(self):
-        # Performs a 3D linear interporlation to evaluate the shape function
+        """Performs a 3D linear interpolation to evaluate the shape function."""
 
         interp = RegularGridInterpolator((self.grid_k_1, self.grid_k_2, self.grid_k_3), self.shape_function_values)
 
@@ -604,7 +630,7 @@ class Model:
 
 
     def local_shape_function(self):
-        # Local template with scale dependence given by n_scalar
+        """Local template with scale dependence given by n_scalar."""
 
         A_s = self.parameter_A_scalar
         n_s = self.parameter_n_scalar
@@ -626,7 +652,7 @@ class Model:
 
 
     def equilateral_shape_function(self):
-        # Equilateral template with scale dependence given by n_scalar
+        """Equilateral template with scale dependence given by n_scalar."""
 
         A_s = self.parameter_A_scalar
         n_s = self.parameter_n_scalar
@@ -673,7 +699,7 @@ class Model:
 
 
     def orthogonal_shape_function(self):
-        # Orthogonal template with scale dependence given by n_scalar
+        """Orthogonal template with scale dependence given by n_scalar."""
 
         A_s = self.parameter_A_scalar
         n_s = self.parameter_n_scalar

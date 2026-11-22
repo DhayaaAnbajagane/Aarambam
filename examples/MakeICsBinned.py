@@ -1,9 +1,9 @@
 import Aarambam as Am
-import numpy as np, subprocess as sp, os, shutil
+import numpy as np, subprocess as sp, os, shutil, tempfile
 
 
 if __name__ == '__main__':
-    outdir = os.environ['TMPDIR'] + '/'
+    outdir = os.environ.get('TMPDIR', tempfile.gettempdir()) + '/'
     print(f"USING {outdir} AS BASE FOR CALCULATIONS")
     
     #Specify some defaults that get used everywhere
@@ -34,7 +34,6 @@ if __name__ == '__main__':
     print("===================================\n\n")
 
     #Setup the binned decomposition with some default values
-    #  N_modes: sets the highest order the modes go to
     #  n_s: spectral index. Used to account for mild breaking of scale invariance
     #  Lbox: Sim box in Mpc/h
     #  Nmax: The maximum wavenumber (in units of kF = 2*pi/Lbox) the decomposition goes up to.
@@ -58,13 +57,13 @@ if __name__ == '__main__':
                                          z_ini = z_ini, Fnl = Fnl, 
                                          TransferPath = outdir + '/TransferFunctionConverted.dat',
                                          BinnedK1EdgesPath         = outdir + '/BinnedKernel_k1_edges.txt',
-                                         BinnedK2EdgesPath         = outdir + '/BinnedKernel_k2_edges.txt',
                                          BinnedK3EdgesPath         = outdir + '/BinnedKernel_k3_edges.txt',
                                          BinnedKernelValuesPath    = outdir + '/BinnedKernel_hybrid_values.txt',
                                          BinnedPNGFilterCode       = 3,
                                          BinnedPNGOutputFilterCode = 3,
-                                         BinnedPNGCacheBlockSize   = 4,
-                                         SavePotentialField = int(True), NWriteoutProcesses = Nprocs)
+                                         BinnedPNGCacheBlockSize   = 'auto', #all bins up to Nmesh 512, 4 above
+                                         SavePotentialField = int(True), NWriteoutProcesses = Nprocs,
+                                         ModeTables = 'auto') #1: per-mode tables (fast, ~1 extra grid); 0: least memory
     
     with open(outdir + '/LPTconfig', 'w') as f: f.write(CONFIG)
 

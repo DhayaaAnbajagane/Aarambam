@@ -33,15 +33,16 @@ intersphinx_mapping = {
 # conf.py is at docs/source/, package is at ../../Aarambam
 autoapi_type = "python"
 autoapi_dirs = ["../../Aarambam"]
-autoapi_root = "api"                      # generated under /api/
-autoapi_add_toctree_entry = False         # adds "API Reference" to TOC
-autoapi_keep_files = False                # keep generated rst for debugging
+# Generated pages go to autoapi/, which AutoAPI deletes and rebuilds on every
+# run, so no tracked file may live there.
+autoapi_root = "autoapi"
+autoapi_add_toctree_entry = False         # linked from api_reference.rst instead
+autoapi_keep_files = False                # set True to inspect the generated rst
 autoapi_options = [
     "members",
     "undoc-members",
     "show-inheritance",
     "show-module-summary",
-    "imported-members",
 ]
 autoapi_ignore = ["*/tests/*", "*/test_*", "*_version.py", "*/bin/*", "**/cli.py*", "**cli"]
 autoapi_python_class_content = "both"
