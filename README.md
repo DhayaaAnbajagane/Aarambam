@@ -161,7 +161,7 @@ permutation weights and the amplitude convention ($B_\Phi = 6 f_{\rm NL} B_{\rm 
 * `tests/`: `python -m pytest tests` runs the Python tests. Tests marked `mpi` run 32^3 ICs and need the
   executables, e.g. `AARAMBAM_LPT_BIN=/path/to/site-packages/Aarambam/bin python -m pytest tests -m mpi`;
   `AARAMBAM_TEST_INSTALLED=1 python -m pytest tests` runs everything on the installed package (as the GitHub
-  workflow does on Ubuntu).
+  workflow does on Ubuntu, Rocky Linux 8/9 and openSUSE).
 
 Particle IDs are 32-bit by default (up to $2^{31}-1$ particles). Set `export Aarambam_64BIT_IDS=ON` before
 `pip install` for larger runs.

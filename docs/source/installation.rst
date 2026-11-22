@@ -85,31 +85,30 @@ Running the tests
 ``AARAMBAM_MPIRUN=/path/to/mpirun`` selects the ``mpirun`` of the MPI the executables were built
 with, if the first one on ``PATH`` is another. ``AARAMBAM_TEST_INSTALLED=1 python -m pytest tests``
 tests the installed package instead of the source tree, including its compiled Legendre extension;
-the GitHub workflow does this on Ubuntu after ``pip install .``. ``tests/large/run_large_tests.py``
+the GitHub workflow does this after ``pip install .``. ``tests/large/run_large_tests.py``
 runs larger rank-independence checks and refuses to start on a busy node.
 
 Installing FFTW3
 ----------------
 
-The system packages are enough on these distributions (no environment variables needed):
+Build FFTW3 from source, against the MPI you build Aarambam with: that is the supported route, and the
+GitHub workflow tests it with the MPI and GSL of Ubuntu (Open MPI and MPICH), Rocky Linux 8 and 9 and
+openSUSE Leap 15.6. On a cluster, load its MPI and GSL modules; on your own machine, install them:
 
 .. code-block:: bash
 
    # Debian, Ubuntu
-   sudo apt-get install openmpi-bin libopenmpi-dev libfftw3-dev libfftw3-mpi-dev libgsl-dev
-   # RHEL, Rocky, Alma 8 or 9, then put Open MPI on PATH (module load mpi/openmpi-x86_64)
-   sudo dnf install openmpi-devel fftw-devel fftw-openmpi-devel gsl-devel
+   sudo apt-get install openmpi-bin libopenmpi-dev libgsl-dev
+   # RHEL, Rocky, Alma 8 or 9 (gsl-devel is in PowerTools / CRB); then module load mpi/openmpi-x86_64
+   sudo dnf install openmpi-devel gsl-devel
+   # openSUSE, SLES; then put /usr/lib64/mpi/gcc/openmpi4/bin on PATH
+   sudo zypper install openmpi4-devel gsl-devel
 
-On openSUSE or SLES, install ``openmpi4-devel`` and ``gsl-devel`` and build FFTW3 as below. All of
-these are tested by the GitHub workflow (Ubuntu 22.04 to latest, Rocky Linux 8 and 9, openSUSE Leap
-15.6, and MPICH with FFTW3 built from source).
+On NERSC Perlmutter (not tested here), build FFTW3 below with ``MPICC=cc`` and set
+``export Aarambam_CC=cc`` (the Cray compiler wrapper, which adds Cray MPICH); ``module load gsl``
+sets the ``GSL_DIR`` the install looks in.
 
-On NERSC Perlmutter (not tested here), the Cray modules should provide everything: ``module load
-cray-fftw gsl`` and ``export Aarambam_CC=cc`` (the Cray compiler wrapper, which adds MPI); the install
-looks for FFTW3 and GSL in the ``FFTW_ROOT`` / ``FFTW_DIR`` and ``GSL_DIR`` those modules set.
-
-Clusters often provide FFTW3 without its MPI library (``libfftw3_mpi``), or built against another
-MPI than yours. In that case, or without FFTW3 at all, build it:
+Then build FFTW3:
 
 .. code-block:: bash
 

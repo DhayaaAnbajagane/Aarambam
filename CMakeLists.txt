@@ -309,6 +309,11 @@ if(Aarambam_PYTHON_EXTENSION)
     ${CMB_SRC_DIR}
   )
   target_link_libraries(cmbbest PRIVATE OpenMP::OpenMP_C)
+  # mpicc (the project's compiler) adds MPI, which the extension does not use: without --as-needed, importing
+  # Aarambam would need the MPI library on the loader path
+  if(NOT APPLE)
+    target_link_options(cmbbest PRIVATE "LINKER:--as-needed")
+  endif()
 
   # 4 install into your package
   install(TARGETS cmbbest
