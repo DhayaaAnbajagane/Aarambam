@@ -340,7 +340,6 @@ static void NG(bpng_compute_non_gaussian_potential_unblocked)(lpt_complex *cpot,
                                                               NGC *c_tmp, NGR *p_tmp)
 {
   int      ia, ib, timed_chars = 0;
-  uint64_t bytes = 0;
   NGC     *cf1 = (NGC *) NG_ALLOC(), *cf2 = (NGC *) NG_ALLOC();
   NGR     *f1  = (NGR *) cf1, *f2 = (NGR *) cf2;
 
@@ -402,7 +401,6 @@ static void NG(bpng_compute_non_gaussian_potential_unblocked)(lpt_complex *cpot,
 static void NG(bpng_compute_non_gaussian_potential)(lpt_complex *cpot, lpt_complex *cpot_NG)
 {
   int           cache_block;
-  uint64_t      bytes = 0;
   NGC          *c_tmp;
   NGR          *p_tmp;
 

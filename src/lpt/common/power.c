@@ -136,7 +136,8 @@ void read_transfer_table(void)
 
       if(TransferTable[0].logk >= -4.6)
         {
-          printf("\n WARNING: klower is %f, may be too large to normalize transfer\n", klower);
+          printf("\nError. The transfer table starts at k = %g h/Mpc: it must reach below 10^-4.6 to normalise "
+                 "sigma8.\n", klower);
           FatalError(1111);
         }
 

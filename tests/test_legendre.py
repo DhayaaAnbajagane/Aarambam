@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 
 try:
-    from Aarambam.basis import legendre
+    import Aarambam.basis.legendre as legendre
 except ImportError:         #the package is there, its compiled part is not: importorskip would raise
     pytest.skip('compiled cmbbest extension not available', allow_module_level=True)
 

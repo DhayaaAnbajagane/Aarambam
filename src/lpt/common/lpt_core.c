@@ -232,7 +232,6 @@ static void lpt_gauss_deliver(lpt_complex *cpot, lpt_gauss_out *out)
   long long       ns = 0, nr = 0;
   lpt_gauss_mode *sb, *rb;
   MPI_Datatype    mtype;
-  size_t          bytes = 4 * sizeof(int) * NTask;
 
   ASSERT_ALLOC(scnt && sdsp && rcnt && rdsp);
   for(size_t q = 0; q < out->n; q++)
@@ -250,7 +249,6 @@ static void lpt_gauss_deliver(lpt_complex *cpot, lpt_gauss_out *out)
       printf("Task %d: too many Gaussian modes to exchange (%lld, %lld). Run with more MPI ranks.\n", ThisTask, ns, nr);
       FatalError(1124);
     }
-  bytes = sizeof(lpt_gauss_mode) * (ns + nr + 2);
   sb    = malloc(sizeof(lpt_gauss_mode) * (ns + 1));
   rb    = malloc(sizeof(lpt_gauss_mode) * (nr + 1));
   ASSERT_ALLOC(sb && rb);
@@ -301,7 +299,6 @@ void lpt_setup_gaussian_potential(lpt_complex **cpot_out, double *Beta_out)
   double        phase, ampl;
   unsigned int *seedtable;
   double        phase_shift;       /* pi for PhaseFlip = 1 */
-  uint64_t      bytes = 0;         /* for ASSERT_ALLOC's message */
 
   phase_shift = 0.0;
   if(PhaseFlip == 1)
@@ -503,7 +500,7 @@ static void lpt_exchange_ghost_plane(lpt_real *field)
   MPI_Request request;
   MPI_Status  status;
   int         sendTask, recvTask;
-  const int   plane = sizeof(lpt_real) * Nmesh * (2 * (Nmesh / 2 + 1));
+  const int   plane = Nmesh * (2 * (Nmesh / 2 + 1));         /* lpt_real is double */
 
   recvTask = ThisTask;
   do
@@ -525,9 +522,8 @@ static void lpt_exchange_ghost_plane(lpt_real *field)
 
   if(Local_nx > 0)
     {
-      MPI_Isend(&(field[0]), plane, MPI_BYTE, recvTask, 10, MPI_COMM_WORLD, &request);
-      MPI_Recv(&(field[(Local_nx * Nmesh) * (2 * (Nmesh / 2 + 1))]), plane, MPI_BYTE, sendTask, 10,
-               MPI_COMM_WORLD, &status);
+      MPI_Isend(&(field[0]), plane, MPI_DOUBLE, recvTask, 10, MPI_COMM_WORLD, &request);
+      MPI_Recv(&(field[(ptrdiff_t) Local_nx * plane]), plane, MPI_DOUBLE, sendTask, 10, MPI_COMM_WORLD, &status);
       MPI_Wait(&request, &status);
     }
 }
@@ -566,7 +562,7 @@ void lpt_displacements_from_potential(lpt_complex *cpot, lpt_complex *cpot_NG, d
   double        u, v, w;
   double        f[8];
   double        dis, dis2, maxdisp, max_disp_glob;
-  uint64_t      bytes = 0, nmesh3;
+  uint64_t      nmesh3;
   uint64_t      coord;
   lpt_complex  *(cdisp[3]), *(cdisp2[3]);  /* ZA and 2nd order displacements */
   lpt_real     *(disp[3]), *(disp2[3]);
