@@ -143,6 +143,8 @@ def _check_tokens(values):
     """Raise if a string value is empty or contains whitespace: the 2LPT executables read one token per value, so
     such a path would be cut short."""
     for name, value in values.items():
+        if isinstance(value, os.PathLike):
+            value = os.fspath(value)
         if isinstance(value, str) and (not value or any(c.isspace() for c in value)):
             raise ValueError(f"{name} = {value!r}: config values must be non-empty and contain no whitespace")
 
@@ -206,8 +208,8 @@ def make_config_basis(Nmesh, Nsample, Nmax, Lbox, FileBase, OutputDir, GlassFile
         bytes, half the FFTs). ``0``: least memory. Same ICs to rounding. ``'auto'``: 1 for
         ``Nmesh <= AUTO_FAST_MAX_NMESH`` (512), else 0.
     FFTWWisdomDir : str, optional
-        Where measured FFT plans are kept: a directory, ``'auto'`` (``~/.cache/aarambam``, or
-        ``$AARAMBAM_FFTW_WISDOM_DIR``) or ``'none'`` (unmeasured plans, no file).
+        Where measured FFT plans are kept: a directory, ``'auto'`` (``$AARAMBAM_FFTW_WISDOM_DIR`` if set,
+        else ``$XDG_CACHE_HOME/aarambam`` or ``~/.cache/aarambam``) or ``'none'`` (unmeasured plans, no file).
     FFTBackend : {'fftw', 'band'}, optional
         FFTs of the non-Gaussian term: FFTW3-MPI on the whole grid, or the code's own FFT of the
         sampled band only (faster when ``Nmesh > Nsample``; same ICs to rounding).
@@ -286,7 +288,7 @@ def make_config_binned(Nmesh, Nsample, Nmax, Lbox, FileBase, OutputDir, GlassFil
         Interpolation within a k3 bin: constant, linear or cubic. Must match the table.
     BinnedPNGCacheBlockSize : int or 'auto'
         Filtered k1 fields kept in memory at once (about that many extra grids; fewer FFTs).
-        ``'auto'``: 64 (all bins) for ``Nmesh <= 512``, else 4.
+        ``'auto'``: 64 (all bins when there are at most 64) for ``Nmesh <= 512``, else 4.
     BinnedPNGMultiGrid : bool, optional
         Compute each bin pair on the smallest alias-free grid (default; same result to ~1e-14,
         faster; ~25 Nsample^3 bytes per rank, switched off by the run if a node lacks the memory).

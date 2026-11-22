@@ -113,7 +113,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ci_cache/fftw-*/
-          key: fftw-${{ env.FFTW_VERSION }}-${{ matrix.key }}
+          key: fftw-${{ env.FFTW_VERSION }}-${{ matrix.key }}-${{ hashFiles('.github/ci/distro.sh') }}
 
       - name: Download the FFTW3 source
         run: mkdir -p ci_cache && curl -sSL -o ci_cache/fftw-$FFTW_VERSION.tar.gz https://www.fftw.org/fftw-$FFTW_VERSION.tar.gz

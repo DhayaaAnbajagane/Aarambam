@@ -1,5 +1,5 @@
 """Config writers (pure Python)."""
-import os, subprocess, sys
+import os, pathlib, subprocess, sys
 
 import pytest
 
@@ -17,12 +17,25 @@ def values(cfg):
 
 def test_import_without_tmpdir():
     env = {k: v for k, v in os.environ.items() if k != 'TMPDIR'}
-    code = ("import sys, types, os; r = sys.argv[1]; sys.path.insert(0, r)\n"
-            "for n, p in [('Aarambam', 'Aarambam'), ('Aarambam.basis', 'Aarambam/basis')]:\n"
-            "    m = types.ModuleType(n); m.__path__ = [os.path.join(r, p)]; sys.modules[n] = m\n"
+    code = ("import sys; sys.path.insert(0, sys.argv[1])\n"
             "import Aarambam.utils as U; print(U.DEFAULT_BINNED_INPUTS['OutputDir'])\n")
     r = subprocess.run([sys.executable, '-c', code, ROOT], env=env, capture_output=True, text=True)
     assert r.returncode == 0, r.stderr
+
+
+def test_import_without_extension():
+    """Built with Aarambam_PYTHON_EXTENSION=OFF: the package imports; the Legendre decomposition says what is missing."""
+    code = ("import sys; sys.path.insert(0, sys.argv[1]); sys.modules['Aarambam.basis.legendre.cmbbest'] = None\n"
+            "import Aarambam, Aarambam.cli\n"
+            "assert Aarambam.basis.BasicBinnedDecompose\n"
+            "try:\n"
+            "    Aarambam.legendre.Basis\n"
+            "except ImportError as e:\n"
+            "    assert 'Aarambam_PYTHON_EXTENSION' in str(e), e\n"
+            "else:\n"
+            "    raise SystemExit('no ImportError')\n")
+    r = subprocess.run([sys.executable, '-c', code, ROOT], capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr + r.stdout
 
 
 @pytest.mark.parametrize('method', ['basis', 'resbasis', 'binned'])
@@ -57,6 +70,8 @@ def test_whitespace_value_rejected(am):
     """The 2LPT reader takes one token per value: a path with a space would be cut short."""
     with pytest.raises(ValueError):
         am.utils.make_config_binned(**dict(am.utils.DEFAULT_BINNED_INPUTS, OutputDir='/tmp/my runs'))
+    with pytest.raises(ValueError):
+        am.utils.make_config_binned(**dict(am.utils.DEFAULT_BINNED_INPUTS, FFTWWisdomDir=pathlib.Path('/tmp/my plans')))
 
 
 def test_floats_round_trip(am):

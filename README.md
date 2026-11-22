@@ -54,9 +54,9 @@ There are a number of dependencies, particularly due to the 2LPT (2nd order Lagr
 export Aarambam_FFTW3_ROOT=/path/to/fftw-3.3.10/build   # the --prefix used for FFTW3; contains include/fftw3-mpi.h and lib/
 ```
 
-If it is not set, the install looks for `fftw3-mpi.h` under `FFTW3_ROOT`, `FFTW_DIR`, `FFTW_ROOT` and the system paths. (Version 1.0.0 used FFTW2 and `Aarambam_FFTW2_ROOT`; that variable is no longer used.)
+If it is not set, the install looks for `fftw3-mpi.h` under `FFTW3_ROOT`, `FFTW_DIR`, `FFTW_ROOT`, the include directories of `mpicc` and the system paths. (Version 1.0.0 used FFTW2 and `Aarambam_FFTW2_ROOT`; that variable is no longer used.)
 
-If the install is not finding your correct installs of C-compilers, GSL etc. then you can explicitly specify paths with the variables below. On most clusters you will need at least the GSL and MPI ones (otherwise the MPI library is searched for on `LD_LIBRARY_PATH`/`LIBRARY_PATH` and the system paths, and GSL only in `GSL_DIR`/`GSL_ROOT` and the system paths).
+If the install is not finding your correct installs of C-compilers, GSL etc. then you can explicitly specify paths with the variables below. On most clusters you will need at least the GSL and MPI ones (otherwise the MPI library is searched for in the library directories of `mpicc`, next to it, on `LD_LIBRARY_PATH`/`LIBRARY_PATH` and the system paths, and GSL only in `GSL_DIR`/`GSL_ROOT` and the system paths).
 
 ```bash
 export Aarambam_CC=/path/to/mpicc               # default: the first mpicc on PATH

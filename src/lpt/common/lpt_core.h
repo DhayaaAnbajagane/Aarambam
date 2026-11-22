@@ -10,8 +10,7 @@
 #define ASSERT_ALLOC(cond) {                                                                                  \
   if(!(cond))                                                                                                 \
     {                                                                                                         \
-      printf("failed to allocate %g Mbyte on Task %d\n", bytes / (1024.0 * 1024.0), ThisTask);                \
-      printf("bailing out.\n");                                                                               \
+      printf("Task %d: memory allocation failed (%s:%d); bailing out.\n", ThisTask, __FILE__, __LINE__);       \
       FatalError(1);                                                                                          \
     }                                                                                                         \
 }

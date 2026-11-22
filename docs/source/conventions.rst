@@ -57,16 +57,17 @@ set ``ModeTables`` and ``BinnedPNGCacheBlockSize`` to ``'auto'`` by default.
 
 * ``BinnedPNGCacheBlockSize`` (binned): how many filtered real-space fields are kept at once, about
   that many extra grids. It is capped at the number of :math:`k_1` bins and does not change the
-  result. ``'auto'``: 64 (all bins) up to ``Nmesh = 512``, 4 above.
+  result. ``'auto'``: 64 (all bins when there are at most 64) up to ``Nmesh = 512``, 4 above.
 
 * ``BinnedPNGMultiGrid`` (binned, default 1): computes each pair of :math:`k_1, k_2` bins on the
-  smallest grid on which it is exact. A filtered field has modes up to its bin's upper edge
-  :math:`K_a`, so a product of two has modes up to :math:`K_a + K_b`, and its modes up to
+  smallest grid on which it is exact. A filtered field has modes up to some :math:`K_a` (its bin's
+  upper edge for top-hat filters, further for linear and cubic ones, whose support reaches the neighbouring bins; the
+  code measures it), so a product of two has modes up to :math:`K_a + K_b`, and its modes up to
   :math:`K_{\rm out}` are exact on any grid of :math:`L > K_a + K_b + K_{\rm out}` points per side
   (the pair adds nothing above :math:`K_{\rm out}`). Pairs with :math:`L \le 128` run whole on one
   rank with serial FFTs, larger ones on all ranks with a band FFT of size :math:`L` (unless the fields
-  of that size would need more memory than two cache blocks of ``BinnedPNGCacheBlockSize`` full grids);
-  the rest stay on the full grid. The non-Gaussian term agrees with ``0`` (every pair on the full grid) to
+  of that size would need more memory than two cache blocks of ``BinnedPNGCacheBlockSize`` full grids, or
+  :math:`L` is smaller than the number of ranks); the rest stay on the full grid. The non-Gaussian term agrees with ``0`` (every pair on the full grid) to
   :math:`\sim 10^{-14}` relative. With it on, the result depends on the number of ranks at that
   level rather than not at all, because the small-grid pairs are summed in a rank-dependent order
   (the Gaussian potential is the same bit for bit on any number of ranks). Every rank keeps tables of the

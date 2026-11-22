@@ -3,7 +3,7 @@
 Needs the executables (installed package, or AARAMBAM_LPT_BIN=<dir with 2LPTBasis, 2LPTBinned>) and mpirun
 (or AARAMBAM_MPIRUN). Each case runs on 1 and 2 ranks; ~1 minute in total on one core.
 """
-import filecmp, glob, os, subprocess
+import filecmp, glob, os, re, struct, subprocess
 
 import numpy as np
 import pytest
@@ -127,6 +127,33 @@ def test_collate_real_output(am, outputs, tmp_path):
     np.testing.assert_array_equal(out['Gauss_potential'].ravel(), potential(outputs['binned', 1], 'Gauss'))
 
 
+def write_glass(path, pos, box = 1.0):
+    """Gadget-1 glass file with only a header and positions (all read_glass needs)."""
+    hdr = bytearray(256)
+    struct.pack_into('6I', hdr, 0, 0, len(pos), 0, 0, 0, 0)        #npart
+    struct.pack_into('6I', hdr, 96, 0, len(pos), 0, 0, 0, 0)       #npartTotal
+    struct.pack_into('i', hdr, 124, 1)                             #num_files
+    struct.pack_into('d', hdr, 128, box)                           #BoxSize
+    x = np.asarray(pos, dtype=np.float32).tobytes()
+    with open(path, 'wb') as f:
+        f.write(struct.pack('i', 256) + bytes(hdr) + struct.pack('i', 256))
+        f.write(struct.pack('i', len(x)) + x + struct.pack('i', len(x)))
+
+
+def test_potential_files_one_rank_with_particles(am, lpt_binaries, tmp_path):
+    """Every particle in one rank's slab: the potential files still hold every rank's planes."""
+    glass = tmp_path / 'glass1.dat'
+    write_glass(glass, [[0.1, 0.1, 0.1]])
+    pots = {}
+    for np_ in (1, 2):
+        d = tmp_path / f'np{np_}'
+        d.mkdir()
+        r = run(lpt_binaries, 'basis', write_config(am, 'basis', d, GlassFile=str(glass)), np_)
+        assert r.returncode == 0, r.stdout[-2000:]
+        pots[np_] = am.utils.collate_potential(str(d))['Gauss_potential']
+    np.testing.assert_array_equal(pots[1], pots[2])
+
+
 @pytest.mark.parametrize('method', ['basis', 'binned'])
 def test_mode_tables_agree(am, lpt_binaries, tmp_path, method):
     """ModeTables 1 (per-mode tables, cached mode fields) reproduces ModeTables 0 to rounding: the two are different
@@ -243,6 +270,7 @@ BAD_CONFIGS = {     #case: (method, config inputs, line appended to the config, 
     'wisdom_env':    ('binned', dict(FFTWWisdomDir='auto'), '', 'AARAMBAM_FFTW_WISDOM_DIR is longer than'),
     'odd_nmesh':     ('basis',  dict(Nmesh=33), '', 'Nmesh must be even'),
     'nsample':       ('binned', dict(Nsample=48, Nmax=48), '', 'Nsample must be between 1 and Nmesh'),
+    'wdm':           ('basis',  {}, '', 'WDM_On is not supported'),          #set below
 }
 
 
@@ -256,6 +284,10 @@ def test_bad_config_aborts(am, lpt_binaries, tmp_path, monkeypatch, case):
     if case == 'wisdom_env':        #longer than the FFTWWisdomDir tag allows: an error, not a shortened path
         monkeypatch.setenv('AARAMBAM_FFTW_WISDOM_DIR', str(tmp_path / ('d' * 600)))
     cfg = write_config(am, method, tmp_path, **extra)
+    if case == 'wdm':               #the writers always write WDM_On 0
+        text = open(cfg).read()
+        assert text.count('\nWDM_On ') == 1
+        open(cfg, 'w').write(re.sub(r'\nWDM_On( +)0', r'\nWDM_On\g<1>1', text))
     if line:
         open(cfg, 'a').write('\n' + line + '\n')
     r = run(lpt_binaries, method, cfg, 2)

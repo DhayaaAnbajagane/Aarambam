@@ -34,12 +34,12 @@ FFTW3, i.e. the directory that contains ``include/fftw3-mpi.h`` and ``lib/``:
    export Aarambam_FFTW3_ROOT=/path/to/fftw-3.3.10/build
 
 If it is not set, the install looks for ``fftw3-mpi.h`` under ``FFTW3_ROOT``, ``FFTW_DIR``,
-``FFTW_ROOT`` and the system paths. (Version 1.0.0 used FFTW2 and ``Aarambam_FFTW2_ROOT``; that
+``FFTW_ROOT``, the include directories of ``mpicc`` and the system paths. (Version 1.0.0 used FFTW2 and ``Aarambam_FFTW2_ROOT``; that
 variable is no longer used.)
 
 The install looks for the C compiler, GSL and MPI itself. If it picks the wrong ones, set the paths
-below; on most clusters at least the GSL and MPI ones are needed (otherwise MPI is searched for on
-``LD_LIBRARY_PATH`` / ``LIBRARY_PATH`` and the system paths, GSL in ``GSL_DIR`` / ``GSL_ROOT`` and
+below; on most clusters at least the GSL and MPI ones are needed (otherwise MPI is searched for in
+the library directories of ``mpicc``, next to it, on ``LD_LIBRARY_PATH`` / ``LIBRARY_PATH`` and the system paths, GSL in ``GSL_DIR`` / ``GSL_ROOT`` and
 the system paths).
 
 .. code-block:: bash

@@ -1,9 +1,8 @@
 """Test configuration.
 
 The Python tests run from a source checkout without the compiled Cython extension
-(``Aarambam.basis.legendre.cmbbest``): if ``import Aarambam`` fails because it is missing, the
-package and ``Aarambam.basis`` are registered as plain namespaces so the pure-Python modules
-(models, config, postprocess, decomposer, basis.binned, cli) import on their own.
+(``Aarambam.basis.legendre.cmbbest``): ``import Aarambam`` works without it, and the Legendre tests
+(tests/test_legendre.py) skip themselves.
 
 Tests that need the compiled 2LPT executables and ``mpirun`` are marked ``mpi`` and are skipped
 unless both are found (see ``lpt_binaries`` below and tests/test_c_smoke.py).
@@ -25,17 +24,7 @@ def _import_aarambam():
         return
     if ROOT not in sys.path:
         sys.path.insert(0, ROOT)
-    try:
-        import Aarambam  # noqa: F401  (works when cmbbest is compiled or installed)
-        return
-    except ImportError:
-        for k in [k for k in sys.modules if k == 'Aarambam' or k.startswith('Aarambam.')]:
-            del sys.modules[k]
-    for name, path in [('Aarambam', os.path.join(ROOT, 'Aarambam')),
-                       ('Aarambam.basis', os.path.join(ROOT, 'Aarambam', 'basis'))]:
-        mod = types.ModuleType(name)
-        mod.__path__ = [path]
-        sys.modules[name] = mod
+    import Aarambam  # noqa: F401
 
 
 _import_aarambam()

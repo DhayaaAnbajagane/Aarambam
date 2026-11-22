@@ -28,7 +28,7 @@ cat > /tmp/as_ci.sh <<EOF
 set -euo pipefail
 export PATH=$mpi_bin:\$PATH OMP_NUM_THREADS=1
 mpicc --version | head -1; mpirun --version 2>&1 | head -1
-prefix=/src/ci_cache/fftw-$ID$VERSION_ID
+prefix=/src/ci_cache/fftw-$ID${VERSION_ID%%.*}      #major version: the minor releases of an image share the cache
 if [ ! -e \$prefix/lib/libfftw3_mpi.so ] || [ ! -e \$prefix/lib/libfftw3f.so ]; then
   rm -rf /tmp/fftw && mkdir -p /tmp/fftw && cd /tmp/fftw
   tar -xzf /src/ci_cache/fftw-$FFTW_VERSION.tar.gz && cd fftw-$FFTW_VERSION

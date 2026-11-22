@@ -281,27 +281,12 @@ if(Aarambam_PYTHON_EXTENSION)
     VERBATIM
   )
 
-  # 2 build the extension
-  if(COMMAND Python3_add_library)
-    Python3_add_library(cmbbest MODULE WITH_SOABI
-      ${CMB_C}
-      ${CMB_SRC_DIR}/tetrapyd.c
-      ${CMB_SRC_DIR}/arrays.c
-    )
-  else()
-    add_library(cmbbest MODULE
-      ${CMB_C}
-      ${CMB_SRC_DIR}/tetrapyd.c
-      ${CMB_SRC_DIR}/arrays.c
-    )
-    # fallback suffix
-    execute_process(
-      COMMAND ${Python3_EXECUTABLE} -c
-        "import sysconfig; print(sysconfig.get_config_var('EXT_SUFFIX') or '.so', end='')"
-      OUTPUT_VARIABLE _ext
-    )
-    set_target_properties(cmbbest PROPERTIES SUFFIX "${_ext}")
-  endif()
+  # 2 build the extension (Python3_add_library: CMake >= 3.17)
+  Python3_add_library(cmbbest MODULE WITH_SOABI
+    ${CMB_C}
+    ${CMB_SRC_DIR}/tetrapyd.c
+    ${CMB_SRC_DIR}/arrays.c
+  )
 
   # 3 include & link
   target_include_directories(cmbbest PRIVATE

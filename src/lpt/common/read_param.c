@@ -173,6 +173,12 @@ void read_parameterfile(char *fname)
       fprintf(stdout, "Error. GlassTileFac must be at least 1 and Box positive in parameter file '%s'.\n", fname);
       errorFlag = 1;
     }
+  if(WDM_On != 0)          /* the displacements use the transfer table alone: the WDM cut-off would only rescale sigma8 */
+    {
+      fprintf(stdout, "Error. WDM_On is not supported (use a WDM transfer function table instead) in parameter file "
+              "'%s'.\n", fname);
+      errorFlag = 1;
+    }
 
   if(errorFlag)            /* called on task 0 only: abort all tasks with a non-zero status */
     {

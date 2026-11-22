@@ -21,7 +21,7 @@ static void phi_name(char *buf, size_t n, int isNonGaus, int start_x, int nx)
 {
   const char *pname = (isNonGaus == 0) ? "Gauss" : "Nongauss";
 
-  if(NTaskWithN > 1)
+  if(NTask > 1)
     snprintf(buf, n, "%s/%s_potential_%d_StartX_%04d_NumX_%d", OutputDir, pname, Seed, start_x, nx);
   else
     snprintf(buf, n, "%s/%s_potential_%d", OutputDir, pname, Seed);
@@ -66,61 +66,18 @@ static void phi_write_slab(const char *name, int total_size, const lpt_real *buf
   free(row);
 }
 
-/* Write the real-space potential: with NTaskWithN > 1 (ranks holding particles) each rank writes its own slab file;
- * otherwise task 0 gathers the slabs into one file. The header's total size is task 0's TotalSizePlusAdditional. */
+/* Write the real-space potential: on one rank one file; on several ranks each rank holding planes writes its own
+ * slab file (ranks without planes write nothing). The header's total size is task 0's TotalSizePlusAdditional. */
 void write_phi(lpt_real *pot, int isNonGaus)
 {
   char buf_will[1100];
   int total_size = TotalSizePlusAdditional;   /* header field kept for format compatibility */
-  int local_pot_size = Local_nx * Nmesh * (2 * (Nmesh / 2 + 1));
 
   MPI_Bcast(&total_size, 1, MPI_INT, 0, MPI_COMM_WORLD);
-  if(NTaskWithN > 1)
+  if(Local_nx > 0)
     {
       phi_name(buf_will, sizeof(buf_will), isNonGaus, Local_x_start, Local_nx);
       phi_write_slab(buf_will, total_size, pot, Local_nx);
-      return;
-    }
-
-  if(ThisTask != 0)
-    {
-      MPI_Send(&Local_x_start, 1, MPI_INT, 0, 0, MPI_COMM_WORLD);
-      MPI_Send(&Local_nx, 1, MPI_INT, 0, 1, MPI_COMM_WORLD);
-      MPI_Send(&local_pot_size, 1, MPI_INT, 0, 2, MPI_COMM_WORLD);
-      MPI_Send(pot, local_pot_size, MPI_DOUBLE, 0, 3, MPI_COMM_WORLD);   /* lpt_real assumed to be double */
-      return;
-    }
-  for(int task = 0; task < NTask; task++)
-    {
-      int start_x, nx, recv_size;
-      lpt_real *buffer = NULL;
-
-      if(task == 0)
-        {
-          start_x = Local_x_start;
-          nx = Local_nx;
-          buffer = pot;
-        }
-      else
-        {
-          MPI_Recv(&start_x, 1, MPI_INT, task, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-          MPI_Recv(&nx, 1, MPI_INT, task, 1, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-          MPI_Recv(&recv_size, 1, MPI_INT, task, 2, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-          buffer = malloc(recv_size * sizeof(lpt_real));
-          if(!buffer)
-            {
-              printf("Task 0: failed to allocate buffer from task %d\n", task);
-              FatalError(12345);
-            }
-          MPI_Recv(buffer, recv_size, MPI_DOUBLE, task, 3, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-        }
-      if(nx > 0)      /* one file name for all: an empty slab would overwrite it */
-        {
-          phi_name(buf_will, sizeof(buf_will), isNonGaus, start_x, nx);
-          phi_write_slab(buf_will, total_size, buffer, nx);
-        }
-      if(task != 0)
-        free(buffer);
     }
 }
 

@@ -115,7 +115,6 @@ static void NG(modal_ng_stage)(lpt_complex *cpot, lpt_complex *cpot_NG, double (
   double        kmag, kmag2, kmag1;
   long double   fnl_fac;
   uint64_t      coord;
-  unsigned int  bytes = 0;
   lpt_complex  *(cfields[8]);    /* recursion buffers (k-space, double) */
 
   /* The NG potential is sum_{N_i <= N_j} FFT[g_i g_j](k3) K_{ij}(k3) over the real-space mode fields g_N.

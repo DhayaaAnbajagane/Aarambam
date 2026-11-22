@@ -247,7 +247,6 @@ void displacement_fields(void)
   double        Beta;
   lpt_complex  *cpot;            /* Gaussian potential */
   lpt_complex  *cpot_NG;         /* non-Gaussian term, accumulated in the band k-space layout */
-  unsigned int  bytes = 0;
 
   /* the basis is built up to Nmax, so it must cover the sampled modes (Nsample) */
   if(Nmax < Nsample)
