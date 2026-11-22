@@ -33,7 +33,7 @@ def write_config(am, method, out, **extra):
 def run(bins, method, cfg, np_):
     env = dict(os.environ, OMP_NUM_THREADS='1')
     env.setdefault('OMPI_MCA_btl_vader_single_copy_mechanism', 'none')
-    return subprocess.run([bins.mpirun, '--oversubscribe', '-np', str(np_), os.path.join(bins.dir, EXE[method]), cfg],
+    return subprocess.run([bins.mpirun, *bins.mpi_args, '-np', str(np_), os.path.join(bins.dir, EXE[method]), cfg],
                           capture_output=True, text=True, env=env, timeout=900)
 
 
@@ -179,7 +179,7 @@ def test_fft_backends_agree(lpt_binaries, case):
         pytest.skip('2LPTFFTCheck not built')
     env = dict(os.environ, OMP_NUM_THREADS='1')
     env.setdefault('OMPI_MCA_btl_vader_single_copy_mechanism', 'none')
-    r = subprocess.run([lpt_binaries.mpirun, '--oversubscribe', '-np', str(case[0]), exe] + [str(c) for c in case[1:]],
+    r = subprocess.run([lpt_binaries.mpirun, *lpt_binaries.mpi_args, '-np', str(case[0]), exe] + [str(c) for c in case[1:]],
                        capture_output=True, text=True, env=env, timeout=300)
     assert r.returncode == 0 and 'PASS' in r.stdout, r.stdout[-2000:]
 

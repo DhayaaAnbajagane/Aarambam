@@ -61,7 +61,7 @@ If the install is not finding your correct installs of C-compilers, GSL etc. the
 ```bash
 export Aarambam_CC=/path/to/mpicc               # default: the first mpicc on PATH
 export Aarambam_GSL_ROOT=/path/to/gsl           # contains include/gsl/ and lib/ (or lib64/)
-export Aarambam_OPENMPI_ROOT=/path/to/openmpi   # contains lib/libmpi.so
+export Aarambam_OPENMPI_ROOT=/path/to/mpi       # Open MPI or MPICH; contains lib/libmpi.so (or libmpich.so)
 ```
 
 Most computing clusters provide FFTW3, but often without its MPI library (`libfftw3_mpi`), or built against a different MPI than the one you use. In either case (or if there is no FFTW3 at all) you can install it via the following steps:

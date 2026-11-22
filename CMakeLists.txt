@@ -116,27 +116,32 @@ else()
   set(FFTW3F_LINK "")
 endif()
 
-# MPI
+# MPI: mpicc links it; its library directory is found for the run path of the installed executables
 if(DEFINED ENV{Aarambam_OPENMPI_ROOT})
-  set(OPENMPI_LIB_DIR "$ENV{Aarambam_OPENMPI_ROOT}/lib" CACHE PATH "OpenMPI library directory" FORCE)
+  find_library(OPENMPI_MPI_LIB
+    NAMES mpi mpich
+    HINTS "$ENV{Aarambam_OPENMPI_ROOT}"
+    PATH_SUFFIXES lib lib64
+    NO_DEFAULT_PATH
+    REQUIRED
+  )
 else()
   # split the colon‐delimited env vars into a CMake list and combine
   string(REPLACE ":" ";" _LD_PATHS  "$ENV{LD_LIBRARY_PATH}")
   string(REPLACE ":" ";" _LIB_PATHS "$ENV{LIBRARY_PATH}")
   list(APPEND _SEARCH_PATHS ${_LD_PATHS} ${_LIB_PATHS})
 
-  # look for libmpi.so (or .dylib/.a) next to mpicc, then on your LD_LIBRARY_PATH or LIBRARY_PATH
+  # look for the library next to mpicc, then on your LD_LIBRARY_PATH or LIBRARY_PATH, then the system paths
   get_filename_component(_MPICC_BIN_DIR "${CMAKE_C_COMPILER}" DIRECTORY)
   find_library(OPENMPI_MPI_LIB
-    NAMES mpi
+    NAMES mpi mpich
     HINTS "${_MPICC_BIN_DIR}/../lib" "${_MPICC_BIN_DIR}/../lib64"
     PATHS ${_SEARCH_PATHS}
     REQUIRED
   )
-
-  # strip off the filename to get the lib directory
-  get_filename_component(OPENMPI_LIB_DIR ${OPENMPI_MPI_LIB} DIRECTORY)
 endif()
+# strip off the filename to get the lib directory
+get_filename_component(OPENMPI_LIB_DIR ${OPENMPI_MPI_LIB} DIRECTORY)
 
 # --- 2LPT executables: src/lpt/common (shared by all) + one directory per method ---
 set(LPT_DIR ${CMAKE_CURRENT_SOURCE_DIR}/src/lpt)
@@ -189,7 +194,7 @@ function(aarambam_lpt_executable name method_dir)
   target_include_directories(${name} PRIVATE ${method_dir} ${LPT_INCLUDE_DIRS})
   target_compile_definitions(${name} PRIVATE ${LPT_DEFINITIONS})
   target_link_directories(${name} PRIVATE ${OPENMPI_LIB_DIR} ${GSL_LIB_DIR} ${FFTW3_LIB_DIR})
-  target_link_libraries(${name} PRIVATE ${FFTW3_MPI_LIBRARY} ${FFTW3_LIBRARY} ${FFTW3F_LINK} gsl gslcblas m mpi)
+  target_link_libraries(${name} PRIVATE ${FFTW3_MPI_LIBRARY} ${FFTW3_LIBRARY} ${FFTW3F_LINK} gsl gslcblas m)   # MPI: linked by mpicc
   # Installed binaries must find libmpi / libgsl / libfftw3 without LD_LIBRARY_PATH
   set_target_properties(${name} PROPERTIES INSTALL_RPATH "${OPENMPI_LIB_DIR};${GSL_LIB_DIR};${FFTW3_LIB_DIR}")
   install(TARGETS ${name} RUNTIME DESTINATION Aarambam/bin)
@@ -206,7 +211,7 @@ add_executable(2LPTFFTCheck ${LPT_DIR}/check/fft_check.c ${LPT_DIR}/common/band_
 target_include_directories(2LPTFFTCheck PRIVATE ${LPT_DIR}/common ${FFTW3_INCLUDE_DIR})
 target_compile_definitions(2LPTFFTCheck PRIVATE ${LPT_DEFINITIONS})
 target_link_directories(2LPTFFTCheck PRIVATE ${OPENMPI_LIB_DIR} ${FFTW3_LIB_DIR})
-target_link_libraries(2LPTFFTCheck PRIVATE ${FFTW3_MPI_LIBRARY} ${FFTW3_LIBRARY} ${FFTW3F_LINK} m mpi)
+target_link_libraries(2LPTFFTCheck PRIVATE ${FFTW3_MPI_LIBRARY} ${FFTW3_LIBRARY} ${FFTW3F_LINK} m)
 set_target_properties(2LPTFFTCheck PROPERTIES INSTALL_RPATH "${OPENMPI_LIB_DIR};${FFTW3_LIB_DIR}")
 install(TARGETS 2LPTFFTCheck RUNTIME DESTINATION Aarambam/bin)
 

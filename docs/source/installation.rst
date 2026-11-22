@@ -46,7 +46,7 @@ the system paths).
 
    export Aarambam_CC=/path/to/mpicc               # default: the first mpicc on PATH
    export Aarambam_GSL_ROOT=/path/to/gsl           # contains include/gsl/ and lib/ (or lib64/)
-   export Aarambam_OPENMPI_ROOT=/path/to/openmpi   # contains lib/libmpi.so
+   export Aarambam_OPENMPI_ROOT=/path/to/mpi       # Open MPI or MPICH; contains lib/libmpi.so (or libmpich.so)
 
 Snapshots use 32-bit particle IDs by default, which allows at most :math:`2^{31}-1` particles
 (the executables stop with a message beyond that). For larger runs, build with 64-bit IDs:

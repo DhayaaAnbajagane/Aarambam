@@ -2,8 +2,9 @@ name: tests
 
 # python:   the pure-Python tests from the source tree, on every supported Python (tests marked `mpi` and the
 #           Legendre extension tests skip themselves there).
-# compiled: Ubuntu's MPI, FFTW3 (with MPI and single precision) and GSL, `pip install .` (the 2LPT executables,
-#           2LPTFFTCheck and the Cython extension), then every test against the installed package.
+# compiled: MPI, FFTW3 (with MPI and single precision) and GSL, `pip install .` (the 2LPT executables, 2LPTFFTCheck
+#           and the Cython extension), then every test against the installed package, on the Ubuntu LTS releases
+#           with Open MPI and Ubuntu's FFTW, and with MPICH and FFTW built from source (as in the installation docs).
 
 on:
   push:
@@ -29,18 +30,64 @@ jobs:
         run: python -m pytest tests -m "not mpi" -q
 
   compiled:
-    runs-on: ubuntu-latest
+    name: compiled (${{ matrix.os }}, ${{ matrix.mpi }}, FFTW ${{ matrix.fftw }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {os: ubuntu-22.04,  mpi: openmpi, fftw: apt}
+          - {os: ubuntu-24.04,  mpi: openmpi, fftw: apt}
+          - {os: ubuntu-latest, mpi: openmpi, fftw: apt}
+          - {os: ubuntu-latest, mpi: mpich,   fftw: source}
+    env:
+      FFTW_VERSION: "3.3.10"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Install MPI, FFTW3 and GSL
+
+      - name: Install MPI and GSL
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends openmpi-bin libopenmpi-dev libfftw3-dev libfftw3-mpi-dev libgsl-dev
+          if [ "${{ matrix.mpi }}" = openmpi ]; then mpi="openmpi-bin libopenmpi-dev"; else mpi="mpich libmpich-dev"; fi
+          sudo apt-get install -y --no-install-recommends $mpi libgsl-dev
+          mpicc --version && mpirun --version
+          echo "ubuntu=$(lsb_release -rs)" >> "$GITHUB_OUTPUT"
+        id: system
+
+      - name: Install Ubuntu's FFTW3
+        if: matrix.fftw == 'apt'
+        run: sudo apt-get install -y --no-install-recommends libfftw3-dev libfftw3-mpi-dev
+
+      - name: Cache FFTW3 built from source
+        if: matrix.fftw == 'source'
+        id: fftw-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/fftw
+          key: fftw-${{ env.FFTW_VERSION }}-${{ matrix.mpi }}-ubuntu${{ steps.system.outputs.ubuntu }}
+
+      - name: Build FFTW3 from source (double with MPI, then single precision, one prefix)
+        if: matrix.fftw == 'source' && steps.fftw-cache.outputs.cache-hit != 'true'
+        working-directory: ${{ runner.temp }}
+        run: |
+          wget -q https://www.fftw.org/fftw-$FFTW_VERSION.tar.gz
+          tar -xzf fftw-$FFTW_VERSION.tar.gz && cd fftw-$FFTW_VERSION
+          ./configure --prefix=$HOME/fftw --enable-mpi --enable-shared --enable-sse2 --enable-avx --enable-avx2 MPICC=mpicc
+          make -j4 && make install && cd ..
+          rm -rf fftw-$FFTW_VERSION && tar -xzf fftw-$FFTW_VERSION.tar.gz && cd fftw-$FFTW_VERSION
+          ./configure --prefix=$HOME/fftw --enable-float --enable-shared --enable-sse --enable-sse2 --enable-avx --enable-avx2
+          make -j4 && make install
+
+      - name: Point the install at FFTW3 built from source
+        if: matrix.fftw == 'source'
+        run: echo "Aarambam_FFTW3_ROOT=$HOME/fftw" >> "$GITHUB_ENV"
+
       - name: Build and install Aarambam
         run: python -m pip install -v . pytest
+
       - name: Check the installed executables and extension
         working-directory: ${{ runner.temp }}
         run: |
@@ -49,6 +96,7 @@ jobs:
           test -x "$bin/2LPTBasis" && test -x "$bin/2LPTBinned" && test -x "$bin/2LPTFFTCheck"
           python -c "import Aarambam.basis.legendre.cmbbest"
           aarambam version
+
       - name: Run all tests on the installed package
         shell: bash
         env:

@@ -11,7 +11,7 @@ unless both are found (see ``lpt_binaries`` below and tests/test_c_smoke.py).
 ``AARAMBAM_TEST_INSTALLED=1`` tests the installed package instead of the source tree (its compiled
 extension and executables; the GitHub workflow does this after ``pip install .``).
 """
-import importlib, os, shutil, sys, types
+import importlib, os, shutil, subprocess, sys, types
 
 import pytest
 
@@ -77,10 +77,20 @@ def _find_binaries():
     return None
 
 
+def _mpirun_args(mpirun):
+    """Open MPI refuses more ranks than cores without --oversubscribe; MPICH allows them and rejects the flag."""
+    try:
+        r = subprocess.run([mpirun, '--version'], capture_output=True, text=True, timeout=60)
+    except Exception:
+        return []
+    return ['--oversubscribe'] if 'Open MPI' in r.stdout + r.stderr else []
+
+
 @pytest.fixture(scope='session')
 def lpt_binaries():
+    """dir: the executables; mpirun and the arguments it needs before -np (mpi_args)."""
     d = _find_binaries()
     mpirun = os.environ.get('AARAMBAM_MPIRUN') or shutil.which('mpirun')
     if d is None or mpirun is None:
         pytest.skip('2LPT executables (set AARAMBAM_LPT_BIN) or mpirun not found')
-    return types.SimpleNamespace(dir = d, mpirun = mpirun)
+    return types.SimpleNamespace(dir = d, mpirun = mpirun, mpi_args = _mpirun_args(mpirun))
