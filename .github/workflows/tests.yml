@@ -105,3 +105,37 @@ jobs:
         run: |
           python -m pytest tests -rs | tee pytest.log
           if grep -q SKIPPED pytest.log; then echo "::error::tests were skipped: a compiled part is missing"; exit 1; fi
+
+  # The distributions of HPC clusters, in containers: Rocky Linux 8 and 9 for the RHEL family (Midway, Great Lakes,
+  # Sherlock-like clusters; the system FFTW keeps its MPI parts inside the Open MPI directories) and openSUSE Leap 15.6
+  # for SLES 15 SP6, the base of NERSC Perlmutter's Cray OS (its Cray compilers, MPI and FFTW are not testable here).
+  distro:
+    name: compiled (${{ matrix.name }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {name: "rocky8, system FFTW",          image: "rockylinux:8",       key: rocky8,        fftw_source: "0"}
+          - {name: "rocky9, system FFTW",          image: "rockylinux:9",       key: rocky9,        fftw_source: "0"}
+          - {name: "opensuse-leap15.6, FFTW source", image: "opensuse/leap:15.6", key: opensuse15.6, fftw_source: "1"}
+    env:
+      FFTW_VERSION: "3.3.10"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache FFTW3 built from source
+        if: matrix.fftw_source == '1'
+        uses: actions/cache@v4
+        with:
+          path: ci_cache/fftw-*/
+          key: fftw-${{ env.FFTW_VERSION }}-${{ matrix.key }}
+
+      - name: Download the FFTW3 source
+        if: matrix.fftw_source == '1'
+        run: mkdir -p ci_cache && curl -sSL -o ci_cache/fftw-$FFTW_VERSION.tar.gz https://www.fftw.org/fftw-$FFTW_VERSION.tar.gz
+
+      - name: Install the dependencies, Aarambam, and run all tests in the container
+        run: |
+          docker run --rm --shm-size=1g -e FFTW_SOURCE=${{ matrix.fftw_source }} -e FFTW_VERSION \
+            -v "$PWD":/src ${{ matrix.image }} bash /src/.github/ci/distro.sh

@@ -823,7 +823,7 @@ void displacement_fields(void)
     {
       if(ThisTask == 0)
         printf("Nmax (%d) must be at least Nsample (%d).\n", Nmax, Nsample);
-      FatalError(9118);
+      lpt_fatal_all(9118);
     }
 
   lpt_setup_gaussian_potential(&cpot, &Beta);

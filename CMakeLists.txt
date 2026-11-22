@@ -68,6 +68,27 @@ if(DEFINED ENV{Aarambam_FFTW2_ROOT} AND NOT DEFINED ENV{Aarambam_FFTW3_ROOT})
   message(WARNING "Aarambam_FFTW2_ROOT is no longer used: Aarambam now uses FFTW3 with MPI (set Aarambam_FFTW3_ROOT)")
 endif()
 
+# Include and library directories of the MPI compiler wrapper (Open MPI: --showme, MPICH: -show). Distribution
+# packages (RHEL/Rocky, SUSE) put FFTW's MPI header and library there, apart from the serial FFTW.
+set(_MPI_INC_DIRS "")
+set(_MPI_LIB_DIRS "")
+execute_process(COMMAND ${CMAKE_C_COMPILER} --showme OUTPUT_VARIABLE _MPI_SHOW ERROR_QUIET RESULT_VARIABLE _MPI_RC)
+if(NOT _MPI_RC EQUAL 0)
+  execute_process(COMMAND ${CMAKE_C_COMPILER} -show OUTPUT_VARIABLE _MPI_SHOW ERROR_QUIET RESULT_VARIABLE _MPI_RC)
+endif()
+if(_MPI_RC EQUAL 0)
+  string(REGEX MATCHALL "-I[^ \t\r\n]+" _flags "${_MPI_SHOW}")
+  foreach(_f ${_flags})
+    string(SUBSTRING "${_f}" 2 -1 _d)
+    list(APPEND _MPI_INC_DIRS "${_d}")
+  endforeach()
+  string(REGEX MATCHALL "-L[^ \t\r\n]+" _flags "${_MPI_SHOW}")
+  foreach(_f ${_flags})
+    string(SUBSTRING "${_f}" 2 -1 _d)
+    list(APPEND _MPI_LIB_DIRS "${_d}")
+  endforeach()
+endif()
+
 if(DEFINED ENV{Aarambam_FFTW3_ROOT})
   set(_FFTW3_HINT "$ENV{Aarambam_FFTW3_ROOT}")
   set(_FFTW3_PATHS NO_DEFAULT_PATH)
@@ -77,6 +98,7 @@ else()
       list(APPEND _FFTW3_HINT "$ENV{${_var}}")
     endif()
   endforeach()
+  list(APPEND _FFTW3_HINT ${_MPI_INC_DIRS})
 endif()
 
 find_path(FFTW3_INCLUDE_DIR
@@ -98,15 +120,29 @@ if(CMAKE_LIBRARY_ARCHITECTURE)
 endif()
 find_library(FFTW3_MPI_LIBRARY NAMES fftw3_mpi HINTS ${_FFTW3_PREFIX} PATH_SUFFIXES ${_FFTW3_LIB_SUFFIXES} NO_DEFAULT_PATH)
 find_library(FFTW3_LIBRARY     NAMES fftw3     HINTS ${_FFTW3_PREFIX} PATH_SUFFIXES ${_FFTW3_LIB_SUFFIXES} NO_DEFAULT_PATH)
+set(_FFTW3_SPLIT OFF)
+if((NOT FFTW3_MPI_LIBRARY OR NOT FFTW3_LIBRARY) AND NOT DEFINED ENV{Aarambam_FFTW3_ROOT})
+  # distribution packages: libfftw3_mpi in the MPI library directory, the serial libraries in the system paths
+  set(_FFTW3_SPLIT ON)
+  find_library(FFTW3_MPI_LIBRARY NAMES fftw3_mpi HINTS ${_MPI_LIB_DIRS})
+  find_library(FFTW3_LIBRARY     NAMES fftw3)
+endif()
 if(NOT FFTW3_MPI_LIBRARY OR NOT FFTW3_LIBRARY)
   message(FATAL_ERROR "Found ${FFTW3_INCLUDE_DIR}/fftw3-mpi.h, but not libfftw3_mpi and libfftw3 under "
                       "${_FFTW3_PREFIX}/lib. Was FFTW3 built and installed with --enable-mpi?")
 endif()
 get_filename_component(FFTW3_LIB_DIR ${FFTW3_LIBRARY} DIRECTORY)
+get_filename_component(_FFTW3_MPI_LIB_DIR ${FFTW3_MPI_LIBRARY} DIRECTORY)
+list(APPEND FFTW3_LIB_DIR ${_FFTW3_MPI_LIB_DIR})
+list(REMOVE_DUPLICATES FFTW3_LIB_DIR)
 message(STATUS "Aarambam: FFTW3 ${FFTW3_MPI_LIBRARY}")
 # Single-precision FFTW (libfftw3f, the same prefix, built with --enable-float) for NGPrecision float. Optional:
 # without it the executables are built without float support and NGPrecision float stops with a message.
-find_library(FFTW3F_LIBRARY NAMES fftw3f HINTS ${_FFTW3_PREFIX} PATH_SUFFIXES ${_FFTW3_LIB_SUFFIXES} NO_DEFAULT_PATH)
+if(_FFTW3_SPLIT)
+  find_library(FFTW3F_LIBRARY NAMES fftw3f)
+else()
+  find_library(FFTW3F_LIBRARY NAMES fftw3f HINTS ${_FFTW3_PREFIX} PATH_SUFFIXES ${_FFTW3_LIB_SUFFIXES} NO_DEFAULT_PATH)
+endif()
 if(FFTW3F_LIBRARY)
   message(STATUS "Aarambam: single-precision FFTW ${FFTW3F_LIBRARY} (NGPrecision float available)")
   set(FFTW3F_LINK ${FFTW3F_LIBRARY})
@@ -131,11 +167,12 @@ else()
   string(REPLACE ":" ";" _LIB_PATHS "$ENV{LIBRARY_PATH}")
   list(APPEND _SEARCH_PATHS ${_LD_PATHS} ${_LIB_PATHS})
 
-  # look for the library next to mpicc, then on your LD_LIBRARY_PATH or LIBRARY_PATH, then the system paths
+  # look for the library where mpicc links it from, next to mpicc, then on your LD_LIBRARY_PATH or LIBRARY_PATH, then
+  # the system paths
   get_filename_component(_MPICC_BIN_DIR "${CMAKE_C_COMPILER}" DIRECTORY)
   find_library(OPENMPI_MPI_LIB
     NAMES mpi mpich
-    HINTS "${_MPICC_BIN_DIR}/../lib" "${_MPICC_BIN_DIR}/../lib64"
+    HINTS ${_MPI_LIB_DIRS} "${_MPICC_BIN_DIR}/../lib" "${_MPICC_BIN_DIR}/../lib64"
     PATHS ${_SEARCH_PATHS}
     REQUIRED
   )
@@ -216,56 +253,66 @@ set_target_properties(2LPTFFTCheck PROPERTIES INSTALL_RPATH "${OPENMPI_LIB_DIR};
 install(TARGETS 2LPTFFTCheck RUNTIME DESTINATION Aarambam/bin)
 
 # ─── CMB-BEST Python Extension ──────────────────────────────────────────────
-
-find_package(Python3 REQUIRED COMPONENTS Interpreter Development.Module NumPy)
-find_package(OpenMP REQUIRED COMPONENTS C)  # tetrapyd.c includes omp.h unconditionally
-
-# paths
-set(CMB_SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR}/Aarambam/basis/legendre)
-set(CMB_PYX    ${CMB_SRC_DIR}/cmbbest.pyx)
-set(CMB_C      ${CMAKE_CURRENT_BINARY_DIR}/Aarambam/basis/legendre/cmbbest.c)
-
-# 1 generate cmbbest.c (the Makefile generator does not create the output dir)
-file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/Aarambam/basis/legendre)
-add_custom_command(
-  OUTPUT ${CMB_C}
-  COMMAND ${Python3_EXECUTABLE} -m cython -3 --fast-fail -o ${CMB_C} ${CMB_PYX}
-  DEPENDS ${CMB_PYX} ${CMB_SRC_DIR}/tetrapyd.c ${CMB_SRC_DIR}/arrays.c
-  COMMENT "Cythonizing ${CMB_PYX}"
-  VERBATIM
-)
-
-# 2 build the extension
-if(COMMAND Python3_add_library)
-  Python3_add_library(cmbbest MODULE WITH_SOABI
-    ${CMB_C}
-    ${CMB_SRC_DIR}/tetrapyd.c
-    ${CMB_SRC_DIR}/arrays.c
-  )
+# Aarambam_PYTHON_EXTENSION=OFF (environment variable or -D) builds only the C executables, e.g. where no Python
+# development files are installed; the Legendre decomposition then cannot be used.
+if(DEFINED ENV{Aarambam_PYTHON_EXTENSION})
+  set(_AARAMBAM_PYEXT_DEFAULT "$ENV{Aarambam_PYTHON_EXTENSION}")
 else()
-  add_library(cmbbest MODULE
-    ${CMB_C}
-    ${CMB_SRC_DIR}/tetrapyd.c
-    ${CMB_SRC_DIR}/arrays.c
-  )
-  # fallback suffix
-  execute_process(
-    COMMAND ${Python3_EXECUTABLE} -c
-      "import sysconfig; print(sysconfig.get_config_var('EXT_SUFFIX') or '.so', end='')"
-    OUTPUT_VARIABLE _ext
-  )
-  set_target_properties(cmbbest PROPERTIES SUFFIX "${_ext}")
+  set(_AARAMBAM_PYEXT_DEFAULT ON)
 endif()
+option(Aarambam_PYTHON_EXTENSION "Build the Cython extension of the Legendre decomposition" ${_AARAMBAM_PYEXT_DEFAULT})
+if(Aarambam_PYTHON_EXTENSION)
 
-# 3 include & link
-target_include_directories(cmbbest PRIVATE
-  ${Python3_NumPy_INCLUDE_DIRS}
-  ${CMB_SRC_DIR}
-)
-target_link_libraries(cmbbest PRIVATE OpenMP::OpenMP_C)
+  find_package(Python3 REQUIRED COMPONENTS Interpreter Development.Module NumPy)
+  find_package(OpenMP REQUIRED COMPONENTS C)  # tetrapyd.c includes omp.h unconditionally
 
-# 4 install into your package
-install(TARGETS cmbbest
-  RUNTIME DESTINATION Aarambam/basis/legendre      # no-op on MODULE, but fine
-  LIBRARY DESTINATION Aarambam/basis/legendre      # .so goes here under site-packages/Aarambam/basis
-)
+  # paths
+  set(CMB_SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR}/Aarambam/basis/legendre)
+  set(CMB_PYX    ${CMB_SRC_DIR}/cmbbest.pyx)
+  set(CMB_C      ${CMAKE_CURRENT_BINARY_DIR}/Aarambam/basis/legendre/cmbbest.c)
+
+  # 1 generate cmbbest.c (the Makefile generator does not create the output dir)
+  file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/Aarambam/basis/legendre)
+  add_custom_command(
+    OUTPUT ${CMB_C}
+    COMMAND ${Python3_EXECUTABLE} -m cython -3 --fast-fail -o ${CMB_C} ${CMB_PYX}
+    DEPENDS ${CMB_PYX} ${CMB_SRC_DIR}/tetrapyd.c ${CMB_SRC_DIR}/arrays.c
+    COMMENT "Cythonizing ${CMB_PYX}"
+    VERBATIM
+  )
+
+  # 2 build the extension
+  if(COMMAND Python3_add_library)
+    Python3_add_library(cmbbest MODULE WITH_SOABI
+      ${CMB_C}
+      ${CMB_SRC_DIR}/tetrapyd.c
+      ${CMB_SRC_DIR}/arrays.c
+    )
+  else()
+    add_library(cmbbest MODULE
+      ${CMB_C}
+      ${CMB_SRC_DIR}/tetrapyd.c
+      ${CMB_SRC_DIR}/arrays.c
+    )
+    # fallback suffix
+    execute_process(
+      COMMAND ${Python3_EXECUTABLE} -c
+        "import sysconfig; print(sysconfig.get_config_var('EXT_SUFFIX') or '.so', end='')"
+      OUTPUT_VARIABLE _ext
+    )
+    set_target_properties(cmbbest PROPERTIES SUFFIX "${_ext}")
+  endif()
+
+  # 3 include & link
+  target_include_directories(cmbbest PRIVATE
+    ${Python3_NumPy_INCLUDE_DIRS}
+    ${CMB_SRC_DIR}
+  )
+  target_link_libraries(cmbbest PRIVATE OpenMP::OpenMP_C)
+
+  # 4 install into your package
+  install(TARGETS cmbbest
+    RUNTIME DESTINATION Aarambam/basis/legendre      # no-op on MODULE, but fine
+    LIBRARY DESTINATION Aarambam/basis/legendre      # .so goes here under site-packages/Aarambam/basis
+  )
+endif()

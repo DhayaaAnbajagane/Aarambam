@@ -971,6 +971,15 @@ int FatalError(int errnum)
   exit(0);
 }
 
+/* FatalError for a condition every rank detects and rank 0 explains: the barrier lets rank 0 print its message
+ * before any rank aborts the run (with MPICH, an early abort from another rank could cut it off). Collective. */
+int lpt_fatal_all(int errnum)
+{
+  fflush(stdout);
+  MPI_Barrier(MPI_COMM_WORLD);
+  return FatalError(errnum);
+}
+
 
 /* ---- input spectrum written next to the ICs (with the Peacock & Dodds non-linear estimate) ---- */
 

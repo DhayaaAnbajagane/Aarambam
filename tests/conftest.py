@@ -78,12 +78,23 @@ def _find_binaries():
 
 
 def _mpirun_args(mpirun):
-    """Open MPI refuses more ranks than cores without --oversubscribe; MPICH allows them and rejects the flag."""
+    """Open MPI refuses more ranks than cores without --oversubscribe; MPICH allows them and rejects the flag.
+    Open MPI is recognised by its ompi_info next to mpirun, or by its names in the --version output (which some
+    packages print as a help-file error: Ubuntu 26.04's Open MPI 5)."""
     try:
         r = subprocess.run([mpirun, '--version'], capture_output=True, text=True, timeout=60)
+        out = (r.stdout + r.stderr).lower()
     except Exception:
+        out = ''
+    if 'hydra' in out or 'mpich' in out:       #MPICH (also when Open MPI is installed next to it)
         return []
-    return ['--oversubscribe'] if 'Open MPI' in r.stdout + r.stderr else []
+    if any(s in out for s in ('open mpi', 'ompi', 'prte', 'orterun')):
+        return ['--oversubscribe']
+    path = shutil.which(mpirun) or mpirun
+    for d in {os.path.dirname(path), os.path.dirname(os.path.realpath(path))}:
+        if os.path.isfile(os.path.join(d, 'ompi_info')):
+            return ['--oversubscribe']
+    return []
 
 
 @pytest.fixture(scope='session')

@@ -65,6 +65,10 @@ AVX2 / AVX-512 and fused multiply-adds; a few per cent faster), set
 The executables then stop with "illegal instruction" on CPUs without those instruction sets (for
 example AVX-512 code on AMD nodes), so leave it off when login and compute nodes differ.
 
+``export Aarambam_PYTHON_EXTENSION=OFF`` builds only the C executables, without the Cython extension
+(for example where no Python development files are installed); the Legendre decomposition then cannot
+be used.
+
 The C sources of the 2LPT executables live in ``src/lpt`` (``common/`` shared by both methods,
 ``modal/`` and ``binned/``). They are compiled into ``Aarambam/bin/2LPTBasis`` and
 ``Aarambam/bin/2LPTBinned`` and are not shipped in the wheel. ``Aarambam/bin/2LPTFFTCheck``
@@ -87,11 +91,22 @@ runs larger rank-independence checks and refuses to start on a busy node.
 Installing FFTW3
 ----------------
 
-On Debian or Ubuntu, the system packages are enough (no environment variables needed):
+The system packages are enough on these distributions (no environment variables needed):
 
 .. code-block:: bash
 
+   # Debian, Ubuntu
    sudo apt-get install openmpi-bin libopenmpi-dev libfftw3-dev libfftw3-mpi-dev libgsl-dev
+   # RHEL, Rocky, Alma 8 or 9, then put Open MPI on PATH (module load mpi/openmpi-x86_64)
+   sudo dnf install openmpi-devel fftw-devel fftw-openmpi-devel gsl-devel
+
+On openSUSE or SLES, install ``openmpi4-devel`` and ``gsl-devel`` and build FFTW3 as below. All of
+these are tested by the GitHub workflow (Ubuntu 22.04 to latest, Rocky Linux 8 and 9, openSUSE Leap
+15.6, and MPICH with FFTW3 built from source).
+
+On NERSC Perlmutter (not tested here), the Cray modules should provide everything: ``module load
+cray-fftw gsl`` and ``export Aarambam_CC=cc`` (the Cray compiler wrapper, which adds MPI); the install
+looks for FFTW3 and GSL in the ``FFTW_ROOT`` / ``FFTW_DIR`` and ``GSL_DIR`` those modules set.
 
 Clusters often provide FFTW3 without its MPI library (``libfftw3_mpi``), or built against another
 MPI than yours. In that case, or without FFTW3 at all, build it:

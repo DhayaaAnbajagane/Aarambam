@@ -413,7 +413,7 @@ static int lpt_fft_options(void)
       if(ThisTask == 0)
         printf("\nFFTBackend '%s': must be fftw or band.\n", FFTBackend);
       fflush(stdout);
-      FatalError(1120);
+      lpt_fatal_all(1120);
     }
   NGFloat = strcmp(NGPrecision, "float") == 0;
   if(!NGFloat && strcmp(NGPrecision, "double") != 0)
@@ -421,7 +421,7 @@ static int lpt_fft_options(void)
       if(ThisTask == 0)
         printf("\nNGPrecision '%s': must be double or float.\n", NGPrecision);
       fflush(stdout);
-      FatalError(1122);
+      lpt_fatal_all(1122);
     }
 #ifdef AARAMBAM_NO_FLOAT
   if(NGFloat)
@@ -430,7 +430,7 @@ static int lpt_fft_options(void)
         printf("\nNGPrecision float: these executables were built without single-precision FFTW (libfftw3f). Build "
                "FFTW once more with --enable-float into the same prefix and reinstall, or use NGPrecision double.\n");
       fflush(stdout);
-      FatalError(1122);
+      lpt_fatal_all(1122);
     }
 #endif
   if(NGFloat && !band && ThisTask == 0)
@@ -501,7 +501,7 @@ static void lpt_band_failed(const char *what)
     printf("\n%s: the transfers per rank exceed 2^31 numbers or a plan failed; run with more MPI ranks%s.\n", what,
            NGFloat ? "" : " or FFTBackend fftw");
   fflush(stdout);
-  FatalError(1121);
+  lpt_fatal_all(1121);
 }
 
 /* The FFTs of the NG stage and their k-space ("band") layout: the single-precision band FFT (NGPrecision float), the

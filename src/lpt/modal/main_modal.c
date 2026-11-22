@@ -254,7 +254,7 @@ void displacement_fields(void)
     {
       if(ThisTask == 0)
         printf("Nmax (%d) must be at least Nsample (%d).\n", Nmax, Nsample);
-      FatalError(9118);
+      lpt_fatal_all(9118);
     }
 
   /* the Legendre argument maps k^{(4-n_s)/3} over [kmin, kmax] onto [-1, 1] */

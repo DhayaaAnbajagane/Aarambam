@@ -7,6 +7,7 @@ void print_setup(void);
 double GrowthFactor(double astart, double aend);
 void   print_spec(void);
 int    FatalError(int errnum);
+int    lpt_fatal_all(int errnum);      /* every rank, after rank 0 printed why */
 void   displacement_fields(void);
 void   initialize_ffts(void);
 void   set_units(void);

@@ -164,7 +164,7 @@ void read_glass(char *fname)
       if(ThisTask == 0)
         printf("%lld particles do not fit 32-bit particle IDs (limit %lld). Rebuild Aarambam with "
                "Aarambam_64BIT_IDS=ON to write 64-bit IDs.\n", TotNumPart, (long long) AARAMBAM_MAX_INT_ID);
-      FatalError(1113);
+      lpt_fatal_all(1113);
     }
 #endif
 
