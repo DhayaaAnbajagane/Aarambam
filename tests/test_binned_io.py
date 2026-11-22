@@ -7,10 +7,13 @@ import pytest
 #Binned_filter -> (BinnedPNGFilter, BinnedPNGOutputFilter) codes of the C code
 FILTERS = {'heaviside': (1, 1), 'hybrid_cubic_k3cubic': (3, 3), 'hybrid_linear_k3linear': (2, 2), 'hybrid_cubic': (3, 1)}
 
+#a 32^3 pilot grid places 4 bins as well as the default 256^3 (~7 s per decomposition) for what is tested here
+FAST = dict(Binned_progress=False, Binned_adaptive_pilot_N=32)
+
 
 def decompose(am, outdir, filt):
     D = am.utils.Decomposer(n_s=0.96, Lbox=1000., Nmax=32, Binned_Nk=4, Binned_filter=filt)
-    return D.go(am.models.Local, am.binned.BasicBinnedDecompose, outdir=str(outdir), Binned_progress=False)
+    return D.go(am.models.Local, am.binned.BasicBinnedDecompose, outdir=str(outdir), **FAST)
 
 
 @pytest.mark.parametrize('filt', sorted(FILTERS))
@@ -46,7 +49,7 @@ def test_heaviside_removes_stale_hybrid_table(am, tmp_path):
 def test_linear_k_coordinate_rejected(am, tmp_path):
     D = am.utils.Decomposer(n_s=0.96, Lbox=1000., Nmax=32, Binned_Nk=4, Binned_linear_coordinate='k')
     with pytest.raises(NotImplementedError):
-        D.go(am.models.Local, am.binned.BasicBinnedDecompose, Binned_progress=False)
+        D.go(am.models.Local, am.binned.BasicBinnedDecompose, **FAST)
 
 
 def test_different_k1_k2_edges_rejected(am):
@@ -57,4 +60,4 @@ def test_different_k1_k2_edges_rejected(am):
 
     D = am.utils.Decomposer(n_s=0.96, Lbox=1000., Nmax=32, Binned_Nk=4)
     with pytest.raises(ValueError):
-        D.go(am.models.Local, Skewed, Binned_progress=False)
+        D.go(am.models.Local, Skewed, **FAST)
